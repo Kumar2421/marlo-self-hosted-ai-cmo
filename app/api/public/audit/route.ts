@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SEOAgent, assertPublicHttpUrl, type Finding } from "@/lib/domain/seo/SEOAgent";
+import { SEOAgent, type Finding } from "@/lib/domain/seo/SEOAgent";
+import { assertPublicHttpUrlResolved } from "@/lib/domain/net/ssrf";
 import { setCachedPublicAudit } from "@/lib/domain/seo/publicAuditCache";
 import { explainFinding } from "@/lib/domain/seo/findingExplanations";
 
@@ -51,7 +52,9 @@ export async function POST(req: NextRequest) {
 
   let url: URL;
   try {
-    url = assertPublicHttpUrl(rawUrl);
+    // Resolve DNS before crawling, and reject the hostname if ANY returned address
+    // is private, loopback, link-local, or otherwise non-public.
+    url = await assertPublicHttpUrlResolved(rawUrl);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Invalid URL." },
@@ -81,8 +84,8 @@ export async function POST(req: NextRequest) {
         redirectCount: result.technical.redirectCount,
       },
     });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Audit failed.";
-    return NextResponse.json({ error: message }, { status: 502 });
+  } catch {
+    // Avoid returning internal crawler/network details to anonymous callers.
+    return NextResponse.json({ error: "Audit failed. Check the URL and try again." }, { status: 502 });
   }
 }
