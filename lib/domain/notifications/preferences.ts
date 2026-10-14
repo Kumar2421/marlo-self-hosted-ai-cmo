@@ -98,8 +98,11 @@ export function emailDecision(
 ): EmailDecision {
   const { prefs, unsubscribedAll } = state;
   if (unsubscribedAll || prefs.paused) return "skip";
-  const frequency = prefs.categories[categoryOf(notification.kind)];
+  const category = categoryOf(notification.kind);
+  const frequency = prefs.categories[category];
   if (frequency === "off") return "skip";
+  // Content (social drafts) is in-app only, whatever the frequency says.
+  if (category === "content") return "skip";
 
   if (notification.kind === "outcome_measured") {
     // Only a big win interrupts; everything else waits for the digest.
@@ -113,4 +116,14 @@ export function emailDecision(
 /** Whether an in-app item should be recorded at all. */
 export function inAppEnabled(prefs: NotificationPrefs, category: NotificationCategory): boolean {
   return prefs.categories[category] !== "off";
+}
+
+/**
+ * The option the settings page shows for a stored frequency. Content has one
+ * in-app choice ("daily") and "off", so anything but "off" shows as "daily".
+ */
+export function displayedFrequency(category: NotificationCategory, value: Frequency): Frequency {
+  if (category === "content") return value === "off" ? "off" : "daily";
+  if (category !== "digest" && value === "weekly") return "daily";
+  return value;
 }

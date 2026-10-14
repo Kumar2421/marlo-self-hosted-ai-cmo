@@ -140,6 +140,8 @@ export type DraftBuildConfig = {
   prompt: string;
   /** Defaults to the network's own parser for `variants`. */
   parse?: (text: string) => ParsedBatch;
+  /** Background jobs only: per-call timeout, SDK retries and an abort signal. Routes leave it unset. */
+  call?: { timeoutMs?: number; maxRetries?: number; signal?: AbortSignal };
 };
 
 /** The generateDraftBatch ports for one network, in either mode. */
@@ -170,6 +172,7 @@ export function buildDraftPorts(platform: PlatformId, scope: DraftScope, cfg: Dr
         model: PLATFORM_DEFAULT_MODELS[DRAFT_PROVIDER_ID],
         stream: false,
         messages: [{ role: "user", content: prompt }],
+        ...cfg.call,
       });
       return result.text ?? "";
     },

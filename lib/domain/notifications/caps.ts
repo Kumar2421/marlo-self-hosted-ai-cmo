@@ -23,6 +23,8 @@ export const integrationKey = (integration: string, now: Date) => `integration_d
 export const approvalsKey = (isoDate: string) => `approval_needed:${isoDate}`;
 /** At most one "new social drafts" item per user per day (the daily drafts job may run for several projects). */
 export const socialDraftsKey = (userId: string, isoDate: string) => `social_drafts_ready:${userId}:${isoDate}`;
+/** At most one "daily drafts paused: out of credits" item per user per day. */
+export const socialDraftsPausedKey = (userId: string, isoDate: string) => `social_drafts_paused:${userId}:${isoDate}`;
 
 /** Max individual emails per kind in any 24 hours. Kinds not listed are limited by their dedupe key alone. */
 export const EMAIL_DAILY_CAPS: Partial<Record<NotificationKind, number>> = { outcome_measured: 1, approval_needed: 1 };

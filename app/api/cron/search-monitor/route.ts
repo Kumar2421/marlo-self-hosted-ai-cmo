@@ -12,6 +12,7 @@ import { supabaseNotificationStore } from "@/lib/domain/notifications/notificati
 import { platformNotificationSource } from "@/lib/domain/notifications/platformSource";
 import { emailLinksFor, notificationConfig } from "@/lib/domain/notifications/runtime";
 import { runSocialDailyJob, type SocialDailyJobSummary } from "@/lib/domain/social/dailyDraftJob";
+import { socialPhaseBudgetMs } from "@/lib/domain/social/dailyDrafts";
 
 // Hobby caps cron functions at 60s. Stop a little short of it and resume on
 // the next run rather than being killed mid-project.
@@ -105,8 +106,9 @@ export async function GET(req: NextRequest) {
 
   // Phase 3: one draft per network per project for review (nothing is posted). Failures are
   // isolated per project inside the job; this only guards the whole phase.
+  // The phase stops NOTIFY_RESERVE_MS before the notification deadline, so the notification pass always keeps that time.
   let social: SocialDailyJobSummary | { error: string };
-  const socialBudget = Math.min(SOCIAL_BUDGET_MS, Math.max(0, NOTIFY_DEADLINE_MS - NOTIFY_MIN_BUDGET_MS - (Date.now() - startedAt)));
+  const socialBudget = socialPhaseBudgetMs(Date.now() - startedAt, NOTIFY_DEADLINE_MS, SOCIAL_BUDGET_MS);
   if (socialBudget < NOTIFY_MIN_BUDGET_MS) {
     social = { error: "No time left; will run tomorrow." };
   } else {

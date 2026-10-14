@@ -5,6 +5,7 @@ export const NOTIFICATION_KINDS = [
   "approval_needed",
   "integration_disconnected",
   "social_drafts_ready",
+  "social_drafts_paused",
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -21,6 +22,7 @@ const CATEGORY_OF: Record<NotificationKind, NotificationCategory> = {
   approval_needed: "approvals",
   integration_disconnected: "integrations",
   social_drafts_ready: "content",
+  social_drafts_paused: "content",
 };
 
 export function categoryOf(kind: NotificationKind): NotificationCategory {

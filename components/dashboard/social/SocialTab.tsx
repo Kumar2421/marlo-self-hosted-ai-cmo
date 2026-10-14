@@ -5,6 +5,7 @@ import { Loader2, MessageCircle } from "lucide-react";
 import { getPlatformConfig, listPlatforms } from "@/lib/domain/social/platforms";
 import { useSocialDraftList, useSocialDraftActions, type SocialPlatform } from "./useSocialDrafts";
 import SocialWriterPanel from "./SocialWriterPanel";
+import SocialNavMenu from "./SocialNavMenu";
 
 function PlatformIcon({ platform }: { platform: SocialPlatform }) {
   if (platform === "x") {
@@ -151,6 +152,8 @@ export default function SocialTab() {
         <MessageCircle size={16} className="text-gray-700" />
         <h3 className="text-[13px] font-semibold text-gray-900">Social Post Drafts</h3>
       </div>
+
+      <SocialNavMenu />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {platforms.map((platform) => (

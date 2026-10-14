@@ -6,6 +6,10 @@ export function socialDraftsTitle(total: number): string {
   return total === 1 ? "1 new social draft is ready" : `${total} new social drafts are ready`;
 }
 
+/** In-app item when the daily drafts pause because the credits ran out. Never emailed. */
+export const SOCIAL_PAUSED_TITLE = "Daily social drafts paused: out of credits";
+export const SOCIAL_PAUSED_BODY = "Automatic drafts resume when you have credits again, or when you connect your own model key. Nothing is posted.";
+
 const NETWORK_NAMES: Record<string, string> = { x: "X", linkedin: "LinkedIn", reddit: "Reddit" };
 
 /** Body for the social drafts item: names the networks that got a draft, in a fixed order. */
