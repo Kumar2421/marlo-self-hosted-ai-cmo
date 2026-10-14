@@ -14,6 +14,7 @@ import { useLeadProfile } from "./leads/useLeadProfile";
 import LeadProfileWizard from "./leads/LeadProfileWizard";
 import LeadProfileSearch from "./leads/LeadProfileSearch";
 import { SkeletonCard } from "@/components/shared/Skeleton";
+import { FEATURES } from "@/lib/features";
 import type { LeadSearchTarget } from "@/lib/domain/leads/leadProfile";
 
 type Lead = {
@@ -191,7 +192,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
       const verifiedEmail = found.filter((l) => l.email_verified).length;
       const noEmail = found.length - foundEmail - verifiedEmail;
       logDone(
-        `Found ${found.length} lead${found.length === 1 ? "" : "s"} — ${foundEmail} email${foundEmail === 1 ? "" : "s"} from search, ${verifiedEmail} SMTP-verified, ${noEmail} with no email.`
+        `Found ${found.length} lead${found.length === 1 ? "" : "s"} — ${foundEmail} email${foundEmail === 1 ? "" : "s"} from search, ${verifiedEmail} guessed and accepted by the mail server, ${noEmail} with no email.`
       );
       show(`Found ${found.length} lead${found.length === 1 ? "" : "s"}.`);
     } catch {
@@ -313,6 +314,9 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
             className={`flex-1 rounded-md py-1.5 font-medium ${mode === "business" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}
           >
             Local Business
+            {FEATURES.PLATFORM_MODE && (
+              <span className="ml-1.5 rounded-full bg-gray-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-gray-600">Coming soon</span>
+            )}
           </button>
         </div>
 
@@ -385,6 +389,14 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
               </div>
             )}
           </>
+        ) : FEATURES.PLATFORM_MODE ? (
+          <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-3 text-[12px] leading-5 text-gray-600" data-testid="local-business-coming-soon">
+            <div className="mb-1 flex items-center gap-2 font-semibold text-gray-800">
+              <Building2 size={13} /> Local business leads
+              <span className="rounded-full bg-gray-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-gray-600">Coming soon</span>
+            </div>
+            We are setting up the Google Places connection for local business search. People search works today.
+          </div>
         ) : (
           <>
             <input
@@ -544,11 +556,11 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                   <div className="mt-1 flex items-center gap-2 text-[11px]">
                     {lead.lead_type === "business" ? null : lead.email ? (
                       <span
-                        title={lead.email_verified ? "SMTP-verified guess — not found directly, but the mail server accepted it" : "Found directly in real search results"}
+                        title={lead.email_verified ? "Guessed address. The mail server accepted it, but many servers accept any address, so this is not a guarantee it exists" : "Found directly in real search results"}
                         className="rounded-full bg-[#e6f7f4] px-2 py-0.5 font-medium text-[#00846f]"
                       >
                         {lead.email}
-                        {!!lead.email_verified && " ✓ verified"}
+                        {!!lead.email_verified && " ✓ server accepted"}
                       </span>
                     ) : (
                       <span className="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-400">No email found</span>
@@ -596,7 +608,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
       </div>
 
       <div className="flex shrink-0 items-center justify-between border-t border-gray-200 px-4 py-2.5 text-[11px] text-gray-400">
-        <span>Emails are found in real search results or SMTP-verified — never shown unverified.</span>
+        <span />
         <div className="flex items-center gap-3">
           {gmail.canRead && (
             <button
