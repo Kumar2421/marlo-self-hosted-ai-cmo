@@ -10,7 +10,7 @@ const PAGE = `export default function Home() {\n  return (<html><head>\n<title>H
 type Req = { method: string; path: string; body?: any };
 
 /** In-memory GitHub: files on main, and a record of every write. */
-function fakeGithub(files: Record<string, string>) {
+function fakeGithub(files: Record<string, string>, codeSearchPaths: string[] = []) {
   const requests: Req[] = [];
   const branches = new Map<string, Record<string, string>>();
   const original = globalThis.fetch;
@@ -43,6 +43,7 @@ function fakeGithub(files: Record<string, string>) {
       b[p] = Buffer.from(body.content, "base64").toString("utf8");
       return json({}, 201);
     }
+    if (path === "/search/code") return json({ items: codeSearchPaths.map((p) => ({ path: p })) });
     if (path === "/pulls" && method === "POST") return json({ html_url: "https://github.com/acme/site/pull/7" }, 201);
     return json({}, 404);
   }) as typeof fetch;
@@ -73,6 +74,28 @@ CREATE: public/llms.txt
 EXPLANATION: Adds Organization JSON-LD and an llms.txt so AI assistants can describe Acme accurately.`;
 
 const llm = (text: string) => async () => ({ text } as never);
+
+// A reply that only edits the pricing page (no new files), for the page-lookup tests.
+const PRICING_REPLY = LLM_REPLY.replace("EDIT: app/page.tsx", "EDIT: app/pricing/page.tsx").replace(/CREATE: public\/llms\.txt\n<<<\n[\s\S]*?\n>>>\n/, "");
+const pricingInput: CatalogFixInput = { ...input, kinds: ["json_ld"], pageUrl: "https://acme.com/pricing" };
+
+test("a page is never edited just because an unrelated search hit came first", async () => {
+  const gh = fakeGithub({ "lib/util.ts": "export const x = 1;\n", "app/page.tsx": PAGE }, ["lib/util.ts"]);
+  try {
+    const provider = new ContentsApiFixProvider(llm(PRICING_REPLY), "k", "m");
+    await assert.rejects(provider.proposeCatalogFix(pricingInput, ctx), /Couldn't find a file Marlo may edit for "\/pricing"/);
+    assert.deepEqual(gh.requests.filter((r) => r.method !== "GET"), [], "nothing written");
+  } finally { gh.restore(); }
+});
+
+test("a search hit that names the page segment is the file that gets proposed", async () => {
+  const gh = fakeGithub({ "app/pricing/page.tsx": PAGE, "lib/util.ts": "export const x = 1;\n" }, ["lib/util.ts", "app/pricing/page.tsx"]);
+  try {
+    const provider = new ContentsApiFixProvider(llm(PRICING_REPLY), "k", "m");
+    const proposal = await provider.proposeCatalogFix(pricingInput, ctx);
+    assert.deepEqual(proposal.changes.map((c) => c.path), ["app/pricing/page.tsx"]);
+  } finally { gh.restore(); }
+});
 
 test("propose is preview-only: reads the repo, writes nothing", async () => {
   const gh = fakeGithub({ "app/page.tsx": PAGE, "public/robots.txt": "User-agent: *" });

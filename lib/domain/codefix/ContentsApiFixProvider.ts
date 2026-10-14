@@ -42,8 +42,9 @@ async function locateFile(token: string, repoFullName: string, defaultBranch: st
   if (results.length === 0) {
     throw new Error(`Couldn't find a file matching "${pathname}" in ${repoFullName} — search didn't return anything. Fix it manually.`);
   }
+  // Only a file whose path names the page segment counts: an unrelated hit is never edited just because it came first.
   const safe = results.filter((r) => isSafeRepoPath(r.path));
-  const best = safe.find((r) => r.path.includes(`/${segment}/`) || r.path.includes(`/${segment}.`)) ?? safe[0];
+  const best = safe.find((r) => r.path.includes(`/${segment}/`) || r.path.includes(`/${segment}.`));
   if (!best) throw new Error(`Couldn't find a file Marlo may edit for "${pathname}". Fix it manually.`);
   return best.path;
 }

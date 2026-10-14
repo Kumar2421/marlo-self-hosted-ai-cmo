@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronRight, CircleDot, Loader2, RefreshCw } from "lucide-react";
 import type { Finding, FindingStatus } from "@/lib/domain/findings/findingTypes";
 import { countFindings, findingTitle, pagePath } from "@/lib/domain/findings/findingDisplay";
+import { friendlyGithubError } from "@/lib/domain/github/friendlyGithubError";
+import { useToast } from "@/components/dashboard/Toast";
 import SidePanel from "@/components/shared/SidePanel";
 import { SkeletonCard, SkeletonStats } from "@/components/shared/Skeleton";
 import FindingDetail, { STATUS_LABEL, severityClass, statusClass } from "./findings/FindingDetail";
@@ -39,6 +41,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: "ba
  */
 export default function FindingsWorkspace() {
   const { list, update } = useFindings();
+  const { show } = useToast();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [verification, setVerification] = useState<"verified" | "failed" | null>(null);
 
@@ -46,18 +49,25 @@ export default function FindingsWorkspace() {
   const counts = useMemo(() => countFindings(findings), [findings]);
   const selected = findings.find((f) => f.id === selectedId) ?? null;
 
-  // Coming back from GitHub (?finding=<id>) reopens that finding.
+  // Coming back from GitHub (?finding=<id>, ?github=connected or ?github_error=...) reopens the finding and says what happened.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const wanted = params.get("finding");
-    if (!wanted) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSelectedId(wanted);
+    const githubError = params.get("github_error");
+    const connected = params.get("github") === "connected";
+    if (!wanted && !githubError && !connected) return;
+    if (githubError) show(`GitHub: ${friendlyGithubError(githubError).message}`);
+    else if (connected) show("GitHub connected. Now pick the repository.");
+    if (wanted) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelectedId(wanted);
+    }
     params.delete("finding");
     params.delete("github");
+    params.delete("github_error");
     const query = params.toString();
     window.history.replaceState(null, "", window.location.pathname + (query ? `?${query}` : ""));
-  }, []);
+  }, [show]);
 
   const select = (id: string | null) => {
     setSelectedId(id);

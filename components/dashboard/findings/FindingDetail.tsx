@@ -113,12 +113,12 @@ export default function FindingDetail({
       </section>
 
       <section>
-        <SectionTitle hint="Marlo can open a pull request for simple copy and markup fixes. You review and merge it.">Fix in code</SectionTitle>
+        <SectionTitle hint="Marlo suggests a change and sends it to GitHub for you to approve.">Fix in code</SectionTitle>
         <FindingCodeFix finding={finding} actions={work.actions.data ?? []} />
       </section>
 
       <section>
-        <SectionTitle hint="Prioritized from the evidence collected in this audit.">Recommended next steps</SectionTitle>
+        <SectionTitle hint="Or do it yourself">Recommended next steps</SectionTitle>
         {work.recommendations.isPending ? (
           <SkeletonLines rows={3} />
         ) : loadError ? (
