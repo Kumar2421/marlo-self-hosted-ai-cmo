@@ -23,6 +23,8 @@ import {
 } from "@/lib/domain/actions/actionStoreSupabase";
 import { deriveActionType } from "@/lib/domain/actions/deriveActionType";
 import { linkPullRequest } from "@/lib/domain/fixes/linkPullRequest";
+import { fixDeliveryGithub } from "@/lib/domain/fixes/fixDeliveryGithub";
+import { decideFixLink, linkedPrCandidates } from "@/lib/domain/codefix/openPrPolicy";
 
 /**
  * Shared server steps for the finding-based code fix routes (prepare, then apply): who is asking,
@@ -43,9 +45,19 @@ export type FixRequest = {
   charge(model: string): Promise<NextResponse | null>;
   /** Hosted only: the balance read used as a pre-check before the LLM call on the platform key. */
   creditState(): Promise<CreditState>;
-  /** After the PR exists: remember it (code_fixes) and link it to the finding's tracked action. */
-  recordApplied(prUrl: string, files: string[]): Promise<void>;
+  /** PR URLs already tied to this finding (the code_fixes row, then tracked actions), checked before a new PR is opened. */
+  linkedPrUrls(): Promise<string[]>;
+  /**
+   * After the PR exists: remember it (code_fixes) and link it to the finding's tracked action. Idempotent. If a different
+   * PR is still open for the finding, that one stays linked. Returns the PR URL the finding is now linked to.
+   */
+  recordApplied(prUrl: string, files: string[]): Promise<string>;
 };
+
+/** Whether a PR is still open on GitHub. Throws only if the lookup itself fails; the caller then records nothing. */
+async function isPrOpenOnGithub(token: string, prUrl: string): Promise<boolean> {
+  return (await fixDeliveryGithub(token).status(prUrl)).state === "open";
+}
 
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
 
@@ -83,23 +95,37 @@ export async function resolveFixRequest(opts: { findingId: string; providerId?: 
       llm,
       charge: async () => null,
       creditState: async () => ({ billingEnabled: false, balance: 0, cost: 0 }),
+      linkedPrUrls: async () => {
+        const row = getDb().prepare("SELECT pr_url FROM code_fixes WHERE project_id = ? AND issue_id = ?").get(ctx.projectId, finding.id) as { pr_url: string | null } | undefined;
+        return linkedPrCandidates(row?.pr_url, listProjectActions(ctx.projectId, finding.id));
+      },
       recordApplied: async (prUrl, files) => {
         const now = new Date().toISOString();
-        getDb()
-          .prepare(
-            `INSERT INTO code_fixes (id, project_id, issue_id, status, pr_url, file_path, created_at, updated_at)
-             VALUES (@id, @projectId, @issueId, 'pr_open', @prUrl, @filePath, @now, @now)
-             ON CONFLICT(project_id, issue_id) DO UPDATE SET status = 'pr_open', pr_url = excluded.pr_url, file_path = excluded.file_path, updated_at = excluded.updated_at`,
-          )
-          .run({ id: `fix_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, projectId: ctx.projectId, issueId: finding.id, prUrl, filePath: files.join(", "), now });
-        for (const link of linkPullRequest(listProjectActions(ctx.projectId, finding.id), prUrl)) setActionResult(ctx.projectId, link.id, link.result);
-        if (!listProjectActions(ctx.projectId, finding.id).some((a) => (a.result as { pullRequest?: { url?: string } } | null)?.pullRequest?.url === prUrl)) {
+        const row = getDb().prepare("SELECT pr_url, file_path FROM code_fixes WHERE project_id = ? AND issue_id = ?").get(ctx.projectId, finding.id) as
+          | { pr_url: string | null; file_path: string | null }
+          | undefined;
+        const { storePrUrl } = await decideFixLink({ existingPrUrl: row?.pr_url, newPrUrl: prUrl, isOpen: (url) => isPrOpenOnGithub(ctx.githubToken, url) });
+        if (storePrUrl === prUrl) {
+          getDb()
+            .prepare(
+              `INSERT INTO code_fixes (id, project_id, issue_id, status, pr_url, file_path, created_at, updated_at)
+               VALUES (@id, @projectId, @issueId, 'pr_open', @prUrl, @filePath, @now, @now)
+               ON CONFLICT(project_id, issue_id) DO UPDATE SET status = 'pr_open', pr_url = excluded.pr_url, file_path = excluded.file_path, updated_at = excluded.updated_at`,
+            )
+            .run({
+              id: `fix_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, projectId: ctx.projectId, issueId: finding.id, prUrl,
+              filePath: files.length > 0 ? files.join(", ") : (row?.file_path ?? ""), now,
+            });
+        }
+        for (const link of linkPullRequest(listProjectActions(ctx.projectId, finding.id), storePrUrl)) setActionResult(ctx.projectId, link.id, link.result);
+        if (!listProjectActions(ctx.projectId, finding.id).some((a) => (a.result as { pullRequest?: { url?: string } } | null)?.pullRequest?.url === storePrUrl)) {
           const created = createAction({
             projectId: ctx.projectId, findingId: finding.id, type: deriveActionType(finding), title: `Fix in code: ${finding.recommendation.slice(0, 80)}`,
             target: { url: finding.url ?? undefined, repository: ctx.repoFullName }, parameters: { via: "github_pr" },
           });
-          setActionResult(ctx.projectId, created.id, { pullRequest: { url: prUrl } });
+          setActionResult(ctx.projectId, created.id, { pullRequest: { url: storePrUrl } });
         }
+        return storePrUrl;
       },
     };
   }
@@ -181,23 +207,35 @@ export async function resolveFixRequest(opts: { findingId: string; providerId?: 
       }
     },
     creditState: () => getCreditState(user.id, "code_fix"),
+    linkedPrUrls: async () => {
+      const { data: row } = await db.from("code_fixes").select("pr_url").eq("project_id", project.id).eq("issue_id", finding.id).maybeSingle();
+      const actions = await listProjectActionsSupabase(db, user.id, project.id, finding.id);
+      return linkedPrCandidates(row?.pr_url, actions);
+    },
     recordApplied: async (prUrl, files) => {
       const now = new Date().toISOString();
-      const { data: existing } = await db.from("code_fixes").select("created_at").eq("project_id", project.id).eq("issue_id", finding.id).maybeSingle();
-      await db.from("code_fixes").upsert(
-        { user_id: user.id, project_id: project.id, issue_id: finding.id, status: "pr_open", pr_url: prUrl, file_path: files.join(", "), created_at: existing?.created_at ?? now, updated_at: now },
-        { onConflict: "project_id,issue_id" },
-      );
+      const { data: existing } = await db.from("code_fixes").select("created_at, pr_url, file_path").eq("project_id", project.id).eq("issue_id", finding.id).maybeSingle();
+      const { storePrUrl } = await decideFixLink({ existingPrUrl: existing?.pr_url, newPrUrl: prUrl, isOpen: (url) => isPrOpenOnGithub(githubToken, url) });
+      if (storePrUrl === prUrl) {
+        await db.from("code_fixes").upsert(
+          {
+            user_id: user.id, project_id: project.id, issue_id: finding.id, status: "pr_open", pr_url: prUrl,
+            file_path: files.length > 0 ? files.join(", ") : (existing?.file_path ?? ""), created_at: existing?.created_at ?? now, updated_at: now,
+          },
+          { onConflict: "project_id,issue_id" },
+        );
+      }
       const actions = await listProjectActionsSupabase(db, user.id, project.id, finding.id);
-      for (const link of linkPullRequest(actions, prUrl)) await setActionResultSupabase(db, user.id, project.id, link.id, link.result);
+      for (const link of linkPullRequest(actions, storePrUrl)) await setActionResultSupabase(db, user.id, project.id, link.id, link.result);
       const linked = await listProjectActionsSupabase(db, user.id, project.id, finding.id);
-      if (!linked.some((a) => (a.result as { pullRequest?: { url?: string } } | null)?.pullRequest?.url === prUrl)) {
+      if (!linked.some((a) => (a.result as { pullRequest?: { url?: string } } | null)?.pullRequest?.url === storePrUrl)) {
         const created = await createActionSupabase(db, user.id, {
           projectId: project.id, findingId: finding.id, type: deriveActionType(finding), title: `Fix in code: ${finding.recommendation.slice(0, 80)}`,
           target: { url: finding.url ?? undefined, repository: repoFullName }, parameters: { via: "github_pr" },
         });
-        await setActionResultSupabase(db, user.id, project.id, created.id, { pullRequest: { url: prUrl } });
+        await setActionResultSupabase(db, user.id, project.id, created.id, { pullRequest: { url: storePrUrl } });
       }
+      return storePrUrl;
     },
   };
 }

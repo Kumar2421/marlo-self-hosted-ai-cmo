@@ -219,7 +219,11 @@ export function buildPrBody(meta: CatalogApplyMeta, changes: FixChange[]): strin
   ].join("\n");
 }
 
+/** The slug in a fix branch name: lowercase words joined by "-", at most 40 characters. */
+export function branchSlugFor(label: string): string {
+  return label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "fix";
+}
+
 export function branchNameFor(label: string, now = Date.now()): string {
-  const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "fix";
-  return `marlo/${slug}-${now.toString(36)}`;
+  return `marlo/${branchSlugFor(label)}-${now.toString(36)}`;
 }

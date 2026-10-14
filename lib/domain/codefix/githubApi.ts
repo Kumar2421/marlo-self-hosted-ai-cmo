@@ -70,6 +70,24 @@ export async function pathExists(token: string, repoFullName: string, path: stri
   return true;
 }
 
+export type OpenPullRequestSummary = { url: string; headRef: string };
+
+/** Open PRs in the repo, newest first (first page of 100). Used to find a PR a fix already opened. */
+export async function listOpenPullRequests(token: string, repoFullName: string): Promise<OpenPullRequestSummary[]> {
+  const res = await githubFetch(token, `/repos/${repoFullName}/pulls?state=open&per_page=100`);
+  if (!res.ok) throw new Error(`Couldn't list pull requests: HTTP ${res.status}`);
+  const data = await res.json();
+  return (Array.isArray(data) ? data : [])
+    .map((pr: { html_url?: unknown; head?: { ref?: unknown } }) => ({ url: String(pr.html_url ?? ""), headRef: String(pr.head?.ref ?? "") }))
+    .filter((pr: OpenPullRequestSummary) => pr.url !== "" && pr.headRef !== "");
+}
+
+/** Deletes a branch. Deleting a branch that is already gone counts as deleted. */
+export async function deleteBranch(token: string, repoFullName: string, branch: string): Promise<void> {
+  const res = await githubFetch(token, `/repos/${repoFullName}/git/refs/heads/${branch}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 404) throw new Error(`Couldn't delete branch "${branch}": HTTP ${res.status}`);
+}
+
 async function getRefSha(token: string, repoFullName: string, branch: string): Promise<string> {
   const res = await githubFetch(token, `/repos/${repoFullName}/git/ref/heads/${branch}`);
   if (!res.ok) throw new Error(`Couldn't read branch "${branch}": HTTP ${res.status}`);

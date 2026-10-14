@@ -1,7 +1,8 @@
 import type { LlmDriver } from "@/lib/llm";
 import type { Finding } from "@/lib/domain/seo/SEOAgent";
 import type { CatalogApplyMeta, CatalogFixInput, CatalogProposal, CodeFixContext, CodeFixProvider, FixChange, ProposedFix } from "./types.ts";
-import { getRepo, searchCode, getFileContent, createBranch, putFileContent, createPullRequest, pathExists } from "./githubApi.ts";
+import { getRepo, searchCode, getFileContent, createBranch, putFileContent, createPullRequest, pathExists, listOpenPullRequests, deleteBranch } from "./githubApi.ts";
+import { openPrForHead } from "./openPrPolicy.ts";
 import {
   applyEditsToContent,
   branchNameFor,
@@ -66,6 +67,15 @@ function parsePatchResponse(raw: string): ParsedPatch {
     new: newMatch[1],
     explanation: explanationMatch?.[1]?.trim() ?? "Fixes the reported issue.",
   };
+}
+
+/** Best-effort branch cleanup. Its own failure is swallowed so the caller still sees the error that caused the cleanup. */
+async function deleteBranchQuietly(token: string, repoFullName: string, branch: string): Promise<void> {
+  try {
+    await deleteBranch(token, repoFullName, branch);
+  } catch {
+    // Left for a human to remove; the original error is what matters.
+  }
 }
 
 /**
@@ -238,10 +248,30 @@ The OLD block must exist character-for-character in the file above — copy it e
 
     const branch = branchNameFor(meta.label);
     await createBranch(ctx.githubToken, ctx.repoFullName, repo.defaultBranch, branch);
-    for (const w of writes) {
-      await putFileContent(ctx.githubToken, ctx.repoFullName, w.path, w.content, buildPrTitle(meta.label), branch, w.sha);
+    // From here on the branch is ours: if anything fails, it is deleted so no orphan branch is left behind.
+    try {
+      for (const w of writes) {
+        await putFileContent(ctx.githubToken, ctx.repoFullName, w.path, w.content, buildPrTitle(meta.label), branch, w.sha);
+      }
+    } catch (err) {
+      await deleteBranchQuietly(ctx.githubToken, ctx.repoFullName, branch);
+      throw err;
     }
-    const prUrl = await createPullRequest(ctx.githubToken, ctx.repoFullName, buildPrTitle(meta.label), buildPrBody(meta, changes), branch, repo.defaultBranch);
-    return { prUrl, branch, files: paths };
+    try {
+      const prUrl = await createPullRequest(ctx.githubToken, ctx.repoFullName, buildPrTitle(meta.label), buildPrBody(meta, changes), branch, repo.defaultBranch);
+      return { prUrl, branch, files: paths };
+    } catch (err) {
+      // GitHub may have accepted the PR before this call failed (a timeout, say). Then keep the branch and return that PR,
+      // since deleting the branch would close it. If the lookup itself fails, keep the branch too: it is not known to be unused.
+      let existing: string | null | undefined;
+      try {
+        existing = openPrForHead(await listOpenPullRequests(ctx.githubToken, ctx.repoFullName), branch)?.url ?? null;
+      } catch {
+        existing = undefined;
+      }
+      if (existing) return { prUrl: existing, branch, files: paths };
+      if (existing === null) await deleteBranchQuietly(ctx.githubToken, ctx.repoFullName, branch);
+      throw err;
+    }
   }
 }
