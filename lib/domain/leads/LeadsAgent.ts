@@ -68,10 +68,14 @@ export class LeadsAgent {
     const queries = buildLinkedInQueries(target);
     if (queries.length === 0) return [];
 
-    const { profiles } = await collectProfiles(queries, {
-      tavily: (q) => tavilySearchRaw(tavilyApiKey, q, RESULTS_PER_QUERY),
-      google: google ? (q) => googleSearchRaw(google.apiKey, google.cx, q, GOOGLE_RESULTS_PER_QUERY) : undefined,
-    });
+    const { profiles } = await collectProfiles(
+      queries,
+      {
+        tavily: (q) => tavilySearchRaw(tavilyApiKey, q, RESULTS_PER_QUERY),
+        google: google ? (q) => googleSearchRaw(google.apiKey, google.cx, q, GOOGLE_RESULTS_PER_QUERY) : undefined,
+      },
+      { queryLocation: query.location }
+    );
 
     // Exclusions by name, URL and email domain are known before any LLM call,
     // so excluded people never cost tokens. The company check runs again below.

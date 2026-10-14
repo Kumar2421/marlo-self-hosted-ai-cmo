@@ -2,15 +2,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DAILY_LIMIT_FALLBACK_MESSAGE, OUT_OF_CREDITS_MESSAGE, runPaidLeadSearch, type PaidLeadSearchPorts } from "../lib/domain/leads/paidLeadSearch.ts";
 
-function recorder(overrides: {
+type Overrides = {
   limit?: { allowed: boolean; message?: string };
   credits?: boolean;
   omitCredits?: boolean;
   leads?: string[] | Error;
+  save?: "ok" | "empty" | "error" | "throw";
   charged?: boolean;
-}) {
+};
+
+function recorder(overrides: Overrides) {
   const calls: string[] = [];
-  const ports: PaidLeadSearchPorts<string> = {
+  const ports: PaidLeadSearchPorts<string, string> = {
     checkDailyLimit: async () => {
       calls.push("limit");
       return overrides.limit ?? { allowed: true };
@@ -24,6 +27,13 @@ function recorder(overrides: {
       if (overrides.leads instanceof Error) throw overrides.leads;
       return overrides.leads ?? ["Jane Doe"];
     },
+    save: async (leads) => {
+      calls.push("save");
+      if (overrides.save === "throw") throw new Error("verify crashed");
+      if (overrides.save === "error") return { ok: false, status: 500, error: "insert failed" };
+      if (overrides.save === "empty") return { ok: true, rows: [] };
+      return { ok: true, rows: leads.map((l) => `row:${l}`) };
+    },
     charge: async () => {
       calls.push("charge");
       return overrides.charged ?? true;
@@ -33,11 +43,11 @@ function recorder(overrides: {
   return { ports, calls };
 }
 
-test("order is limit, credit pre-check, search, then charge", async () => {
+test("order is limit, credit pre-check, search, save, then charge", async () => {
   const { ports, calls } = recorder({});
   const out = await runPaidLeadSearch(ports);
-  assert.deepEqual(calls, ["limit", "credits", "search", "charge"]);
-  assert.deepEqual(out, { ok: true, leads: ["Jane Doe"], charged: true });
+  assert.deepEqual(calls, ["limit", "credits", "search", "save", "charge"]);
+  assert.deepEqual(out, { ok: true, leads: ["row:Jane Doe"], charged: true });
 });
 
 test("daily limit refuses before anything is spent, with the limit message", async () => {
@@ -60,7 +70,7 @@ test("no credits at pre-check: 402 before the search runs", async () => {
   assert.deepEqual(out, { ok: false, status: 402, error: OUT_OF_CREDITS_MESSAGE });
 });
 
-test("an empty search is not charged", async () => {
+test("an empty search is neither saved nor charged", async () => {
   const { ports, calls } = recorder({ leads: [] });
   const out = await runPaidLeadSearch(ports);
   assert.deepEqual(calls, ["limit", "credits", "search"]);
@@ -74,14 +84,36 @@ test("a failing search is a 502 with the message and is not charged", async () =
   assert.deepEqual(out, { ok: false, status: 502, error: "boom" });
 });
 
-test("running out of credits at charge time is a 402 and the leads are not returned", async () => {
-  const { ports } = recorder({ charged: false });
+test("a failed insert returns 500 and is never charged", async () => {
+  const { ports, calls } = recorder({ save: "error" });
   const out = await runPaidLeadSearch(ports);
-  assert.deepEqual(out, { ok: false, status: 402, error: OUT_OF_CREDITS_MESSAGE });
+  assert.deepEqual(calls, ["limit", "credits", "search", "save"]);
+  assert.deepEqual(out, { ok: false, status: 500, error: "insert failed" });
 });
 
-test("no pre-check port: search and charge still run in order", async () => {
+test("a save that throws (e.g. email verification) is a 502 and is never charged", async () => {
+  const { ports, calls } = recorder({ save: "throw" });
+  const out = await runPaidLeadSearch(ports);
+  assert.deepEqual(calls, ["limit", "credits", "search", "save"]);
+  assert.deepEqual(out, { ok: false, status: 502, error: "verify crashed" });
+});
+
+test("a save that stores zero rows is not charged", async () => {
+  const { ports, calls } = recorder({ save: "empty" });
+  const out = await runPaidLeadSearch(ports);
+  assert.deepEqual(calls, ["limit", "credits", "search", "save"]);
+  assert.deepEqual(out, { ok: true, leads: [], charged: false });
+});
+
+test("a charge refused after the save keeps the saved leads and reports charged=false", async () => {
+  const { ports, calls } = recorder({ charged: false });
+  const out = await runPaidLeadSearch(ports);
+  assert.deepEqual(calls, ["limit", "credits", "search", "save", "charge"]);
+  assert.deepEqual(out, { ok: true, leads: ["row:Jane Doe"], charged: false });
+});
+
+test("no pre-check port: search, save and charge still run in order", async () => {
   const { ports, calls } = recorder({ omitCredits: true });
   await runPaidLeadSearch(ports);
-  assert.deepEqual(calls, ["limit", "search", "charge"]);
+  assert.deepEqual(calls, ["limit", "search", "save", "charge"]);
 });

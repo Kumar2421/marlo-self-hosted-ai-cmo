@@ -3,28 +3,34 @@
  *   1. daily lead limit        (nothing spent yet)
  *   2. credit pre-check        (nothing spent yet; skipped when billing is off)
  *   3. search                  (Tavily/Google + optional LLM company fill-in)
- *   4. charge credits          (only when the search returned at least one lead)
- * Credits are never taken for a search that found nothing or failed, and a
- * refused charge means the leads are not returned or saved.
+ *   4. save the leads          (nothing is charged when the save fails)
+ *   5. charge credits          (only after at least one lead is saved)
+ * Credits are never taken for a search that found nothing, failed, or could
+ * not be saved. If the charge is refused after the save, the saved leads are
+ * kept and returned with charged=false; they are not deleted.
  */
 
-export type PaidLeadSearchOutcome<T> =
-  | { ok: true; leads: T[]; charged: boolean }
-  | { ok: false; status: 402 | 403 | 502; error: string };
+export type PaidLeadSearchOutcome<R> =
+  | { ok: true; leads: R[]; charged: boolean }
+  | { ok: false; status: 402 | 403 | 500 | 502; error: string };
 
-export type PaidLeadSearchPorts<T> = {
+export type SaveResult<R> = { ok: true; rows: R[] } | { ok: false; status: 500 | 502; error: string };
+
+export type PaidLeadSearchPorts<T, R> = {
   checkDailyLimit: () => Promise<{ allowed: boolean; message?: string }>;
   /** Omit when there is nothing to pre-check. Resolves false when the user cannot pay. */
   hasCredits?: () => Promise<boolean>;
   search: () => Promise<T[]>;
-  /** Resolves false when the user ran out of credits at charge time. */
+  /** Persists the leads and returns the saved rows, or a failure (which is never charged). */
+  save: (leads: T[]) => Promise<SaveResult<R>>;
+  /** Runs only after a successful save. Resolves false when the user ran out of credits at charge time. */
   charge: () => Promise<boolean>;
 };
 
 export const OUT_OF_CREDITS_MESSAGE = "Out of credits. Upgrade or connect your own key.";
 export const DAILY_LIMIT_FALLBACK_MESSAGE = "Daily lead limit reached";
 
-export async function runPaidLeadSearch<T>(ports: PaidLeadSearchPorts<T>): Promise<PaidLeadSearchOutcome<T>> {
+export async function runPaidLeadSearch<T, R>(ports: PaidLeadSearchPorts<T, R>): Promise<PaidLeadSearchOutcome<R>> {
   const limit = await ports.checkDailyLimit();
   if (!limit.allowed) {
     return { ok: false, status: 403, error: limit.message || DAILY_LIMIT_FALLBACK_MESSAGE };
@@ -34,16 +40,25 @@ export async function runPaidLeadSearch<T>(ports: PaidLeadSearchPorts<T>): Promi
     return { ok: false, status: 402, error: OUT_OF_CREDITS_MESSAGE };
   }
 
-  let leads: T[];
+  let found: T[];
   try {
-    leads = await ports.search();
+    found = await ports.search();
   } catch (err) {
     return { ok: false, status: 502, error: err instanceof Error ? err.message : String(err) };
   }
 
-  if (leads.length === 0) return { ok: true, leads, charged: false };
+  if (found.length === 0) return { ok: true, leads: [], charged: false };
 
-  const paid = await ports.charge();
-  if (!paid) return { ok: false, status: 402, error: OUT_OF_CREDITS_MESSAGE };
-  return { ok: true, leads, charged: true };
+  let saved: SaveResult<R>;
+  try {
+    saved = await ports.save(found);
+  } catch (err) {
+    return { ok: false, status: 502, error: err instanceof Error ? err.message : String(err) };
+  }
+  if (!saved.ok) return { ok: false, status: saved.status, error: saved.error };
+  // Only a successful insert of at least one lead is billable.
+  if (saved.rows.length === 0) return { ok: true, leads: [], charged: false };
+
+  const charged = await ports.charge();
+  return { ok: true, leads: saved.rows, charged };
 }

@@ -1,4 +1,4 @@
-import { parseLinkedInResult, type LinkedInSearchResult, type ParsedLinkedInProfile } from "./profileParse.ts";
+import { cleanCompany, parseLinkedInResult, type LinkedInSearchResult, type ParsedLinkedInProfile } from "./profileParse.ts";
 import { dedupeProfiles, type FitTarget } from "./leadFit.ts";
 
 /** Tavily gives 20 results per query at most; the Custom Search API caps at 10. */
@@ -27,8 +27,19 @@ export type CompletionDriver = (req: {
   baseUrl?: string;
 }) => Promise<{ text?: string }>;
 
+/**
+ * Rough prompt size: ASCII at about 4 characters per token, but every other
+ * character (CJK, accents, emoji) at about 1 token, so non-Latin text cannot
+ * slip past the budget the way a flat chars/4 count let it.
+ */
 export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
+  let ascii = 0;
+  let wide = 0;
+  for (const ch of text) {
+    if (ch.codePointAt(0)! <= 0x7f) ascii += 1;
+    else wide += 1;
+  }
+  return Math.ceil(ascii / 4) + wide;
 }
 
 const FILLER = (s: string) => s.replace(/\s+/g, " ").trim();
@@ -65,7 +76,8 @@ export type SearchPorts = {
  */
 export async function collectProfiles(
   queries: string[],
-  ports: SearchPorts
+  ports: SearchPorts,
+  context: { queryLocation?: string } = {}
 ): Promise<{ profiles: ParsedLinkedInProfile[]; stats: CollectStats }> {
   const tavilySets = await Promise.all(queries.map((q) => ports.tavily(q).catch(() => [] as LinkedInSearchResult[])));
   const googleSets = ports.google && queries.length > 0
@@ -75,7 +87,7 @@ export async function collectProfiles(
   const results = [...tavilySets.flat(), ...googleSets];
   const parsed: ParsedLinkedInProfile[] = [];
   for (const r of results) {
-    const profile = parseLinkedInResult(r);
+    const profile = parseLinkedInResult(r, { queryLocation: context.queryLocation });
     if (profile) parsed.push(profile);
   }
   return {
@@ -143,16 +155,22 @@ function parseGapAnswer(raw: string, allowed: Set<number>): Map<number, string> 
     const o = item as Record<string, unknown>;
     if (typeof o.id !== "number" || !allowed.has(o.id)) continue;
     if (typeof o.company !== "string") continue;
-    const company = FILLER(o.company).slice(0, 80);
+    // Same cleaning as the rule path: no placeholders, no geography, no trailing junk.
+    const company = cleanCompany(FILLER(o.company).slice(0, 80));
     if (company) out.set(o.id, company);
   }
   return out;
 }
 
-/** A company is accepted only when the profile's own text actually contains it. */
+/**
+ * A company is accepted only when the profile's own text names it as a whole
+ * word, case-insensitively. "Acme" does not match inside "Acmeland" or "Acme1".
+ */
 function appearsInProfile(company: string, p: ParsedLinkedInProfile): boolean {
-  const needle = company.toLowerCase();
-  return `${p.headline} ${p.title} ${p.description}`.toLowerCase().includes(needle);
+  if (company.length < 2) return false;
+  const escaped = company.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const word = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, "iu");
+  return word.test(`${p.headline} ${p.title} ${p.description}`);
 }
 
 export type GapFillOutcome = {

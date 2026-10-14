@@ -9,7 +9,12 @@
  * ask the LLM to fill it (see leadSearchCore.ts).
  */
 
+import { isGeographyTerm, locationTerms } from "./leadGeography.ts";
+
 export type LinkedInSearchResult = { title: string; url: string; content: string };
+
+/** Optional search context: the location the query asked for. */
+export type ParseContext = { queryLocation?: string };
 
 export type ParsedLinkedInProfile = {
   name: string;
@@ -32,7 +37,18 @@ const MAX_COMPANY_WORDS = 5;
 const MAX_DESCRIPTION_LENGTH = 600;
 
 /** Words that end a company phrase or make it a placeholder, never a company. */
-const NOT_A_COMPANY = /^(linkedin|freelance|freelancer|self[- ]employed|independent|stealth|stealth mode|retired|student|none|n\/a|various|current|open to work|available|unemployed|confidential|personal|me|myself)$/i;
+const NOT_A_COMPANY = /^(linkedin|freelance|freelancer|self[- ]employed|independent|stealth|stealth mode|retired|student|none|n\/a|various|current|open to work|available|unemployed|confidential|personal|me|myself|consultant|consulting|contractor|entrepreneur|founder|owner|business owner)$/i;
+
+/**
+ * Common English nouns and adjectives that often follow "at" in a headline
+ * ("grow at scale", "SaaS at heart") without naming an employer.
+ */
+const COMMON_WORDS = new Set([
+  "all", "any", "best", "big", "business", "centre", "center", "core", "daily", "dark", "end", "essence",
+  "everyone", "first", "growth", "heart", "home", "large", "last", "launch", "life", "least", "mind", "more",
+  "most", "night", "people", "play", "present", "rest", "risk", "scale", "sea", "small", "speed", "time",
+  "work", "war", "peace", "possible", "once", "will",
+]);
 
 /** Words that show a listing or article title rather than a person's name. */
 const NOT_A_NAME_WORD = new Set([
@@ -130,36 +146,61 @@ export function cleanCompany(raw: string): string | null {
   if (!text || text.length < 2 || text.length > MAX_COMPANY_LENGTH) return null;
   if (words.length > MAX_COMPANY_WORDS) return null;
   if (NOT_A_COMPANY.test(text)) return null;
+  if (isGeographyTerm(text)) return null;
   if (/https?:|@|\d{4,}/i.test(text)) return null;
   return text;
 }
 
-/** "... at X" or "... @ X" anywhere in the phrase. */
-function companyFromAt(text: string): string | null {
+type CompanyContext = { locations: Set<string> };
+
+/** Drop a candidate that is one of the profile's or the query's own location words. */
+function notALocation(company: string | null, ctx: CompanyContext): string | null {
+  if (!company) return null;
+  return ctx.locations.has(company.toLowerCase()) ? null : company;
+}
+
+/** "... at X" or "... @ X" anywhere in the phrase. X must look like a name: capitalised or numeric, not a common word. */
+function companyFromAt(text: string, ctx: CompanyContext): string | null {
   const m = text.match(/(?:^|\s)(?:at|@)\s+(.+)$/i);
-  return m ? cleanCompany(m[1]) : null;
+  if (!m) return null;
+  const raw = m[1].trim();
+  if (!/^[A-Z0-9]/.test(raw)) return null;
+  const company = cleanCompany(raw);
+  if (!company || COMMON_WORDS.has(company.toLowerCase())) return null;
+  return notALocation(company, ctx);
 }
 
 /** "Role, X" or "Role | X" where Role carries a role keyword and X is the rest. */
-function companyFromRolePhrase(text: string): string | null {
+function companyFromRolePhrase(text: string, ctx: CompanyContext): string | null {
   const parts = text.split(/\s*[,|]\s*/).map((p) => p.trim()).filter(Boolean);
   if (parts.length !== 2) return null;
   if (!ROLE_WORD.test(parts[0])) return null;
-  return cleanCompany(parts[1]);
+  return notALocation(cleanCompany(parts[1]), ctx);
 }
 
 /**
  * Company by ordered rules. Each rule that fires must agree; if two rules
  * name different companies, the answer is unsure, so null.
  */
-export function inferCompany(input: { resultTitle: string; headline: string; currentRole: string }): string | null {
+export function inferCompany(input: {
+  resultTitle: string;
+  headline: string;
+  currentRole: string;
+  /** The profile's own "Location:" text. */
+  location?: string;
+  /** The location the search asked for. */
+  queryLocation?: string;
+}): string | null {
   const titleRest = stripDecoration(input.resultTitle).split(/\s+[-|\u2013\u2014]\s+/).slice(1).join(" - ");
+  const ctx: CompanyContext = {
+    locations: new Set([...locationTerms(input.location), ...locationTerms(input.queryLocation)]),
+  };
   const candidates = [
-    companyFromAt(titleRest),
-    companyFromAt(input.headline),
-    companyFromAt(input.currentRole),
-    companyFromRolePhrase(input.headline),
-    companyFromRolePhrase(titleRest),
+    companyFromAt(titleRest, ctx),
+    companyFromAt(input.headline, ctx),
+    companyFromAt(input.currentRole, ctx),
+    companyFromRolePhrase(input.headline, ctx),
+    companyFromRolePhrase(titleRest, ctx),
   ].filter((c): c is string => c !== null);
   if (candidates.length === 0) return null;
   const first = candidates[0].toLowerCase();
@@ -170,7 +211,7 @@ export function inferCompany(input: { resultTitle: string; headline: string; cur
  * Parse one search result. Returns null for anything that is not a LinkedIn
  * person profile (company pages, jobs, posts, articles, directories).
  */
-export function parseLinkedInResult(result: LinkedInSearchResult): ParsedLinkedInProfile | null {
+export function parseLinkedInResult(result: LinkedInSearchResult, context: ParseContext = {}): ParsedLinkedInProfile | null {
   const sourceUrl = canonicalProfileUrl(result.url);
   if (!sourceUrl) return null;
 
@@ -193,7 +234,7 @@ export function parseLinkedInResult(result: LinkedInSearchResult): ParsedLinkedI
     seniority,
     location,
     followers: parseFollowers(content),
-    company: inferCompany({ resultTitle, headline, currentRole }),
+    company: inferCompany({ resultTitle, headline, currentRole, location, queryLocation: context.queryLocation }),
     sourceUrl,
     description,
   };
