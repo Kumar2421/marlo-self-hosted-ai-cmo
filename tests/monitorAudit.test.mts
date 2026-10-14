@@ -239,3 +239,39 @@ test("PageSpeed-only findings: a crawl audit never creates them and never touche
   assert.equal(summary.regressions, 0);
   assert.equal(f.store.get(identity(lh))?.status, "verified");
 });
+
+test("every page audit times out: no marker, so the project is still due and a later run audits it", async () => {
+  const f = fake([scope("p1")], { hang: true });
+  const first = await runMonitorAudit(f.ports, NOW, { budgetMs: 400, maxAudits: 10, auditTimeoutMs: 50, minAuditMs: 20, clock: () => 0 });
+  assert.equal(first.skippedPages, 1);
+  assert.equal(first.audited, 0);
+  assert.deepEqual(f.markers, []);
+
+  f.ports.audit = async (_scope, url) => ({ url, findings: [] });
+  const second = await runMonitorAudit(f.ports, NOW, { budgetMs: 60_000, maxAudits: 10, clock: () => 0 });
+  assert.equal(second.audited, 1);
+  assert.deepEqual(f.markers, ["p1"]);
+});
+
+test("a first page that times out does not block the marker: a later page that completes writes it once", async () => {
+  const known = { p1: [finding(new Map(), SITE + "/a", "meta-title-too-long", "new", "meta-title", DAY)] };
+  const f = fake([scope("p1")], { known });
+  let calls = 0;
+  f.ports.audit = async (s, url) => {
+    calls += 1;
+    if (calls === 1) return new Promise<AuditLike>(() => {});
+    f.audits.push(`${s.projectId}:${url}`);
+    return { url, findings: [] };
+  };
+  const summary = await runMonitorAudit(f.ports, NOW, { budgetMs: 400, maxAudits: 10, auditTimeoutMs: 50, minAuditMs: 20, clock: () => 0 });
+  assert.equal(summary.skippedPages, 1);
+  assert.equal(summary.audited, 1);
+  assert.deepEqual(f.markers, ["p1"]);
+});
+
+test("page audits that throw leave no marker either", async () => {
+  const f = fake([scope("p1")], { failProject: "p1" });
+  const summary = await runMonitorAudit(f.ports, NOW, { budgetMs: 60_000, maxAudits: 10, clock: () => 0 });
+  assert.equal(summary.skippedPages, 1);
+  assert.deepEqual(f.markers, []);
+});

@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SEOAgent } from "../seo/SEOAgent.ts";
 import { checkReadiness } from "../geo/geoService.ts";
-import { listProjectFindings, mapFinding, updateFindingStatus, upsertFinding, type FindingRow } from "./findingStoreSupabase.ts";
+import { listProjectFindings, mapFinding, updateFindingStatus, upsertFinding } from "./findingStoreSupabase.ts";
+import { listFixedFindingRows } from "./fixedFindingRows.ts";
 import { AUTO_VERIFY_MARKER_PREFIX, autoVerifyDocType, runAutoVerify, type AutoVerifyMarker, type AutoVerifyPorts, type FixedFinding, type ProjectScope } from "./autoVerifyJob.ts";
 import { MONITOR_MANY_PROJECTS_MIN_MS, runMonitorAudit, type MonitorPorts, type MonitorScope } from "./monitorAudit.ts";
 import type { VerifyCheckPorts } from "./verifyFinding.ts";
@@ -38,9 +39,7 @@ export function platformCheckPorts(): VerifyCheckPorts {
 
 /** Fixed findings with the saved results of their completed actions. */
 async function listFixedFindings(db: ServiceDb): Promise<FixedFinding[]> {
-  const { data, error } = await db.from("findings").select("*").eq("status", "fixed");
-  if (error) throw new Error(error.message);
-  const rows = (data ?? []) as Array<FindingRow & { user_id: string }>;
+  const rows = await listFixedFindingRows(db);
 
   const resultsByFinding = new Map<string, Array<Record<string, unknown> | null>>();
   for (let i = 0; i < rows.length; i += ID_CHUNK) {

@@ -1,7 +1,7 @@
 import type { Finding } from "./findingTypes.ts";
 import { implementationOf } from "../search/actionOutcome.ts";
 import { runWithBudget } from "../../jobs/jobRunner.ts";
-import { verifyFinding, type VerifyCheckPorts, type VerifyResult } from "./verifyFinding.ts";
+import { isAutoVerifiable, verifyFinding, type VerifyCheckPorts, type VerifyResult } from "./verifyFinding.ts";
 import { BACKGROUND_AUDIT_TIMEOUT_MS, MIN_AUDIT_BUDGET_MS, timedCall } from "./timedAudit.ts";
 
 /**
@@ -87,9 +87,12 @@ export async function runAutoVerify(ports: AutoVerifyPorts, now: Date, budget: J
   const summary: AutoVerifySummary = { verified: 0, failed: 0, skipped: 0, budgetSkipped: 0, errored: 0 };
   const nowMs = now.getTime();
 
-  // Only findings whose change went live at least a day ago. A project whose
-  // markers cannot be read is isolated: its findings are counted as errored.
+  // Only findings the verifier can check, whose change went live at least a day
+  // ago. Findings it always skips (PageSpeed-only, search data, no page) are
+  // dropped here, before the cap, so they never take a slot or burn an attempt.
+  // A project whose markers cannot be read is isolated: its findings are counted as errored.
   const due = (await ports.listFixedFindings()).filter((item) => {
+    if (!isAutoVerifiable(item.finding)) return false;
     const implementedAt = latestImplementedAt(item.actionResults);
     return implementedAt !== null && nowMs - implementedAt >= AUTO_VERIFY_DELAY_MS;
   });

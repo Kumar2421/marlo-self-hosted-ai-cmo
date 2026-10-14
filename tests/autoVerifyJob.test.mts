@@ -228,3 +228,20 @@ test("budget guard: no audit starts without the minimum budget, and no marker is
   assert.equal(summary.budgetSkipped, 1);
   assert.equal(f.markers.get("p1")?.get("a"), undefined);
 });
+
+test("findings the verifier always skips never take a slot under the cap or burn an attempt", async () => {
+  const lighthouse = fixedItem("lh");
+  lighthouse.finding.category = "lighthouse";
+  lighthouse.finding.entityId = "lighthouse-mobile-image-alt";
+  const searchConsole = fixedItem("sc", { source: "search-console" });
+  const noPage = fixedItem("np");
+  noPage.finding.url = null;
+  // "lh", "np" and "sc" sort before "real", so without the filter they would take the single slot.
+  const f = fake([lighthouse, searchConsole, noPage, fixedItem("real")], { audit: () => [] });
+  const summary = await runAutoVerify(f.ports, NOW, { budgetMs: 60_000, maxItems: 1, clock: () => 0 });
+  assert.deepEqual(f.checked, ["real"]);
+  assert.deepEqual(f.transitions, [["real", "verified"]]);
+  assert.equal(summary.skipped, 0);
+  assert.equal(summary.budgetSkipped, 0);
+  for (const id of ["lh", "sc", "np"]) assert.equal(f.markers.get("p1")?.get(id), undefined);
+});

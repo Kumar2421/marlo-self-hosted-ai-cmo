@@ -40,6 +40,19 @@ export function needsPageSpeed(finding: { category: string; entityId: string }):
   return finding.category === "lighthouse" || finding.entityId.startsWith("lighthouse-");
 }
 
+/**
+ * Whether verifyFinding can ever decide this finding. Every other finding is
+ * skipped on every run, so the auto-verify job drops it before choosing what to
+ * check. Mirrors the early returns of verifyFinding; keep the two in step.
+ */
+export function isAutoVerifiable(finding: Pick<Finding, "source" | "category" | "entityId" | "url">): boolean {
+  if (finding.source === "search-console") return false;
+  if (!finding.url) return false;
+  if (needsPageSpeed(finding)) return false;
+  if (finding.source === "seo-audit") return true;
+  return finding.source === "geo" && finding.category === "geo_readiness";
+}
+
 const SEVERITY_FOR_RECHECK: Record<Finding["severity"], "info" | "warning" | "critical"> = {
   info: "info",
   warning: "warning",

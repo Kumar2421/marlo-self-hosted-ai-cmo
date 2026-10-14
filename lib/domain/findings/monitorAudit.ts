@@ -46,7 +46,7 @@ export type MonitorPorts = {
   audit(scope: MonitorScope, url: string): Promise<AuditLike>;
   /** Upserts one audit finding through the store (the store owns the status transition). */
   upsert(scope: MonitorScope, input: AuditFindingInput): Promise<unknown>;
-  /** Records that a pass started, so the project is not audited again for six days. */
+  /** Records that a pass completed at least one page audit, so the project is not audited again for six days. */
   writeMarker(scope: MonitorScope, now: Date): Promise<void>;
 };
 
@@ -109,13 +109,13 @@ export async function runMonitorAudit(ports: MonitorPorts, now: Date, budget: Mo
   const run = await runWithBudget(
     picked,
     async (scope) => {
-      // No marker for a project that gets no audit this run: it stays first in line for the next run.
+      // Budget first: a project that cannot start an audit this run gets no marker, so it stays first in line for the next run.
       if (auditsLeft <= 0 || deadline - clock() < minAuditMs) {
         summary.budgetSkipped += 1;
         return;
       }
-      await ports.writeMarker(scope, now);
       const known = await ports.knownFindings(scope);
+      let markerWritten = false;
       const byKey = new Map(known.map((f) => [identityKey(f.category, f.entityId, f.url), f]));
       const pages = pagesToAudit(scope.siteUrl, known).slice(0, 1 + Math.min(MONITOR_MAX_EXTRA_PAGES, auditsLeft - 1));
 
@@ -131,6 +131,12 @@ export async function runMonitorAudit(ports: MonitorPorts, now: Date, budget: Mo
           continue;
         }
         summary.audited += 1;
+        // The marker is written only once a page audit has completed. A project whose
+        // audits all timed out or failed gets none, so it is retried on the next run.
+        if (!markerWritten) {
+          await ports.writeMarker(scope, now);
+          markerWritten = true;
+        }
         // PageSpeed-only issues never come from a crawl audit: never create or touch them here.
         const audit: AuditLike = { url: timed.value.url, findings: timed.value.findings.filter((f) => !needsPageSpeed({ category: f.category, entityId: f.issueId })) };
 

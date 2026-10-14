@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { needsPageSpeed, verifyFinding, type FreshAuditFinding, type VerifyCheckPorts } from "../lib/domain/findings/verifyFinding.ts";
+import { isAutoVerifiable, needsPageSpeed, verifyFinding, type FreshAuditFinding, type VerifyCheckPorts } from "../lib/domain/findings/verifyFinding.ts";
 import { autoVerificationLine } from "../lib/domain/findings/evidenceDisplay.ts";
 import type { ReadinessCheck } from "../lib/domain/geo/readiness.ts";
 
@@ -143,4 +143,31 @@ test("needsPageSpeed: only Lighthouse issues qualify", () => {
 
 test("crawl-derived SEO checks still verify normally", async () => {
   assert.equal((await verifyFinding(ports({ audit: [] }), seoFinding, NOW)).outcome, "verified");
+});
+
+test("isAutoVerifiable agrees with verifyFinding: every finding it rejects is skipped without a fresh check", async () => {
+  const samples: Array<{ source: string; category: string; entityId: string; url: string | null }> = [
+    { source: "seo-audit", category: "meta-title", entityId: "meta-title-too-long", url: "https://example.com/" },
+    { source: "seo-audit", category: "lighthouse", entityId: "lighthouse-mobile-image-alt", url: "https://example.com/" },
+    { source: "seo-audit", category: "meta-title", entityId: "lighthouse-x", url: "https://example.com/" },
+    { source: "seo-audit", category: "meta-title", entityId: "meta-title-too-long", url: null },
+    { source: "search-console", category: "queries", entityId: "q1", url: "https://example.com/" },
+    { source: "geo", category: "geo_readiness", entityId: "llms-txt", url: "https://example.com/" },
+    { source: "geo", category: "other", entityId: "x", url: "https://example.com/" },
+    { source: "manual", category: "other", entityId: "x", url: "https://example.com/" },
+  ];
+  for (const sample of samples) {
+    let fresh = 0;
+    const ports = {
+      runSeoAudit: async () => { fresh += 1; return []; },
+      runGeoReadiness: async () => { fresh += 1; return []; },
+    };
+    const result = await verifyFinding(ports, { ...sample, severity: "warning" }, new Date("2026-10-14T12:00:00.000Z"));
+    if (!isAutoVerifiable(sample)) {
+      assert.equal(result.outcome, "skipped", JSON.stringify(sample));
+      assert.equal(fresh, 0, JSON.stringify(sample));
+    }
+  }
+  assert.equal(isAutoVerifiable(samples[0]), true);
+  assert.equal(isAutoVerifiable(samples[5]), true);
 });
