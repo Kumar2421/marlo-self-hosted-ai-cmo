@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 export type JobRunSummary<T> = {
   processed: number;
   /** Items left untouched because the time budget ran out; they are retried on the next run. */
@@ -36,11 +38,17 @@ export async function runWithBudget<T>(
 }
 
 /**
- * Vercel Cron sends `Authorization: Bearer <CRON_SECRET>`. An unset or empty
- * secret must never authorize anything (a naive `=== \`Bearer ${secret}\``
- * check would accept "Bearer undefined").
+ * Vercel Cron sends `Authorization: Bearer <CRON_SECRET>`. An unset, empty or
+ * literal "undefined" secret must never authorize anything (a naive
+ * `=== \`Bearer ${secret}\`` check would accept "Bearer undefined" when the
+ * env var is missing). Both sides are reduced to SHA-256 digests so the
+ * comparison is fixed-length and constant-time.
  */
 export function isAuthorizedCron(authorizationHeader: string | null, secret: string | undefined): boolean {
-  if (!secret) return false;
-  return authorizationHeader === `Bearer ${secret}`;
+  if (!authorizationHeader || !secret) return false;
+  const trimmed = secret.trim();
+  if (trimmed === "" || trimmed === "undefined" || trimmed === "null") return false;
+  const expected = crypto.createHash("sha256").update(`Bearer ${secret}`, "utf8").digest();
+  const actual = crypto.createHash("sha256").update(authorizationHeader, "utf8").digest();
+  return crypto.timingSafeEqual(expected, actual);
 }
