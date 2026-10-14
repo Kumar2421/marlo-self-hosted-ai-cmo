@@ -1,6 +1,9 @@
 // Fetches a public URL for the readiness check without following redirects
 // blindly: the URL guard runs on the first URL and on EVERY redirect hop, hops
-// are capped, and the body is read with a byte cap.
+// are capped, and the body is read with a byte cap. Production delegates to the
+// shared guarded fetcher (pinned DNS); see fetchPinned below.
+
+import { safeFetch } from "../net/safeFetch.ts";
 
 export const MAX_REDIRECT_HOPS = 3;
 export const MAX_BODY_BYTES = 500_000;
@@ -50,8 +53,30 @@ async function readCapped(res: Response, maxBytes: number): Promise<string> {
   return new TextDecoder("utf-8").decode(all);
 }
 
+/**
+ * Production path: the shared guarded fetcher (pinned DNS, per-hop checks, total deadline, byte cap).
+ * The fetchImpl seam below is for tests only; geoService never passes it.
+ */
+async function fetchPinned(url: string, opts: Options): Promise<FetchOutcome> {
+  try {
+    opts.assertUrl(url);
+    const res = await safeFetch(url, {
+      timeoutMs: opts.timeoutMs ?? 8000,
+      maxBytes: opts.maxBytes ?? MAX_BODY_BYTES,
+      maxRedirects: opts.maxHops ?? MAX_REDIRECT_HOPS,
+      headers: { "User-Agent": "MarloBot/1.0 (+readiness check)" },
+    });
+    if (res.status === 404 || res.status === 410) return { kind: "not-found" };
+    if (res.status < 200 || res.status >= 300) return { kind: "unavailable", reason: `HTTP ${res.status}` };
+    return { kind: "ok", body: res.bodyText };
+  } catch (err) {
+    return { kind: "unavailable", reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export async function fetchPublic(url: string, opts: Options): Promise<FetchOutcome> {
-  const doFetch = opts.fetchImpl ?? fetch;
+  if (!opts.fetchImpl) return fetchPinned(url, opts);
+  const doFetch = opts.fetchImpl;
   const maxHops = opts.maxHops ?? MAX_REDIRECT_HOPS;
   const maxBytes = opts.maxBytes ?? MAX_BODY_BYTES;
   let current = url;
