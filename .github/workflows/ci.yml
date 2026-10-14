@@ -87,8 +87,11 @@ jobs:
         # bash runs with pipefail, so a failing npm test still fails this step through tee.
         run: npm test 2>&1 | tee test.log
       - name: Fail if no tests ran
-        # node --test exits 0 when it finds zero files; the TAP summary is the real signal.
+        # node --test exits 0 when it finds zero files, so check the summary line. The
+        # reporter differs by Node version and TTY: TAP prints "# tests N", the spec
+        # reporter (default on Node 24 when not a TTY) prints "<symbol> tests N". The
+        # pattern accepts both, and grep fails the step when the count is 0 or missing.
         shell: bash
-        run: grep -E '^# tests [1-9]' test.log
+        run: grep -aE '^[^ ]+ tests [1-9]' test.log
       - name: Production build
         run: npm run build
