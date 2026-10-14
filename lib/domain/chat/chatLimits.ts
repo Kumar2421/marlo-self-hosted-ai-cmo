@@ -1,6 +1,10 @@
 /**
  * Input caps for one chat turn. Every turn is sent to a paid model with the
  * whole history attached, so an unbounded body is a cost and abuse vector.
+ *
+ * Only the new message is ever rejected for size. The client (ChatPanel) sends
+ * the full conversation, including long assistant replies, so history is
+ * trimmed here instead of refused: the newest entries that fit are kept.
  */
 export const CHAT_MAX_MESSAGE_CHARS = 4000;
 export const CHAT_MAX_HISTORY_MESSAGES = 30;
@@ -11,41 +15,46 @@ export type ChatHistoryEntry = { role: "user" | "assistant"; content: string };
 export type ChatInputCheck = { ok: true; history: ChatHistoryEntry[] } | { ok: false; error: string };
 
 /**
- * Validates the new message and the client-supplied history. Returns a
- * normalized history (only role and content survive) or a message the route
- * can send back as a 400.
+ * Validates the new message and returns the trimmed history. A non-empty
+ * message over the cap is the only rejection; history never causes a 400.
  */
 export function validateChatInput(message: unknown, history: unknown): ChatInputCheck {
   if (typeof message !== "string" || !message.trim()) {
     return { ok: false, error: "message is required" };
   }
   if (message.length > CHAT_MAX_MESSAGE_CHARS) {
-    return { ok: false, error: `message is too long (max ${CHAT_MAX_MESSAGE_CHARS} characters). Shorten it and try again.` };
+    return { ok: false, error: `Message too long (max ${CHAT_MAX_MESSAGE_CHARS} characters)` };
+  }
+  return { ok: true, history: trimChatHistory(history) };
+}
+
+/**
+ * Keeps the newest history entries that fit the caps, in their original
+ * (chronological) order. Malformed entries are dropped, and an entry longer
+ * than the per-message cap is cut down to its last CHAT_MAX_MESSAGE_CHARS
+ * characters. Once the next-older entry does not fit, it and everything before
+ * it are dropped, so the kept history is always one contiguous recent slice.
+ */
+export function trimChatHistory(history: unknown): ChatHistoryEntry[] {
+  if (!Array.isArray(history)) return [];
+
+  const entries: ChatHistoryEntry[] = [];
+  for (const raw of history as unknown[]) {
+    const role = (raw as { role?: unknown } | null)?.role;
+    const content = (raw as { content?: unknown } | null)?.content;
+    if ((role !== "user" && role !== "assistant") || typeof content !== "string") continue;
+    const clipped = content.length > CHAT_MAX_MESSAGE_CHARS ? content.slice(-CHAT_MAX_MESSAGE_CHARS) : content;
+    entries.push({ role, content: clipped });
   }
 
-  if (history === undefined || history === null) return { ok: true, history: [] };
-  if (!Array.isArray(history)) return { ok: false, error: "history must be a list of messages" };
-  if (history.length > CHAT_MAX_HISTORY_MESSAGES) {
-    return { ok: false, error: `history is too long (max ${CHAT_MAX_HISTORY_MESSAGES} messages). Start a new chat to continue.` };
+  const kept: ChatHistoryEntry[] = [];
+  let keptChars = 0;
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    if (kept.length >= CHAT_MAX_HISTORY_MESSAGES) break;
+    const entry = entries[i];
+    if (keptChars + entry.content.length > CHAT_MAX_HISTORY_CHARS) break;
+    keptChars += entry.content.length;
+    kept.push(entry);
   }
-
-  const normalized: ChatHistoryEntry[] = [];
-  let historyChars = 0;
-  for (const entry of history as unknown[]) {
-    const role = (entry as { role?: unknown } | null)?.role;
-    const content = (entry as { content?: unknown } | null)?.content;
-    if ((role !== "user" && role !== "assistant") || typeof content !== "string") {
-      return { ok: false, error: "history entries need a role (user or assistant) and text content" };
-    }
-    if (content.length > CHAT_MAX_MESSAGE_CHARS) {
-      return { ok: false, error: `a history message is too long (max ${CHAT_MAX_MESSAGE_CHARS} characters)` };
-    }
-    historyChars += content.length;
-    normalized.push({ role, content });
-  }
-  if (historyChars > CHAT_MAX_HISTORY_CHARS) {
-    return { ok: false, error: `history is too long (max ${CHAT_MAX_HISTORY_CHARS} characters in total). Start a new chat to continue.` };
-  }
-
-  return { ok: true, history: normalized };
+  return kept.reverse();
 }
