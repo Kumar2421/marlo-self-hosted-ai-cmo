@@ -84,17 +84,92 @@ function bufferToDataUri(res: Fetched): string {
   return `data:${res.contentType};base64,${res.body.toString("base64")}`;
 }
 
+export type FaviconCacheOptions = {
+  maxEntries?: number;
+  /** Total size across all entries, in characters of the data URI. */
+  maxTotalChars?: number;
+  /** Larger icons are not cached at all (they are still returned to the caller). */
+  maxEntryChars?: number;
+  ttlMs?: number;
+  now?: () => number;
+};
+
 /**
- * Cached favicon store — avoid re-fetching same domain.
+ * Bounded favicon cache: LRU by last use, capped by entry count and total size, with a TTL.
+ * Entries are data URIs, so the caps are what keep a long-running server from growing without limit.
  */
-const FAVICON_CACHE = new Map<string, string | null>();
+export class FaviconCache {
+  private readonly entries = new Map<string, { value: string | null; size: number; expiresAt: number }>();
+  private totalChars = 0;
+  private readonly maxEntries: number;
+  private readonly maxTotalChars: number;
+  private readonly maxEntryChars: number;
+  private readonly ttlMs: number;
+  private readonly now: () => number;
+
+  constructor(opts: FaviconCacheOptions = {}) {
+    this.maxEntries = opts.maxEntries ?? 200;
+    this.maxTotalChars = opts.maxTotalChars ?? 20_000_000;
+    this.maxEntryChars = opts.maxEntryChars ?? 1_000_000;
+    this.ttlMs = opts.ttlMs ?? 60 * 60 * 1000;
+    this.now = opts.now ?? Date.now;
+  }
+
+  get size(): number {
+    return this.entries.size;
+  }
+
+  get charCount(): number {
+    return this.totalChars;
+  }
+
+  /** The cached value (null means "no icon"), or undefined when absent or expired. */
+  get(key: string): string | null | undefined {
+    const hit = this.entries.get(key);
+    if (!hit) return undefined;
+    if (hit.expiresAt <= this.now()) {
+      this.remove(key);
+      return undefined;
+    }
+    // Re-insert to mark as most recently used.
+    this.entries.delete(key);
+    this.entries.set(key, hit);
+    return hit.value;
+  }
+
+  set(key: string, value: string | null): void {
+    this.remove(key);
+    const size = value?.length ?? 0;
+    if (size > this.maxEntryChars) return;
+    const t = this.now();
+    for (const [k, entry] of this.entries) {
+      if (entry.expiresAt <= t) this.remove(k);
+    }
+    this.entries.set(key, { value, size, expiresAt: t + this.ttlMs });
+    this.totalChars += size;
+    while (this.entries.size > this.maxEntries || this.totalChars > this.maxTotalChars) {
+      const oldest = this.entries.keys().next().value;
+      if (oldest === undefined) break;
+      this.remove(oldest);
+    }
+  }
+
+  private remove(key: string): void {
+    const hit = this.entries.get(key);
+    if (!hit) return;
+    this.totalChars -= hit.size;
+    this.entries.delete(key);
+  }
+}
+
+/** Cached favicon store, keyed by hostname, so the same domain is not fetched again on every request. */
+const FAVICON_CACHE = new FaviconCache();
 
 export async function getCachedFavicon(urlString: string): Promise<string | null> {
   try {
     const hostname = new URL(urlString).hostname;
-    if (FAVICON_CACHE.has(hostname)) {
-      return FAVICON_CACHE.get(hostname) ?? null;
-    }
+    const cached = FAVICON_CACHE.get(hostname);
+    if (cached !== undefined) return cached;
 
     const favicon = await fetchFavicon(urlString);
     FAVICON_CACHE.set(hostname, favicon);

@@ -66,8 +66,15 @@ export type TransportRequest = (
 ) => ClientRequest;
 
 export type SafeFetchOptions = {
-  method?: "GET" | "HEAD";
+  method?: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE";
   headers?: Record<string, string>;
+  /** Request body (text). Content-Length is set from it. */
+  body?: string;
+  /**
+   * Sent as the Authorization header, but ONLY to the origin of the first URL. Caller-supplied
+   * Authorization in `headers` is still stripped. Any redirect to another origin never receives it.
+   */
+  authorization?: string;
   /** Total deadline for the whole call, all hops included. Default 15 s. */
   timeoutMs?: number;
   /** Body byte cap. Excess is dropped and `truncated` is set. Default 2 MB. */
@@ -158,8 +165,10 @@ type HopOutcome =
   | { kind: "redirect"; status: number; headers: IncomingHttpHeaders; location: string; timing: SafeFetchTiming };
 
 type HopConfig = {
-  method: "GET" | "HEAD";
+  method: NonNullable<SafeFetchOptions["method"]>;
   headers: Record<string, string>;
+  body?: string;
+  authorization?: { origin: string; value: string };
   maxBytes: number;
   resolve: LookupFn;
   transport: TransportRequest;
@@ -173,6 +182,8 @@ function runHop(url: URL, cfg: HopConfig, signal: AbortSignal): Promise<HopOutco
       return;
     }
     const isHttps = url.protocol === "https:";
+    const headers: Record<string, string> = { ...cfg.headers };
+    if (cfg.authorization && url.origin === cfg.authorization.origin) headers.Authorization = cfg.authorization.value;
     const start = process.hrtime.bigint();
     let failure: SafeFetchCode | undefined;
     let settled = false;
@@ -201,7 +212,7 @@ function runHop(url: URL, cfg: HopConfig, signal: AbortSignal): Promise<HopOutco
         port: url.port || (isHttps ? 443 : 80),
         path: `${url.pathname}${url.search}`,
         method: cfg.method,
-        headers: cfg.headers,
+        headers,
         lookup: pinnedLookup(cfg.resolve, (code) => {
           failure ??= code;
         }) as unknown as RequestOptions["lookup"],
@@ -264,7 +275,7 @@ function runHop(url: URL, cfg: HopConfig, signal: AbortSignal): Promise<HopOutco
       });
     });
     req.on("error", () => fail(failure ?? "network:error"));
-    req.end();
+    req.end(cfg.body);
   });
 }
 
@@ -286,18 +297,24 @@ export async function safeFetch(input: string | URL, options: SafeFetchOptions =
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
   const maxRedirects = options.maxRedirects ?? DEFAULT_MAX_REDIRECTS;
   const ports = options.allowedPorts ?? SAFE_FETCH_DEFAULT_PORTS;
-  const cfg: HopConfig = {
-    method: options.method ?? "GET",
-    headers: buildHeaders(options.headers),
-    maxBytes,
-    resolve: options.lookup ?? defaultResolve,
-    transport: options.transport ?? defaultTransport,
-  };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     let current = parseSafeUrl(input, ports);
     const firstHost = current.hostname.toLowerCase();
+    const headers = buildHeaders(options.headers);
+    if (options.body !== undefined && !Object.keys(headers).some((k) => k.toLowerCase() === "content-length")) {
+      headers["content-length"] = String(Buffer.byteLength(options.body));
+    }
+    const cfg: HopConfig = {
+      method: options.method ?? "GET",
+      headers,
+      body: options.body,
+      authorization: options.authorization === undefined ? undefined : { origin: current.origin, value: options.authorization },
+      maxBytes,
+      resolve: options.lookup ?? defaultResolve,
+      transport: options.transport ?? defaultTransport,
+    };
     let redirectCount = 0;
     let carried: SafeFetchTiming = {};
     for (;;) {
@@ -347,6 +364,12 @@ export async function safeFetch(input: string | URL, options: SafeFetchOptions =
       }
       if (current.protocol === "https:" && next.protocol === "http:") throw new SafeFetchError("policy:downgrade");
       if (options.sameHostOnly && next.hostname.toLowerCase() !== firstHost) throw new SafeFetchError("policy:cross-host");
+      // 301/302/303 turn a write into a GET with no body, as browsers do. 307/308 keep both.
+      if ((hop.status === 301 || hop.status === 302 || hop.status === 303) && cfg.method !== "GET" && cfg.method !== "HEAD") {
+        cfg.method = "GET";
+        cfg.body = undefined;
+        delete cfg.headers["content-length"];
+      }
       current = parseSafeUrl(next, ports);
       redirectCount += 1;
     }

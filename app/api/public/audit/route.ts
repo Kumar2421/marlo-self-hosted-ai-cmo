@@ -8,18 +8,26 @@ export const maxDuration = 60;
 
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS_PER_WINDOW = 5;
+const MAX_TRACKED_KEYS = 10_000;
 const requests = new Map<string, { count: number; resetAt: number }>();
 
+/** Behind Vercel, x-real-ip is set by the platform. The leftmost x-forwarded-for is client-controlled, so it is never used. */
 function clientKey(req: NextRequest): string {
-  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("x-real-ip") ||
-    "anonymous";
+  if (process.env.VERCEL) return req.headers.get("x-real-ip")?.trim() || "unknown";
+  return "unknown";
 }
 
 function rateLimit(key: string): boolean {
   const now = Date.now();
+  for (const [k, entry] of requests) {
+    if (entry.resetAt <= now) requests.delete(k);
+  }
   const current = requests.get(key);
-  if (!current || current.resetAt <= now) {
+  if (!current) {
+    if (requests.size >= MAX_TRACKED_KEYS) {
+      const oldest = requests.keys().next().value;
+      if (oldest !== undefined) requests.delete(oldest);
+    }
     requests.set(key, { count: 1, resetAt: now + WINDOW_MS });
     return true;
   }
