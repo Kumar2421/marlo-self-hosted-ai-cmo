@@ -3,38 +3,11 @@ import { SEOAgent, type Finding } from "@/lib/domain/seo/SEOAgent";
 import { assertSafeUserUrl, INVALID_USER_URL_MESSAGE } from "@/lib/domain/net/publicUrl";
 import { setCachedPublicAudit } from "@/lib/domain/seo/publicAuditCache";
 import { explainFinding } from "@/lib/domain/seo/findingExplanations";
+import { guardPublicAudit, readLimitedText, withRelease, AUDIT_MAX_BODY_BYTES } from "@/lib/domain/net/publicGuard";
+import { publicConcurrencyGate, publicRateLimiter } from "@/lib/domain/net/publicRuntime";
+import { FEATURES } from "@/lib/features";
 
 export const maxDuration = 60;
-
-const WINDOW_MS = 60_000;
-const MAX_REQUESTS_PER_WINDOW = 5;
-const MAX_TRACKED_KEYS = 10_000;
-const requests = new Map<string, { count: number; resetAt: number }>();
-
-/** Behind Vercel, x-real-ip is set by the platform. The leftmost x-forwarded-for is client-controlled, so it is never used. */
-function clientKey(req: NextRequest): string {
-  if (process.env.VERCEL) return req.headers.get("x-real-ip")?.trim() || "unknown";
-  return "unknown";
-}
-
-function rateLimit(key: string): boolean {
-  const now = Date.now();
-  for (const [k, entry] of requests) {
-    if (entry.resetAt <= now) requests.delete(k);
-  }
-  const current = requests.get(key);
-  if (!current) {
-    if (requests.size >= MAX_TRACKED_KEYS) {
-      const oldest = requests.keys().next().value;
-      if (oldest !== undefined) requests.delete(oldest);
-    }
-    requests.set(key, { count: 1, resetAt: now + WINDOW_MS });
-    return true;
-  }
-  if (current.count >= MAX_REQUESTS_PER_WINDOW) return false;
-  current.count += 1;
-  return true;
-}
 
 function rankFindings(findings: Finding[]): Finding[] {
   const severity = { Error: 0, Warning: 1 };
@@ -44,14 +17,21 @@ function rankFindings(findings: Finding[]): Finding[] {
 }
 
 export async function POST(req: NextRequest) {
-  if (!rateLimit(clientKey(req))) {
-    return NextResponse.json(
-      { error: "Too many audits. Please wait a minute and try again." },
-      { status: 429, headers: { "Retry-After": "60" } }
-    );
+  const guard = await guardPublicAudit({
+    headers: req.headers,
+    env: process.env,
+    hosted: FEATURES.PLATFORM_MODE,
+    limiter: publicRateLimiter("closed"),
+    gate: publicConcurrencyGate(),
+    readBody: () => readLimitedText(req, AUDIT_MAX_BODY_BYTES),
+  });
+  if (!guard.ok) {
+    return NextResponse.json({ error: guard.message }, { status: guard.status, headers: guard.headers });
   }
+  return withRelease(guard.release, () => runPublicAudit(guard.body));
+}
 
-  const body = await req.json().catch(() => null);
+async function runPublicAudit(body: Record<string, unknown> | null) {
   const rawUrl = typeof body?.url === "string" ? body.url.trim() : "";
 
   if (!rawUrl) {
@@ -66,6 +46,7 @@ export async function POST(req: NextRequest) {
     const message = error instanceof Error ? error.message : INVALID_USER_URL_MESSAGE;
     return NextResponse.json({ error: message }, { status: 400 });
   }
+
 
   try {
     const result = await new SEOAgent().audit(url.toString());
