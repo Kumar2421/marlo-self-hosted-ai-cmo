@@ -1,3 +1,5 @@
+import { safeFetch } from "../net/safeFetch.ts";
+
 /**
  * Fetch website favicon. Returns data: URI or null if unreachable.
  * Tries multiple strategies: favicon.ico, manifest.json, og:image meta tag.
@@ -10,24 +12,22 @@ export async function fetchFavicon(urlString: string, timeoutMs: number = 3000):
     // Strategy 1: favicon.ico
     const icoUrl = `${baseUrl}/favicon.ico`;
     const icoRes = await fetchWithTimeout(icoUrl, timeoutMs);
-    if (icoRes?.ok && icoRes.headers.get("content-type")?.includes("image")) {
-      const blob = await icoRes.blob();
-      return await blobToDataUri(blob);
+    if (icoRes?.ok && icoRes.contentType.includes("image")) {
+      return bufferToDataUri(icoRes);
     }
 
     // Strategy 2: Fetch HTML and look for og:image or apple-touch-icon
     const htmlRes = await fetchWithTimeout(urlString, timeoutMs);
     if (htmlRes?.ok) {
-      const html = await htmlRes.text();
+      const html = htmlRes.text;
 
       // Look for og:image
       const ogMatch = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i);
       if (ogMatch?.[1]) {
         const ogUrl = new URL(ogMatch[1], baseUrl).href;
         const ogRes = await fetchWithTimeout(ogUrl, timeoutMs);
-        if (ogRes?.ok && ogRes.headers.get("content-type")?.includes("image")) {
-          const blob = await ogRes.blob();
-          return await blobToDataUri(blob);
+        if (ogRes?.ok && ogRes.contentType.includes("image")) {
+          return bufferToDataUri(ogRes);
         }
       }
 
@@ -36,9 +36,8 @@ export async function fetchFavicon(urlString: string, timeoutMs: number = 3000):
       if (appleMatch?.[1]) {
         const appleUrl = new URL(appleMatch[1], baseUrl).href;
         const appleRes = await fetchWithTimeout(appleUrl, timeoutMs);
-        if (appleRes?.ok && appleRes.headers.get("content-type")?.includes("image")) {
-          const blob = await appleRes.blob();
-          return await blobToDataUri(blob);
+        if (appleRes?.ok && appleRes.contentType.includes("image")) {
+          return bufferToDataUri(appleRes);
         }
       }
 
@@ -47,9 +46,8 @@ export async function fetchFavicon(urlString: string, timeoutMs: number = 3000):
       if (faviconMatch?.[1]) {
         const favUrl = new URL(faviconMatch[1], baseUrl).href;
         const favRes = await fetchWithTimeout(favUrl, timeoutMs);
-        if (favRes?.ok && favRes.headers.get("content-type")?.includes("image")) {
-          const blob = await favRes.blob();
-          return await blobToDataUri(blob);
+        if (favRes?.ok && favRes.contentType.includes("image")) {
+          return bufferToDataUri(favRes);
         }
       }
     }
@@ -60,45 +58,118 @@ export async function fetchFavicon(urlString: string, timeoutMs: number = 3000):
   }
 }
 
-async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response | null> {
+type Fetched = { ok: boolean; contentType: string; body: Buffer; text: string };
+
+/** Guarded fetch (pinned DNS, per-hop checks, deadline, byte cap). Null on any failure. */
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Fetched | null> {
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch(url, {
-      signal: controller.signal,
+    const res = await safeFetch(url, {
+      timeoutMs,
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; favicon-fetcher)",
       },
     });
-    clearTimeout(timeout);
-    return res;
+    return {
+      ok: res.status >= 200 && res.status < 300,
+      contentType: String(res.headers["content-type"] ?? ""),
+      body: res.body,
+      text: res.bodyText,
+    };
   } catch {
     return null;
   }
 }
 
-async function blobToDataUri(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      resolve(reader.result as string);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+function bufferToDataUri(res: Fetched): string {
+  return `data:${res.contentType};base64,${res.body.toString("base64")}`;
 }
 
+export type FaviconCacheOptions = {
+  maxEntries?: number;
+  /** Total size across all entries, in characters of the data URI. */
+  maxTotalChars?: number;
+  /** Larger icons are not cached at all (they are still returned to the caller). */
+  maxEntryChars?: number;
+  ttlMs?: number;
+  now?: () => number;
+};
+
 /**
- * Cached favicon store — avoid re-fetching same domain.
+ * Bounded favicon cache: LRU by last use, capped by entry count and total size, with a TTL.
+ * Entries are data URIs, so the caps are what keep a long-running server from growing without limit.
  */
-const FAVICON_CACHE = new Map<string, string | null>();
+export class FaviconCache {
+  private readonly entries = new Map<string, { value: string | null; size: number; expiresAt: number }>();
+  private totalChars = 0;
+  private readonly maxEntries: number;
+  private readonly maxTotalChars: number;
+  private readonly maxEntryChars: number;
+  private readonly ttlMs: number;
+  private readonly now: () => number;
+
+  constructor(opts: FaviconCacheOptions = {}) {
+    this.maxEntries = opts.maxEntries ?? 200;
+    this.maxTotalChars = opts.maxTotalChars ?? 20_000_000;
+    this.maxEntryChars = opts.maxEntryChars ?? 1_000_000;
+    this.ttlMs = opts.ttlMs ?? 60 * 60 * 1000;
+    this.now = opts.now ?? Date.now;
+  }
+
+  get size(): number {
+    return this.entries.size;
+  }
+
+  get charCount(): number {
+    return this.totalChars;
+  }
+
+  /** The cached value (null means "no icon"), or undefined when absent or expired. */
+  get(key: string): string | null | undefined {
+    const hit = this.entries.get(key);
+    if (!hit) return undefined;
+    if (hit.expiresAt <= this.now()) {
+      this.remove(key);
+      return undefined;
+    }
+    // Re-insert to mark as most recently used.
+    this.entries.delete(key);
+    this.entries.set(key, hit);
+    return hit.value;
+  }
+
+  set(key: string, value: string | null): void {
+    this.remove(key);
+    const size = value?.length ?? 0;
+    if (size > this.maxEntryChars) return;
+    const t = this.now();
+    for (const [k, entry] of this.entries) {
+      if (entry.expiresAt <= t) this.remove(k);
+    }
+    this.entries.set(key, { value, size, expiresAt: t + this.ttlMs });
+    this.totalChars += size;
+    while (this.entries.size > this.maxEntries || this.totalChars > this.maxTotalChars) {
+      const oldest = this.entries.keys().next().value;
+      if (oldest === undefined) break;
+      this.remove(oldest);
+    }
+  }
+
+  private remove(key: string): void {
+    const hit = this.entries.get(key);
+    if (!hit) return;
+    this.totalChars -= hit.size;
+    this.entries.delete(key);
+  }
+}
+
+/** Cached favicon store, keyed by hostname, so the same domain is not fetched again on every request. */
+const FAVICON_CACHE = new FaviconCache();
 
 export async function getCachedFavicon(urlString: string): Promise<string | null> {
   try {
     const hostname = new URL(urlString).hostname;
-    if (FAVICON_CACHE.has(hostname)) {
-      return FAVICON_CACHE.get(hostname) ?? null;
-    }
+    const cached = FAVICON_CACHE.get(hostname);
+    if (cached !== undefined) return cached;
 
     const favicon = await fetchFavicon(urlString);
     FAVICON_CACHE.set(hostname, favicon);

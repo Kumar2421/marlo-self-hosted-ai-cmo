@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { CmsError, type CmsChange, type CmsItemRef } from "../lib/domain/cms/cmsFixCatalog.ts";
 import { issueCmsTicket, liveBeforeMatches, redeemCmsTicket, reviseCmsTicket } from "../lib/domain/cms/cmsTicket.ts";
 import { assertPublicCmsUrl, cmsFetch } from "../lib/domain/cms/cmsFetch.ts";
+import { fakeFetch, PUBLIC_ADDR } from "./support/cmsTransport.mts";
 import { WordPressPublisher } from "../lib/domain/cms/wordpressPublisher.ts";
 import { WebflowPublisher } from "../lib/domain/cms/webflowPublisher.ts";
 import { assertPublicHttpUrlResolved, assertResolvesPublic, isBlockedHostname, isPrivateIp } from "../lib/domain/net/ssrf.ts";
@@ -16,17 +17,6 @@ const baseGuard = (raw: string): URL => {
 };
 const assertUrl = (u: string) => void assertPublicCmsUrl(u, baseGuard);
 
-type Call = { url: string; method: string; headers: Record<string, string>; body?: string };
-function fakeFetch(routes: (c: Call) => { status?: number; body?: unknown; headers?: Record<string, string> } | undefined) {
-  const calls: Call[] = [];
-  const impl = (async (url: string, init: RequestInit = {}) => {
-    const call: Call = { url: String(url), method: init.method ?? "GET", headers: (init.headers ?? {}) as Record<string, string>, body: init.body as string | undefined };
-    calls.push(call);
-    const r = routes(call) ?? { status: 404, body: {} };
-    return new Response(JSON.stringify(r.body ?? {}), { status: r.status ?? 200, headers: r.headers });
-  }) as unknown as typeof fetch;
-  return { calls, impl };
-}
 
 // ---------- SSRF guard ----------
 test("ssrf: names and IPs that must never be fetched", () => {
@@ -57,29 +47,44 @@ test("ssrf: DNS answers are checked (any private record rejects) and errors are 
   assert.equal((await assertPublicHttpUrlResolved("https://ok.example/x", l)).hostname, "ok.example");
 });
 
-test("cmsFetch: resolves DNS before every connection and refuses when it is private, with generic text", async () => {
+test("cmsFetch: every connection is pinned to a validated address; a private answer blocks it with generic text", async () => {
   const seen: string[] = [];
-  const resolve = async (h: string) => {
+  const lookup = async (h: string) => {
     seen.push(h);
-    if (h === "rebind.example") throw new Error("private 10.0.0.9");
+    return [{ address: h === "rebind.example" ? "10.0.0.9" : PUBLIC_ADDR, family: 4 }];
   };
-  const f = fakeFetch(() => ({ body: { ok: 1 } }));
-  await cmsFetch("https://good.example/a", {}, { assertUrl, resolve, fetchImpl: f.impl });
+  const f = fakeFetch(() => ({ body: { ok: 1 } }), lookup);
+  await cmsFetch("https://good.example/a", {}, { assertUrl, ...f.net });
   assert.deepEqual(seen, ["good.example"]);
-  const g = fakeFetch(() => ({ body: {} }));
-  await assert.rejects(cmsFetch("https://rebind.example/a", {}, { assertUrl, resolve, fetchImpl: g.impl }), (e: Error) => e instanceof CmsError && e.message === "That address can't be used.");
+  assert.equal(f.calls[0].address, PUBLIC_ADDR, "the socket is handed the validated address");
+  const g = fakeFetch(() => ({ body: {} }), lookup);
+  await assert.rejects(cmsFetch("https://rebind.example/a", {}, { assertUrl, ...g.net }), (e: Error) => e instanceof CmsError && e.message === "That address can't be used.");
   assert.equal(g.calls.length, 0);
   for (const u of ["http://localhost./x", "http://a.localhost/x", "http://svc.internal/x", "http://metadata.google.internal/x", "http://[::ffff:127.0.0.1]/x"]) {
-    await assert.rejects(cmsFetch(u, {}, { assertUrl, fetchImpl: g.impl }), CmsError, u);
+    await assert.rejects(cmsFetch(u, {}, { assertUrl, ...g.net }), CmsError, u);
   }
   assert.equal(g.calls.length, 0);
 });
 
+test("cmsFetch: a DNS answer that flips to private on a second lookup is never used (rebinding)", async () => {
+  let lookups = 0;
+  const lookup = async () => {
+    lookups += 1;
+    return [{ address: lookups === 1 ? PUBLIC_ADDR : "10.0.0.9", family: 4 }];
+  };
+  const f = fakeFetch(() => ({ body: { ok: 1 } }), lookup);
+  const res = await cmsFetch("https://rebind.example/a", {}, { assertUrl, ...f.net });
+  assert.equal(res.ok, true);
+  assert.equal(lookups, 1, "the name is resolved once per connection");
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0].address, PUBLIC_ADDR);
+});
+
 test("cmsFetch: network errors are not echoed (no port-scan oracle)", async () => {
-  const boom = (async () => {
+  const boom = () => {
     throw new Error("connect ECONNREFUSED 10.0.0.5:6379");
-  }) as unknown as typeof fetch;
-  await assert.rejects(cmsFetch("https://good.example/", {}, { assertUrl, fetchImpl: boom }), (e: Error) => !/ECONN|10\.0|6379/.test(e.message));
+  };
+  await assert.rejects(cmsFetch("https://good.example/", {}, { assertUrl, transport: boom as never }), (e: Error) => e instanceof CmsError && !/ECONN|10\.0|6379/.test(e.message));
 });
 
 test("cmsFetch: redirects must keep the same origin; no downgrade; credentials never leave", async () => {
@@ -92,14 +97,14 @@ test("cmsFetch: redirects must keep the same origin; no downgrade; credentials n
   ];
   for (const [from, to, re] of cases) {
     const f = fakeFetch(() => ({ status: 302, headers: { location: to } }));
-    await assert.rejects(cmsFetch(from, auth, { assertUrl, fetchImpl: f.impl }), re, `${from} -> ${to}`);
+    await assert.rejects(cmsFetch(from, auth, { assertUrl, ...f.net }), re, `${from} -> ${to}`);
     assert.equal(f.calls.length, 1, "the credential-bearing request is never repeated elsewhere");
   }
   const same = fakeFetch((c) => (c.url.endsWith("/a") ? { status: 301, headers: { location: "/b" } } : { body: { ok: 1 } }));
-  assert.equal((await cmsFetch("https://example.com/a", auth, { assertUrl, fetchImpl: same.impl })).ok, true);
+  assert.equal((await cmsFetch("https://example.com/a", auth, { assertUrl, ...same.net })).ok, true);
   assert.equal(same.calls[1].headers.Authorization, "Basic abc", "same origin keeps the header");
   const up = fakeFetch((c) => (c.url.startsWith("http:") ? { status: 301, headers: { location: "https://example.com/a" } } : { body: {} }));
-  assert.equal((await cmsFetch("http://example.com/a", {}, { assertUrl, fetchImpl: up.impl })).ok, true);
+  assert.equal((await cmsFetch("http://example.com/a", {}, { assertUrl, ...up.net })).ok, true);
 });
 
 // ---------- Webflow locate ----------
@@ -116,7 +121,7 @@ function wfRoutes(opts: { domains?: unknown[]; shortName?: string; collSlug?: st
     return undefined;
   });
 }
-const wf = (f: ReturnType<typeof fakeFetch>) => new WebflowPublisher({ token: "tok", siteId: "s1", collectionId: "c1" }, { assertUrl, fetchImpl: f.impl });
+const wf = (f: ReturnType<typeof fakeFetch>) => new WebflowPublisher({ token: "tok", siteId: "s1", collectionId: "c1" }, { assertUrl, ...f.net });
 
 test("webflow locate: the host must belong to the connected site", async () => {
   const f = wfRoutes();
@@ -162,7 +167,7 @@ function wpRoutes(failMedia: string[] = [], failPost = false) {
     return undefined;
   });
 }
-const wp = (f: ReturnType<typeof fakeFetch>) => new WordPressPublisher({ baseUrl: "https://example.com", credentials: "bob:pw" }, { assertUrl, fetchImpl: f.impl });
+const wp = (f: ReturnType<typeof fakeFetch>) => new WordPressPublisher({ baseUrl: "https://example.com", credentials: "bob:pw" }, { assertUrl, ...f.net });
 const wpItem: CmsItemRef = { cms: "wordpress", id: "7", kind: "pages", title: "About", slug: "about", url: "https://example.com/about/" };
 const wpChanges: CmsChange[] = [
   { field: "meta_description", before: "", after: "Who we are." },

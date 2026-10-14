@@ -3,6 +3,8 @@ import { getDb } from "@/lib/db";
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
+import { cmsErrorResponse, cmsNet } from "@/lib/cmsServer";
+import { publishWordPressPost } from "@/lib/domain/cms/wordpressPost";
 
 /** Splits the generator's `---\ntitle:...\ndescription:...\n---\n<body>`
  * output — same shape ArticleAgentModal's parseArticle() reads client-side. */
@@ -68,24 +70,16 @@ export async function POST(req: NextRequest) {
     try {
       const { title, body: articleBody } = parseArticle(article.content);
       const postTitle = title ?? article.title ?? article.topic;
-      const auth = Buffer.from(combined).toString("base64");
-      const res = await fetch(`${conn.base_url}/wp-json/wp/v2/posts`, {
-        method: "POST",
-        headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ title: postTitle, content: markdownToHtml(articleBody), status: "publish" }),
-      });
-      if (!res.ok) {
-        const detail = await res.text().catch(() => "");
-        return NextResponse.json({ error: `WordPress rejected the post: HTTP ${res.status}${detail ? ` — ${detail.slice(0, 200)}` : ""}` }, { status: 422 });
-      }
-      const data = await res.json();
-      const publishedUrl: string = data.link;
+      const { publishedUrl } = await publishWordPressPost(
+        { baseUrl: conn.base_url, credentials: combined, title: postTitle, html: markdownToHtml(articleBody) },
+        cmsNet,
+      );
 
       await db.from("articles").update({ status: "published", published_url: publishedUrl, published_at: new Date().toISOString() }).eq("id", id);
 
       return NextResponse.json({ publishedUrl });
     } catch (err) {
-      return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to publish to WordPress." }, { status: 500 });
+      return cmsErrorResponse(err, "Failed to publish to WordPress.");
     }
   }
 
@@ -105,18 +99,10 @@ export async function POST(req: NextRequest) {
 
     const { title, body: articleBody } = parseArticle(article.content);
     const postTitle = title ?? article.title ?? article.topic;
-    const auth = Buffer.from(conn.api_key).toString("base64");
-    const res = await fetch(`${conn.base_url}/wp-json/wp/v2/posts`, {
-      method: "POST",
-      headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ title: postTitle, content: markdownToHtml(articleBody), status: "publish" }),
-    });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      return NextResponse.json({ error: `WordPress rejected the post: HTTP ${res.status}${detail ? ` — ${detail.slice(0, 200)}` : ""}` }, { status: 422 });
-    }
-    const data = await res.json();
-    const publishedUrl: string = data.link;
+    const { publishedUrl } = await publishWordPressPost(
+      { baseUrl: conn.base_url, credentials: conn.api_key, title: postTitle, html: markdownToHtml(articleBody) },
+      cmsNet,
+    );
 
     db.prepare("UPDATE articles SET status = 'published', published_url = ?, published_at = ? WHERE id = ?").run(
       publishedUrl,
@@ -126,6 +112,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ publishedUrl });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to publish to WordPress." }, { status: 500 });
+    return cmsErrorResponse(err, "Failed to publish to WordPress.");
   }
 }
