@@ -7,12 +7,26 @@ import {
   type AuditFunnelEvent,
   type AuditFunnelPayload,
 } from "@/lib/analytics/auditFunnel";
+import { guardPublicEvent, readLimitedText, EVENT_MAX_BODY_BYTES } from "@/lib/domain/net/publicGuard";
+import { publicRateLimiter } from "@/lib/domain/net/publicRuntime";
+import { FEATURES } from "@/lib/features";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as Partial<AuditFunnelPayload>;
+    // Fail open: an outage of the counter must not drop funnel analytics. The warning is logged.
+    const guard = await guardPublicEvent({
+      headers: request.headers,
+      env: process.env,
+      hosted: FEATURES.PLATFORM_MODE,
+      limiter: publicRateLimiter("open"),
+      readBody: () => readLimitedText(request, EVENT_MAX_BODY_BYTES),
+    });
+    if (!guard.ok) {
+      return NextResponse.json({ error: guard.message }, { status: guard.status, headers: guard.headers });
+    }
+    const body = guard.body as Partial<AuditFunnelPayload>;
     if (!body.event || !AUDIT_FUNNEL_EVENTS.includes(body.event as AuditFunnelEvent)) {
       return NextResponse.json({ error: "Invalid event." }, { status: 400 });
     }

@@ -1,22 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getDriver } from "@/lib/llm";
-import { PLATFORM_DEFAULT_MODELS, PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
 import { FEATURES } from "@/lib/features";
-import { getUserPlan } from "@/lib/entitlements";
-import { chargeCredits, getCreditState } from "@/lib/credits";
-import { dailyDraftBatchLimit } from "@/lib/domain/x/xDraftTypes";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import { getActiveProjectContext } from "@/lib/domain/shared/getActiveProject";
 import { getActiveProjectContextSupabase } from "@/lib/domain/shared/getActiveProjectSupabase";
 import type { ProjectContext } from "@/lib/domain/shared/ProjectContext";
-import { parseRedditBatch } from "@/lib/domain/social/draftParse.ts";
 import { isRedditDraftStatus, type RedditDraftPatch, type RedditDraftView } from "@/lib/domain/reddit/redditDraftStore";
-import { getRedditSettings } from "@/lib/domain/reddit/redditSettingsStore";
-import { getRedditSettings as getRedditSettingsSupabase } from "@/lib/domain/reddit/redditSettingsStoreSupabase";
 import * as sqliteStore from "@/lib/domain/reddit/redditDraftStore";
 import * as supabaseStore from "@/lib/domain/reddit/redditDraftStoreSupabase";
-import { generateDraftBatch, type DraftGenerationPorts } from "@/lib/domain/social/draftGeneration.ts";
+import { redditPrompt } from "@/lib/domain/social/platformPrompts";
+import {
+  defaultSubredditFor, draftLimitFor, generateForPlatform, resolvePlatformModelAccess, selfHostModelAccess,
+  type DraftScope, type ModelAccess,
+} from "@/lib/domain/social/draftPorts";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 
@@ -28,17 +25,7 @@ function viewOf(req: NextRequest): RedditDraftView {
   return req.nextUrl.searchParams.get("view") === "archived" ? "archived" : "current";
 }
 
-function startOfUtcDay(): string {
-  const d = new Date();
-  d.setUTCHours(0, 0, 0, 0);
-  return d.toISOString();
-}
-
-type Scope =
-  | { mode: "platform"; db: ReturnType<typeof createServiceClient>; userId: string; projectId: string }
-  | { mode: "selfhost"; projectId: string };
-
-async function resolveScope(): Promise<Scope | NextResponse> {
+async function resolveScope(): Promise<DraftScope | NextResponse> {
   if (FEATURES.PLATFORM_MODE) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -78,63 +65,25 @@ export async function POST(req: NextRequest) {
   const scope = await resolveScope();
   if (scope instanceof NextResponse) return scope;
 
-  const providerId = "groq";
-  const driver = getDriver(providerId);
-  if (!driver) return NextResponse.json({ error: "Groq isn't wired to a real model yet." }, { status: 501 });
+  if (!getDriver("groq")) return NextResponse.json({ error: "Groq isn't wired to a real model yet." }, { status: 501 });
 
-  let apiKey = "";
-  let baseUrl: string | undefined;
-  let usesPlatformKey = false;
+  let access: ModelAccess;
   let project: ProjectContext;
   let defaultSubreddit = "";
-
   try {
     if (scope.mode === "platform") {
-      const { data: conn } = await scope.db.from("provider_connections").select("api_key_secret_id, base_url")
-        .eq("user_id", scope.userId).eq("provider_id", providerId).maybeSingle();
-      if (conn?.api_key_secret_id) {
-        const { data: secret } = await scope.db.rpc("vault_get_secret", { p_id: conn.api_key_secret_id });
-        apiKey = (secret as string) ?? "";
-        baseUrl = conn.base_url ?? undefined;
-      } else if (PLATFORM_PROVIDER_KEYS[providerId]) {
-        apiKey = PLATFORM_PROVIDER_KEYS[providerId]!;
-        usesPlatformKey = true;
-      }
+      access = await resolvePlatformModelAccess(scope.db, scope.userId);
       project = await getActiveProjectContextSupabase(scope.db, scope.userId);
-
-      // Try to get default subreddit from saved Reddit settings
-      try {
-        const settings = await getRedditSettingsSupabase(scope.db, scope.userId, scope.projectId);
-        if (settings.subreddits.length > 0) {
-          defaultSubreddit = settings.subreddits[0].replace(/^r\//, "");
-        }
-      } catch {
-        // Ignore errors; defaultSubreddit stays empty
-      }
     } else {
-      const row = getDb().prepare("SELECT api_key, base_url FROM provider_connections WHERE provider_id = ?").get(providerId) as
-        | { api_key: string; base_url: string | null } | undefined;
-      if (row) {
-        apiKey = row.api_key;
-        baseUrl = row.base_url ?? undefined;
-      }
+      access = selfHostModelAccess();
       project = getActiveProjectContext();
-
-      // Try to get default subreddit from saved Reddit settings
-      try {
-        const settings = getRedditSettings(getDb(), scope.projectId);
-        if (settings.subreddits.length > 0) {
-          defaultSubreddit = settings.subreddits[0].replace(/^r\//, "");
-        }
-      } catch {
-        // Ignore errors; defaultSubreddit stays empty
-      }
     }
+    defaultSubreddit = await defaultSubredditFor(scope);
   } catch (err) {
     return fail(err);
   }
 
-  if (!apiKey) {
+  if (!access.apiKey) {
     return NextResponse.json({ error: "Connect a free Groq key in Settings, then try again." }, { status: 422 });
   }
 
@@ -147,71 +96,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Invalid subreddit: '${requestedSubreddit}'. Use 2-21 alphanumeric characters and underscores.` }, { status: 400 });
   }
 
-  const system = `You are a Reddit contributor writing posts for r/${requestedSubreddit} about ${project.name}.
-Be conversational and community-friendly; match the subreddit's tone.
-Rules:
-- Title: 1-300 characters, clear and engaging (no clickbait).
-- Body: 1-40000 characters, natural discussion (no spam or hard sales).
-- No invented statistics, customer names, or quotes.
-- Be helpful and ask for feedback, not selling.
-
-Reply with JSON only, no prose: {"drafts":[{"subreddit":"${requestedSubreddit}","title":"...","body":"...","whyThisWorks":"...","angle":"..."}]}`;
-
-  const prompt = `Write ${variants} Reddit post${variants === 1 ? "" : "s"} for r/${requestedSubreddit} about: ${project.name}
-${project.description ? `\nDescription: ${project.description}` : ""}
-${project.category ? `\nCategory: ${project.category}` : ""}`;
-
-  const ports: DraftGenerationPorts = {
-    creditState: async () => scope.mode === "platform" ? getCreditState(scope.userId, "social_draft") : { billingEnabled: false, balance: 0, cost: 0 },
-    isByok: !usesPlatformKey,
-    limit: scope.mode === "platform" && usesPlatformKey ? dailyDraftBatchLimit(await getUserPlan(scope.userId)) : -1,
-    reserveSlot: async (limit) => {
-      if (scope.mode === "platform") {
-        return supabaseStore.reserveRedditBatch(scope.db, scope.userId, scope.projectId, limit, startOfUtcDay());
-      }
-      return { ok: true, batchId: "" };
-    },
-    releaseSlot: async (batchId) => {
-      if (scope.mode === "platform" && batchId) {
-        await supabaseStore.deleteRedditBatch(scope.db, scope.userId, scope.projectId, batchId).catch(() => {});
-      }
-    },
-    callModel: async () => {
-      const result = await driver({
-        apiKey,
-        baseUrl,
-        system,
-        model: PLATFORM_DEFAULT_MODELS[providerId],
-        stream: false,
-        messages: [{ role: "user", content: prompt }],
-      });
-      return result.text ?? "";
-    },
-    parse: (text) => parseRedditBatch(text, variants),
-    filterUsable: (drafts) => drafts,
-    insertDrafts: async (batchId, drafts) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const withDefaults = (drafts as any[]).map((d) => ({ ...d, angle: "General", whyThisWorks: "" }));
-      if (scope.mode === "platform") {
-        return batchId
-          ? await supabaseStore.fulfilRedditBatch(scope.db, scope.userId, scope.projectId, batchId, withDefaults)
-          : await supabaseStore.insertRedditDrafts(scope.db, scope.userId, scope.projectId, withDefaults);
-      }
-      return sqliteStore.insertRedditDrafts(getDb(), scope.projectId, withDefaults);
-    },
-    deleteBatch: async (batchId) => {
-      if (scope.mode === "platform") {
-        await supabaseStore.deleteRedditBatch(scope.db, scope.userId, scope.projectId, batchId).catch(() => {});
-      }
-    },
-    charge: async () => {
-      if (usesPlatformKey && scope.mode === "platform") {
-        await chargeCredits(scope.userId, "social_draft", { projectId: scope.projectId, model: PLATFORM_DEFAULT_MODELS[providerId] });
-      }
-    },
-  };
-
-  const result = await generateDraftBatch(ports, { variants });
+  const { system, prompt } = redditPrompt(project, requestedSubreddit, variants);
+  const limit = await draftLimitFor(scope, access);
+  const result = await generateForPlatform("reddit", scope, { access, limit, variants, system, prompt });
   return NextResponse.json(result.body, { status: result.status });
 }
 

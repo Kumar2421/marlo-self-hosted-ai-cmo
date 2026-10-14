@@ -13,7 +13,8 @@ async function runToolLoop(
   client: OpenAI,
   model: string,
   messages: OpenAI.Chat.ChatCompletionMessageParam[],
-  tools: ToolDef[]
+  tools: ToolDef[],
+  requestOptions: OpenAI.RequestOptions
 ): Promise<OpenAI.Chat.ChatCompletionMessageParam[]> {
   const toolSpecs: OpenAI.Chat.ChatCompletionTool[] = tools.map((t) => ({
     type: "function",
@@ -23,12 +24,15 @@ async function runToolLoop(
   const working = [...messages];
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const response = await client.chat.completions.create({
-      model,
-      messages: working,
-      tools: toolSpecs,
-      tool_choice: "auto",
-    });
+    const response = await client.chat.completions.create(
+      {
+        model,
+        messages: working,
+        tools: toolSpecs,
+        tool_choice: "auto",
+      },
+      requestOptions,
+    );
     const choice = response.choices[0]?.message;
     if (!choice) break;
 
@@ -62,14 +66,18 @@ async function runToolLoop(
   return working;
 }
 
-const openaiDriver: LlmDriver = async ({ apiKey, model, messages, system, stream, baseUrl, tools }) => {
+const openaiDriver: LlmDriver = async ({ apiKey, model, messages, system, stream, baseUrl, tools, timeoutMs, maxRetries, signal }) => {
   // Local servers (LM Studio, Ollama) usually don't check the key at all —
   // the OpenAI SDK still requires a non-empty string to construct, so pass a
   // placeholder rather than failing before the request even goes out.
+  // timeoutMs and maxRetries are set only by background jobs; routes keep the SDK defaults.
   const client = new OpenAI({
     apiKey: apiKey || "not-required",
     ...(baseUrl ? { baseURL: baseUrl } : {}),
+    ...(timeoutMs !== undefined ? { timeout: timeoutMs } : {}),
+    ...(maxRetries !== undefined ? { maxRetries } : {}),
   });
+  const requestOptions: OpenAI.RequestOptions = signal ? { signal } : {};
 
   const finalMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
   if (system) {
@@ -79,7 +87,7 @@ const openaiDriver: LlmDriver = async ({ apiKey, model, messages, system, stream
 
   let resolvedMessages = finalMessages;
   if (tools && tools.length > 0) {
-    resolvedMessages = await runToolLoop(client, model, finalMessages, tools);
+    resolvedMessages = await runToolLoop(client, model, finalMessages, tools, requestOptions);
     const last = resolvedMessages[resolvedMessages.length - 1];
 
     // The loop already ended with the model's real final answer (no more
@@ -109,12 +117,15 @@ const openaiDriver: LlmDriver = async ({ apiKey, model, messages, system, stream
   const finalToolArgs = forceNoTools ? { tool_choice: "none" as const } : {};
 
   if (stream) {
-    const responseStream = await client.chat.completions.create({
-      model,
-      messages: resolvedMessages,
-      stream: true,
-      ...finalToolArgs,
-    });
+    const responseStream = await client.chat.completions.create(
+      {
+        model,
+        messages: resolvedMessages,
+        stream: true,
+        ...finalToolArgs,
+      },
+      requestOptions,
+    );
 
     const encoder = new TextEncoder();
     const readable = new ReadableStream({
@@ -135,11 +146,14 @@ const openaiDriver: LlmDriver = async ({ apiKey, model, messages, system, stream
     return { stream: readable };
   }
 
-  const response = await client.chat.completions.create({
-    model,
-    messages: resolvedMessages,
-    ...finalToolArgs,
-  });
+  const response = await client.chat.completions.create(
+    {
+      model,
+      messages: resolvedMessages,
+      ...finalToolArgs,
+    },
+    requestOptions,
+  );
 
   const text = response.choices[0]?.message?.content ?? "";
   return { text };

@@ -5,7 +5,7 @@ import { Loader2, Mail } from "lucide-react";
 import { useToast } from "@/components/dashboard/Toast";
 import { SkeletonCard } from "@/components/shared/Skeleton";
 import { useNotificationPrefs } from "@/components/dashboard/notifications/useNotificationPrefs";
-import type { NotificationPrefs } from "@/lib/domain/notifications/preferences";
+import { displayedFrequency, type NotificationPrefs } from "@/lib/domain/notifications/preferences";
 import type { Frequency, NotificationCategory } from "@/lib/domain/notifications/types";
 
 type Option = { value: Frequency; label: string };
@@ -36,11 +36,20 @@ const ROWS: Array<{ category: NotificationCategory; title: string; description: 
   { category: "credits", title: "Credits", description: "When your credits are running low or have run out.", options: EMAIL_OR_APP },
   { category: "approvals", title: "Waiting for your review", description: "When a fix pull request is waiting for you. At most one reminder a day.", options: EMAIL_OR_APP },
   { category: "integrations", title: "Connections", description: "When Google or Gmail needs to be reconnected. At most one reminder every 3 days.", options: EMAIL_OR_APP },
+  {
+    category: "content",
+    title: "Social drafts",
+    description: "When new social post drafts are ready to review in the app. Never emailed.",
+    options: [
+      { value: "daily", label: "In the app only" },
+      { value: "off", label: "Off" },
+    ],
+  },
 ];
 
 /** Non-summary categories show one "in the app only" choice, however it was stored. */
 function shownValue(category: NotificationCategory, value: Frequency): Frequency {
-  return category !== "digest" && value === "weekly" ? "daily" : value;
+  return displayedFrequency(category, value);
 }
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);

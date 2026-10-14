@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { AlertTriangle, Bell, CheckCheck, CircleDollarSign, GitPullRequest, Newspaper, TrendingUp } from "lucide-react";
+import { AlertTriangle, Bell, CheckCheck, CircleDollarSign, GitPullRequest, MessageCircle, Newspaper, TrendingUp } from "lucide-react";
 import SidePanel from "@/components/shared/SidePanel";
 import { SkeletonLines } from "@/components/shared/Skeleton";
 import type { NotificationKind } from "@/lib/domain/notifications/types";
@@ -16,6 +16,8 @@ const ICONS: Record<NotificationKind, typeof Bell> = {
   credits_low: CircleDollarSign,
   approval_needed: GitPullRequest,
   integration_disconnected: AlertTriangle,
+  social_drafts_ready: MessageCircle,
+  social_drafts_paused: CircleDollarSign,
 };
 
 function timeAgo(iso: string, now = Date.now()): string {

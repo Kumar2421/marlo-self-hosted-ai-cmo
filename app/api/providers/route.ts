@@ -5,6 +5,8 @@ import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 import { disconnectHostedProvider } from "@/lib/hostedConnections";
 import { PLATFORM_PROVIDER_KEYS, PLATFORM_DEFAULT_MODELS } from "@/lib/llm/platformKeys";
+import { assertProviderBaseUrl } from "@/lib/domain/net/providerBaseUrl";
+import { INVALID_USER_URL_MESSAGE } from "@/lib/domain/net/publicUrl";
 
 /**
  * Provider connection registry (BYOK LLM keys).
@@ -126,6 +128,17 @@ export async function POST(req: NextRequest) {
   // URL with no key) — reject only if both are missing.
   if (!apiKey.trim() && !baseUrl) {
     return NextResponse.json({ error: "Provide an API key or a base URL" }, { status: 400 });
+  }
+
+  // A base URL is either a local model server (self-host only, see providerBaseUrl.ts) or an outbound
+  // target the server calls. Checked here, at save time, and again on every use by the fetcher.
+  if (baseUrl) {
+    try {
+      await assertProviderBaseUrl(body.providerId, baseUrl, { platformMode: FEATURES.PLATFORM_MODE });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : INVALID_USER_URL_MESSAGE;
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
   }
 
   if (FEATURES.PLATFORM_MODE && ["github", "x", "tavily", "google_cloud"].includes(body.providerId)) {
