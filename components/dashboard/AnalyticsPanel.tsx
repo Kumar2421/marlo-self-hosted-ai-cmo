@@ -2,12 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { BarChart2, ChevronLeft, ChevronRight, Link2, X, Lock, Search, Cpu, Globe2, Check, Loader2, RefreshCw, AlertTriangle, ExternalLink, TrendingUp, Code2, MessageCircle } from "lucide-react";
+import { BarChart2, ChevronLeft, ChevronRight, Link2, X, Lock, Search, Cpu, Globe2, Check, Loader2, RefreshCw, AlertTriangle, ExternalLink, TrendingUp, Code2 } from "lucide-react";
 import CollapsedRail, { RailButton } from "./CollapsedRail";
 import { useToast } from "./Toast";
 import ScoreCircle from "./ScoreCircle";
 import FindingsWorkspace from "./FindingsWorkspace";
-import SocialTab from "./social/SocialTab";
 import type { SEOAuditPayload } from "@/lib/domain/seo/SEOAgent";
 import type { Finding as AnalyticsFinding } from "@/lib/domain/findings/findingTypes";
 import type { GeoCitationRow } from "@/lib/domain/geo/GEOAgent";
@@ -26,7 +25,7 @@ import SearchOverviewPanel from "@/components/dashboard/search/SearchOverviewPan
 import SearchInsightsSection from "@/components/dashboard/search/SearchInsightsSection";
 import GeoVisibility from "@/components/dashboard/geo/GeoVisibility";
 
-const TABS = ["SEO", "Links", "Technical", "GEO", "Traffic", "Social", "Findings"] as const;
+const TABS = ["SEO", "Links", "Technical", "GEO", "Traffic", "Findings"] as const;
 type Tab = (typeof TABS)[number];
 
 type TrafficByDate = { date: string; clicks: number; impressions: number; ctr: number; position: number };
@@ -415,7 +414,6 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
         <RailButton icon={<Cpu size={15} />} label="Technical" active={tab === "Technical"} onClick={() => { setTab("Technical"); onToggle(); }} />
         <RailButton icon={<Globe2 size={15} />} label="GEO" active={tab === "GEO"} onClick={() => { setTab("GEO"); onToggle(); }} />
         <RailButton icon={<TrendingUp size={15} />} label="Traffic" active={tab === "Traffic"} onClick={() => { setTab("Traffic"); onToggle(); }} />
-        <RailButton icon={<MessageCircle size={15} />} label="Social" active={tab === "Social"} onClick={() => { setTab("Social"); onToggle(); }} />
         <RailButton icon={<Check size={15} />} label="Findings" active={tab === "Findings"} onClick={() => { setTab("Findings"); onToggle(); }} />
       </CollapsedRail>
     );
@@ -466,8 +464,6 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
       <div className="okara-scroll flex-1 overflow-y-auto p-4">
         {tab === "Findings" ? (
           <FindingsWorkspace />
-        ) : tab === "Social" ? (
-          <SocialTab />
         ) : tab === "Traffic" ? (
           <Section
             title="Traffic"

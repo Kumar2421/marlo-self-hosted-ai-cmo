@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { maybeRunSelfHostJob, notificationContext } from "@/lib/domain/notifications/serverContext";
+import { socialNavTargetFromPayload } from "@/lib/domain/social/socialNav";
 
 /** The signed-in user's notifications (newest first) and how many are unread. */
 export async function GET() {
@@ -13,6 +14,8 @@ export async function GET() {
       unreadCount,
       notifications: notifications.map((n) => ({
         id: n.id, kind: n.kind, projectId: n.projectId, title: n.title, body: n.body, createdAt: n.createdAt, read: n.readAt !== null,
+        // Only the safe click-through target leaves the server, never the raw payload.
+        nav: socialNavTargetFromPayload(n.payload),
       })),
     });
   } catch {
