@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getDriver, type LlmDriver } from "@/lib/llm";
 import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
-import { chargeCredits, InsufficientCreditsError } from "@/lib/credits";
+import { chargeCredits, getCreditState, InsufficientCreditsError } from "@/lib/credits";
+import type { CreditState } from "@/lib/domain/x/draftGuards";
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
@@ -29,7 +30,8 @@ import { linkPullRequest } from "@/lib/domain/fixes/linkPullRequest";
  * both hosted and self-host mode), the LLM, and recording a fix once its PR exists.
  */
 
-export type FixLlm = { driver: LlmDriver; apiKey: string; baseUrl?: string };
+/** usesPlatformKey: the call runs on the operator's key, so the user is metered for it (hosted only). */
+export type FixLlm = { driver: LlmDriver; apiKey: string; baseUrl?: string; usesPlatformKey: boolean };
 
 export type FixRequest = {
   userId: string | null;
@@ -39,6 +41,8 @@ export type FixRequest = {
   llm: FixLlm | null;
   /** Hosted only: meters the LLM call. Returns an error response when out of credits. */
   charge(model: string): Promise<NextResponse | null>;
+  /** Hosted only: the balance read used as a pre-check before the LLM call on the platform key. */
+  creditState(): Promise<CreditState>;
   /** After the PR exists: remember it (code_fixes) and link it to the finding's tracked action. */
   recordApplied(prUrl: string, files: string[]): Promise<void>;
 };
@@ -50,7 +54,7 @@ function selfHostLlm(providerId: string): FixLlm | NextResponse {
   if (!driver) return fail(`${providerId} isn't wired to a real model yet.`, 501);
   const row = getDb().prepare("SELECT api_key, base_url FROM provider_connections WHERE provider_id = ?").get(providerId) as { api_key: string; base_url: string | null } | undefined;
   if (!row) return fail(`${providerId} isn't connected yet. Connect it in Settings → LLM Providers.`, 422);
-  return { driver, apiKey: row.api_key, baseUrl: row.base_url ?? undefined };
+  return { driver, apiKey: row.api_key, baseUrl: row.base_url ?? undefined, usesPlatformKey: false };
 }
 
 export async function resolveFixRequest(opts: { findingId: string; providerId?: string; needLlm: boolean }): Promise<FixRequest | NextResponse> {
@@ -78,6 +82,7 @@ export async function resolveFixRequest(opts: { findingId: string; providerId?: 
       ctx,
       llm,
       charge: async () => null,
+      creditState: async () => ({ billingEnabled: false, balance: 0, cost: 0 }),
       recordApplied: async (prUrl, files) => {
         const now = new Date().toISOString();
         getDb()
@@ -150,9 +155,13 @@ export async function resolveFixRequest(opts: { findingId: string; providerId?: 
       const { data: secret } = await db.rpc("vault_get_secret", { p_id: conn.api_key_secret_id });
       apiKey = (secret as string) ?? "";
     }
-    if (!apiKey) apiKey = PLATFORM_PROVIDER_KEYS[providerId] ?? "";
+    let usesPlatformKey = false;
+    if (!apiKey) {
+      apiKey = PLATFORM_PROVIDER_KEYS[providerId] ?? "";
+      usesPlatformKey = apiKey !== "";
+    }
     if (!apiKey) return fail(`${providerId} isn't connected yet. Connect it in Settings → LLM Providers.`, 422);
-    llm = { driver, apiKey, baseUrl: conn?.base_url ?? undefined };
+    llm = { driver, apiKey, baseUrl: conn?.base_url ?? undefined, usesPlatformKey };
   }
 
   const ctx: CodeFixContext = { projectId: project.id, projectName: project.name, projectUrl: project.url, repoFullName, githubToken };
@@ -171,6 +180,7 @@ export async function resolveFixRequest(opts: { findingId: string; providerId?: 
         throw err;
       }
     },
+    creditState: () => getCreditState(user.id, "code_fix"),
     recordApplied: async (prUrl, files) => {
       const now = new Date().toISOString();
       const { data: existing } = await db.from("code_fixes").select("created_at").eq("project_id", project.id).eq("issue_id", finding.id).maybeSingle();

@@ -16,6 +16,7 @@ import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 import { chargeCredits, InsufficientCreditsError } from "@/lib/credits";
 import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
+import { validateChatInput } from "@/lib/domain/chat/chatLimits";
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
 // platform max for this route (Hobby plan caps at 60s; Pro allows more).
@@ -90,16 +91,17 @@ async function answer(args: {
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
 
-  if (!body || typeof body.message !== "string" || !body.message.trim()) {
+  if (!body) {
     return NextResponse.json({ error: "message is required" }, { status: 400 });
   }
 
-  const { message, model, providerId, history } = body as {
-    message: string;
-    model?: string;
-    providerId?: string;
-    history?: ChatMessage[];
-  };
+  const { model, providerId } = body as { model?: string; providerId?: string };
+  const inputCheck = validateChatInput(body.message, body.history);
+  if (!inputCheck.ok) {
+    return NextResponse.json({ error: inputCheck.error }, { status: 400 });
+  }
+  const message = body.message as string;
+  const history: ChatMessage[] = inputCheck.history;
 
   if (!model || !providerId) {
     return NextResponse.json(

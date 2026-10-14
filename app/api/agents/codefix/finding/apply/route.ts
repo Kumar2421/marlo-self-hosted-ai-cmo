@@ -3,6 +3,7 @@ import { resolveFixRequest } from "@/lib/codefixFindingServer";
 import { ticketClaimsFor, ticketSecret } from "@/lib/githubAppServer";
 import { getCodeFixProvider } from "@/lib/domain/codefix/getCodeFixProvider";
 import { redeemTicket } from "@/lib/domain/codefix/ticket";
+import { recordOpenedPr } from "@/lib/domain/codefix/recordOpenedPr";
 
 export const maxDuration = 60;
 
@@ -34,11 +35,12 @@ export async function POST(req: NextRequest) {
   }
   if (!redeemed.ok) return NextResponse.json({ error: redeemed.error }, { status: redeemed.status });
 
+  let opened: { prUrl: string; branch: string; files: string[] };
   try {
     const explanation = typeof body?.explanation === "string" && body.explanation.trim() ? body.explanation.trim().slice(0, 1000) : "Fixes the reported issue.";
     // The provider's LLM is not used when applying; any driver works as a placeholder.
     const provider = getCodeFixProvider("contents-api", async () => ({ text: "" }) as never, "", "");
-    const { prUrl, branch, files } = await provider.applyCatalogFix(redeemed.changes, resolved.ctx, {
+    opened = await provider.applyCatalogFix(redeemed.changes, resolved.ctx, {
       findingId: resolved.finding.id,
       label: redeemed.label ?? resolved.finding.recommendation.slice(0, 80),
       recommendation: resolved.finding.recommendation,
@@ -46,11 +48,16 @@ export async function POST(req: NextRequest) {
       explanation,
       kinds: redeemed.kinds,
     });
-    await resolved.recordApplied(prUrl, files);
-    return NextResponse.json({ prUrl, branch, files });
   } catch (err) {
     // Nothing was opened: let the user retry the same preview.
     await redeemed.release().catch(() => undefined);
     return NextResponse.json({ error: err instanceof Error ? err.message : "Couldn't open the pull request." }, { status: 500 });
   }
+
+  // A PR now exists on GitHub. The ticket stays consumed (releasing it would allow a second PR), and
+  // a bookkeeping failure must not hide the PR from the user.
+  const result = await recordOpenedPr(opened, (prUrl, files) => resolved.recordApplied(prUrl, files), (err) =>
+    console.error("codefix apply: PR opened but recording it failed", { prUrl: opened.prUrl, error: err instanceof Error ? err.message : String(err) }),
+  );
+  return NextResponse.json(result);
 }
