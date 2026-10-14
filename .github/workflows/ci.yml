@@ -83,6 +83,12 @@ jobs:
         run: npm run lint
         continue-on-error: true
       - name: Unit tests
-        run: npm test
+        shell: bash
+        # bash runs with pipefail, so a failing npm test still fails this step through tee.
+        run: npm test 2>&1 | tee test.log
+      - name: Fail if no tests ran
+        # node --test exits 0 when it finds zero files; the TAP summary is the real signal.
+        shell: bash
+        run: grep -E '^# tests [1-9]' test.log
       - name: Production build
         run: npm run build

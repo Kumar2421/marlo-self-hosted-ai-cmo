@@ -37,9 +37,7 @@ export async function POST(req: NextRequest) {
   if (!resolved.llm) return NextResponse.json({ error: "No model available." }, { status: 422 });
 
   try {
-    const secret = ticketSecret(); // fail closed before any credits are charged
-    const charged = await resolved.charge(model);
-    if (charged) return charged;
+    const secret = ticketSecret(); // fail closed before any LLM call
     const provider = getCodeFixProvider("contents-api", resolved.llm.driver, resolved.llm.apiKey, model, resolved.llm.baseUrl);
     const proposal = await provider.proposeCatalogFix(
       {
@@ -52,6 +50,9 @@ export async function POST(req: NextRequest) {
       },
       resolved.ctx,
     );
+    // Charged only once a proposal exists: a failed generation costs the user nothing.
+    const charged = await resolved.charge(model);
+    if (charged) return charged;
     const ticket = issueTicket(
       secret,
       { userId: resolved.userId, projectId: resolved.projectId, findingId: resolved.finding.id },
