@@ -45,7 +45,7 @@ export interface DraftGenerationResult {
   body: unknown;
 }
 
-function canAffordCredits(state: CreditState): boolean {
+export function canAffordCredits(state: CreditState): boolean {
   if (!state.billingEnabled) return true;
   return state.balance >= state.cost;
 }
