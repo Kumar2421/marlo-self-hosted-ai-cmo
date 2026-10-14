@@ -194,9 +194,10 @@ test("fixed-window limiter: a key is limited within its window, and the key set 
 
 // ---- audit limiter keying is not spoofable (finding 6) --------------------------------------
 
-test("audit route key: only the platform-set x-real-ip is trusted, and the map is bounded", () => {
+test("audit route keys through the shared guard, never on x-forwarded-for", () => {
   const src = readFileSync(new URL("../app/api/public/audit/route.ts", import.meta.url), "utf8");
-  assert.doesNotMatch(src, /get\("x-forwarded-for"\)/, "the audit route must not key on x-forwarded-for");
-  assert.match(src, /process\.env\.VERCEL\)\s*return req\.headers\.get\("x-real-ip"\)/);
-  assert.match(src, /MAX_TRACKED_KEYS = 10_000/);
+  assert.doesNotMatch(src, /x-forwarded-for/i, "the audit route must not read x-forwarded-for itself");
+  // Client identity, limits and the bounded stores live in publicGuard (covered by publicGuard.test.mts).
+  assert.match(src, /guardPublicAudit\(/);
+  assert.match(src, /publicRateLimiter\("closed"\)/);
 });
