@@ -11,7 +11,7 @@ const POLL_INTERVAL_MS = 2000;
 const MAX_POLLS = 20; // ~40s — key creation is normally a few seconds
 
 /** The three real services this app's Google Cloud features call — see
- * PlacesAgent.ts, googleSearch.ts, knowledgeGraph.ts for the exact
+ * local/placesSearch.ts, googleSearch.ts, knowledgeGraph.ts for the exact
  * endpoints this key needs to be allowed against. */
 const API_TARGETS = [{ service: "places.googleapis.com" }, { service: "customsearch.googleapis.com" }, { service: "kgsearch.googleapis.com" }];
 

@@ -72,6 +72,17 @@ function smtpVerify(email: string, mxHost: string): Promise<boolean> {
   });
 }
 
+/** Lowest-priority MX host for a domain, or null when it has none or the lookup fails. */
+export async function resolveMailHost(domain: string): Promise<string | null> {
+  try {
+    const records = await resolveMx(domain);
+    if (records.length === 0) return null;
+    return records.sort((a, b) => a.priority - b.priority)[0].exchange;
+  } catch {
+    return null;
+  }
+}
+
 /** For a lead with a company but no email: guess a domain, generate common
  * name-pattern candidates, and SMTP-verify each in turn — first one that
  * gets a real 250 accept wins. Returns null (no upgrade) on any failure
@@ -80,14 +91,8 @@ export async function guessAndVerifyEmail(name: string, company: string): Promis
   const domain = guessDomain(company);
   if (!domain) return null;
 
-  let mxHost: string;
-  try {
-    const records = await resolveMx(domain);
-    if (records.length === 0) return null;
-    mxHost = records.sort((a, b) => a.priority - b.priority)[0].exchange;
-  } catch {
-    return null;
-  }
+  const mxHost = await resolveMailHost(domain);
+  if (!mxHost) return null;
 
   for (const candidate of candidateEmails(name, domain)) {
     if (await smtpVerify(candidate, mxHost)) return candidate;

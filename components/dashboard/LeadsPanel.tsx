@@ -35,6 +35,19 @@ type Lead = {
   gmail_thread_id?: string | null;
   last_reply_at?: string | null;
   last_reply_snippet?: string | null;
+  // Local business mode (Places + website enrichment); all optional, null for person leads.
+  address?: string | null;
+  website?: string | null;
+  rating?: number | null;
+  review_count?: number | null;
+  whatsapp?: string | null;
+  contact_url?: string | null;
+  description?: string | null;
+  maps_url?: string | null;
+  fit_reason?: string | null;
+  fit_score?: number | null;
+  enrichment_status?: string | null;
+  email_quality?: string | null;
 };
 
 export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle: () => void }) {
