@@ -4,7 +4,7 @@ import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 import { generateAutoLeads } from "@/lib/domain/leads/autoGenerateLeads";
 import { canFetchLeadsToday } from "@/lib/entitlements";
-import { claimDueLeadRefresh } from "@/lib/jobs/leadRefreshClaim";
+import { runClaimedLeadRefresh, supabaseLeadStampStore } from "@/lib/jobs/leadRefreshClaim";
 import { AUTO_LEAD_WINDOW_MS, autoLeadCooldownRemainingMs, retryAfterSeconds } from "@/lib/domain/leads/autoLeadWindow";
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
@@ -65,21 +65,28 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   }
 
   // Compare-and-set claim before generating: a concurrent call that lost the race gets a 429 instead
-  // of a second run. The stamp is written whether or not the search finds anyone, as before.
-  let claimed: boolean;
-  try {
-    claimed = await claimDueLeadRefresh(db, id, new Date(nowMs - AUTO_LEAD_WINDOW_MS).toISOString(), new Date(nowMs).toISOString());
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Could not start lead generation." }, { status: 500 });
+  // of a second run. The stamp is kept when generation succeeds, whether or not it finds anyone. If
+  // generation throws, the previous stamp is restored so the user can try again.
+  const run = await runClaimedLeadRefresh(
+    supabaseLeadStampStore(db),
+    {
+      projectId: id,
+      cutoffIso: new Date(nowMs - AUTO_LEAD_WINDOW_MS).toISOString(),
+      nowIso: new Date(nowMs).toISOString(),
+      previousIso: project.leads_auto_last_at,
+    },
+    () => generateAutoLeads(db, user.id, project, CREATION_LIMIT),
+  ).catch((): null => null);
+
+  if (run === null) {
+    return NextResponse.json({ error: "Lead generation failed. Try again later." }, { status: 502 });
   }
-  if (!claimed) {
+  if (run.status === "refused") {
     return NextResponse.json(
       { error: "Leads were already generated for this project in the last 24 hours. Try again later." },
       { status: 429, headers: { "Retry-After": String(retryAfterSeconds(60_000)) } },
     );
   }
 
-  const outcome = await generateAutoLeads(db, user.id, project, CREATION_LIMIT);
-
-  return NextResponse.json({ added: outcome.added, reason: outcome.reason, message: outcome.message });
+  return NextResponse.json({ added: run.value.added, reason: run.value.reason, message: run.value.message });
 }
