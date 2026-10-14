@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import type { LlmDriver, CompletionResult } from "@/lib/llm";
 import { buildWebSearchTool } from "@/lib/domain/shared/webSearchTool";
+import { safeFetch, SafeFetchError } from "../net/safeFetch.ts";
 
 export type CompetitorSnippet = {
   url: string;
@@ -33,26 +34,24 @@ const FETCH_TIMEOUT_MS = 6000;
  * the competitor is still listed with an honest "(couldn't fetch)" note
  * rather than the LLM guessing what the company does from its domain name. */
 export async function fetchCompetitorSnippet(url: string): Promise<CompetitorSnippet> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
+      timeoutMs: FETCH_TIMEOUT_MS,
       headers: { "User-Agent": "OkaraAlternative/1.0" },
-      signal: controller.signal,
+      allowedContentTypes: ["text/html", "application/xhtml+xml"],
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const html = await res.text();
-    const $ = cheerio.load(html);
+    if (res.status < 200 || res.status >= 300) throw new Error(`HTTP ${res.status}`);
+    const $ = cheerio.load(res.bodyText);
     return {
       url,
       title: $("title").text().trim() || "(no title found)",
       description: $("meta[name='description']").attr("content")?.trim() || "(no meta description found)",
     };
   } catch (e) {
-    const detail = e instanceof Error ? e.message : String(e);
+    // Only the generic guarded-fetch text (or an HTTP status) reaches the document; detail stays in logs.
+    const detail = e instanceof SafeFetchError ? e.message : e instanceof Error && e.message.startsWith("HTTP ") ? e.message : "The site could not be reached.";
+    if (e instanceof SafeFetchError) console.warn("competitor.snippet.failed", e.code);
     return { url, title: "(couldn't fetch)", description: `Crawl failed: ${detail}` };
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

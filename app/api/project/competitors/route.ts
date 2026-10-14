@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
+import { assertSafeUserUrl, INVALID_USER_URL_MESSAGE } from "@/lib/domain/net/publicUrl";
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
@@ -51,6 +52,14 @@ export async function POST(req: NextRequest) {
   }
   url = url.trim();
   if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+
+  // Rejects private, loopback and unresolvable targets at insert time (400, generic text). The
+  // competitor is later fetched with the guarded fetcher too, so this is the early, user-facing check.
+  try {
+    await assertSafeUserUrl(url);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : INVALID_USER_URL_MESSAGE }, { status: 400 });
+  }
 
   if (FEATURES.PLATFORM_MODE) {
     const supabase = await createClient();

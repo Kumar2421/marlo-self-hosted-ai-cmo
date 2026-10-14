@@ -33,7 +33,7 @@ const NOTIFY_MIN_BUDGET_MS = 2_000;
 const SOCIAL_BUDGET_MS = 15_000;
 
 /**
- * Daily Search Console snapshot for every project with GSC connected —
+ * Daily Search Console snapshot for every project with GSC connected -
  * platform-only, scheduled via vercel.json. Idempotent: a project that
  * already has today's snapshot is skipped, so extra invocations (or a rerun
  * after hitting the time budget) only do the remaining work.
@@ -50,107 +50,122 @@ export async function GET(req: NextRequest) {
   const db = createServiceClient();
   const today = isoDate(new Date());
 
-  const { data: connections, error } = await db
-    .from("integration_connections")
-    .select("project_id, user_id")
-    .eq("provider", "gsc")
-    .not("project_id", "is", null);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    const { data: connections, error } = await db
+      .from("integration_connections")
+      .select("project_id, user_id")
+      .eq("provider", "gsc")
+      .not("project_id", "is", null);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const { data: done } = await db.from("search_snapshots").select("project_id").eq("snapshot_date", today);
+    const { data: done } = await db.from("search_snapshots").select("project_id").eq("snapshot_date", today);
 
-  const due = selectDueProjects(
-    (connections ?? []).map((c) => ({ projectId: String(c.project_id), userId: String(c.user_id) })),
-    new Set((done ?? []).map((row) => String(row.project_id))),
-  );
+    const due = selectDueProjects(
+      (connections ?? []).map((c) => ({ projectId: String(c.project_id), userId: String(c.user_id) })),
+      new Set((done ?? []).map((row) => String(row.project_id))),
+    );
 
-  // Phase 1: snapshots for due projects only (resumes where the last run stopped).
-  const captured = new Set<string>();
-  const summary = await runWithBudget(
-    due,
-    async ({ projectId, userId }) => {
-      await captureProjectSnapshotPlatform(db, userId, projectId);
-      captured.add(projectId);
-    },
-    { budgetMs: BUDGET_MS },
-  );
+    // Phase 1: snapshots for due projects only (resumes where the last run stopped).
+    const captured = new Set<string>();
+    const summary = await runWithBudget(
+      due,
+      async ({ projectId, userId }) => {
+        await captureProjectSnapshotPlatform(db, userId, projectId);
+        captured.add(projectId);
+      },
+      { budgetMs: BUDGET_MS },
+    );
 
-  // Phase 2: daily proposals for projects captured in this run, plus projects snapshotted earlier today
-  // whose proposals have not finished today. Time-budgeted; the rest wait for the next run.
-  const snapshottedToday = new Set((done ?? []).map((row) => String(row.project_id)));
-  const proposalsDone = await listProposalsDone(db, today).catch(() => new Set<string>());
-  const proposalTargets = selectDueProjects(
-    (connections ?? []).map((c) => ({ projectId: String(c.project_id), userId: String(c.user_id) })),
-    proposalsDone,
-  ).filter(({ projectId }) => captured.has(projectId) || snapshottedToday.has(projectId));
-  // Freshly captured projects first, then the older backlog.
-  proposalTargets.sort((a, b) => Number(captured.has(b.projectId)) - Number(captured.has(a.projectId)) || a.projectId.localeCompare(b.projectId));
+    // Phase 2: daily proposals for projects captured in this run, plus projects snapshotted earlier today
+    // whose proposals have not finished today. Time-budgeted; the rest wait for the next run.
+    const snapshottedToday = new Set((done ?? []).map((row) => String(row.project_id)));
+    const proposalsDone = await listProposalsDone(db, today).catch(() => new Set<string>());
+    const proposalTargets = selectDueProjects(
+      (connections ?? []).map((c) => ({ projectId: String(c.project_id), userId: String(c.user_id) })),
+      proposalsDone,
+    ).filter(({ projectId }) => captured.has(projectId) || snapshottedToday.has(projectId));
+    // Freshly captured projects first, then the older backlog.
+    proposalTargets.sort((a, b) => Number(captured.has(b.projectId)) - Number(captured.has(a.projectId)) || a.projectId.localeCompare(b.projectId));
 
-  const proposalSummary = { proposed: 0, approved: 0 };
-  const proposalFailures: Array<{ projectId: string; error: string }> = [];
-  const proposalRun = await runWithBudget(
-    proposalTargets,
-    async ({ projectId, userId }) => {
-      const result = await runPlatformDailyProposals(db, userId, projectId);
-      if ("error" in result) {
-        proposalFailures.push({ projectId, error: result.error });
-        return;
+    const proposalSummary = { proposed: 0, approved: 0 };
+    const proposalFailures: Array<{ projectId: string; error: string }> = [];
+    const proposalRun = await runWithBudget(
+      proposalTargets,
+      async ({ projectId, userId }) => {
+        const result = await runPlatformDailyProposals(db, userId, projectId);
+        if ("error" in result) {
+          proposalFailures.push({ projectId, error: result.error });
+          return;
+        }
+        proposalSummary.proposed += result.proposed;
+        proposalSummary.approved += result.approved;
+        if (result.errors.length > 0) proposalFailures.push({ projectId, error: result.errors[0] });
+        else await markProposalsDone(db, userId, projectId, today);
+      },
+      { budgetMs: Math.max(0, BUDGET_MS - (Date.now() - startedAt)) },
+    );
+
+    // Phase 3: one draft per network per project for review (nothing is posted). Failures are
+    // isolated per project inside the job; this only guards the whole phase.
+    // The phase stops before the notification deadline, so the notification pass always keeps its reserved time.
+    let social: SocialDailyJobSummary | { error: string };
+    const socialBudget = socialPhaseBudgetMs(Date.now() - startedAt, NOTIFY_DEADLINE_MS, SOCIAL_BUDGET_MS);
+    if (socialBudget < NOTIFY_MIN_BUDGET_MS) {
+      social = { error: "No time left; will run tomorrow." };
+    } else {
+      try {
+        social = await runSocialDailyJob(db, supabaseNotificationStore(db), { now: new Date(), budgetMs: socialBudget });
+      } catch {
+        console.warn("[social] daily drafts job failed.");
+        social = { error: "Social drafts job failed." };
       }
-      proposalSummary.proposed += result.proposed;
-      proposalSummary.approved += result.approved;
-      if (result.errors.length > 0) proposalFailures.push({ projectId, error: result.errors[0] });
-      else await markProposalsDone(db, userId, projectId, today);
-    },
-    { budgetMs: Math.max(0, BUDGET_MS - (Date.now() - startedAt)) },
-  );
-
-  // Phase 3: one draft per network per project for review (nothing is posted). Failures are
-  // isolated per project inside the job; this only guards the whole phase.
-  // The phase stops NOTIFY_RESERVE_MS before the notification deadline, so the notification pass always keeps that time.
-  let social: SocialDailyJobSummary | { error: string };
-  const socialBudget = socialPhaseBudgetMs(Date.now() - startedAt, NOTIFY_DEADLINE_MS, SOCIAL_BUDGET_MS);
-  if (socialBudget < NOTIFY_MIN_BUDGET_MS) {
-    social = { error: "No time left; will run tomorrow." };
-  } else {
-    try {
-      social = await runSocialDailyJob(db, supabaseNotificationStore(db), { now: new Date(), budgetMs: socialBudget });
-    } catch {
-      console.warn("[social] daily drafts job failed.");
-      social = { error: "Social drafts job failed." };
     }
-  }
 
-  // Failures here never fail the snapshot run, and never carry secrets into the response.
-  let notifications: Pick<NotificationJobSummary, "users" | "skipped" | "created" | "emailed" | "emailFailed" | "interrupted"> & { failed: number } | { error: string };
-  const notifyBudget = NOTIFY_DEADLINE_MS - (Date.now() - startedAt);
-  if (notifyBudget < NOTIFY_MIN_BUDGET_MS) {
-    notifications = { error: "No time left; will run tomorrow." };
-  } else {
-    try {
-      const config = notificationConfig();
-      const result = await runNotificationJob({
-        source: platformNotificationSource(db),
-        store: supabaseNotificationStore(db),
-        sender: config.sender,
-        linksFor: (userId) => emailLinksFor(userId, config),
-        budgetMs: notifyBudget,
-        oncePerDay: true,
-        log: (message) => console.warn(`[notifications] ${message}`),
-      });
-      notifications = { users: result.users, skipped: result.skipped, created: result.created, emailed: result.emailed, emailFailed: result.emailFailed, interrupted: result.interrupted, failed: result.failed.length };
-    } catch (err) {
-      console.warn("[notifications] job failed:", err instanceof Error ? err.message : "unknown error");
-      notifications = { error: "Notification job failed." };
+
+    // Failures here never fail the snapshot run, and never carry secrets into the response.
+    let notifications: Pick<NotificationJobSummary, "users" | "skipped" | "created" | "emailed" | "emailFailed" | "interrupted"> & { failed: number } | { error: string };
+    const notifyBudget = NOTIFY_DEADLINE_MS - (Date.now() - startedAt);
+    if (notifyBudget < NOTIFY_MIN_BUDGET_MS) {
+      notifications = { error: "No time left; will run tomorrow." };
+    } else {
+      try {
+        const config = notificationConfig();
+        const result = await runNotificationJob({
+          source: platformNotificationSource(db),
+          store: supabaseNotificationStore(db),
+          sender: config.sender,
+          linksFor: (userId) => emailLinksFor(userId, config),
+          budgetMs: notifyBudget,
+          oncePerDay: true,
+          log: (message) => console.warn(`[notifications] ${message}`),
+        });
+        notifications = { users: result.users, skipped: result.skipped, created: result.created, emailed: result.emailed, emailFailed: result.emailFailed, interrupted: result.interrupted, failed: result.failed.length };
+      } catch (err) {
+        console.warn("[notifications] job failed:", err instanceof Error ? err.message : "unknown error");
+        notifications = { error: "Notification job failed." };
+      }
     }
-  }
 
-  return NextResponse.json({
-    notifications,
-    due: due.length,
-    processed: summary.processed,
-    skipped: summary.skipped,
-    failed: summary.failed.map(({ item, error: message }) => ({ projectId: item.projectId, error: message })),
-    proposals: { ...proposalSummary, processed: proposalRun.processed, skipped: proposalRun.skipped, failed: proposalFailures },
-    social,
-  });
+    return NextResponse.json({
+      notifications,
+      due: due.length,
+      processed: summary.processed,
+      skipped: summary.skipped,
+      failed: summary.failed.map(({ item, error: message }) => ({ projectId: item.projectId, error: message })),
+      proposals: { ...proposalSummary, processed: proposalRun.processed, skipped: proposalRun.skipped, failed: proposalFailures },
+      social,
+    });
+  } finally {
+    await cleanupRateLimitCounters(db);
+  }
+}
+
+/** Housekeeping for the public audit rate limiter. Never throws: a failure only logs and never changes the response. */
+async function cleanupRateLimitCounters(db: ReturnType<typeof createServiceClient>): Promise<void> {
+  try {
+    const { error: cleanupError } = await db.rpc("rate_limits_cleanup");
+    if (cleanupError) console.warn("[rate-limits] cleanup failed:", cleanupError.message);
+  } catch {
+    console.warn("[rate-limits] cleanup failed");
+  }
 }

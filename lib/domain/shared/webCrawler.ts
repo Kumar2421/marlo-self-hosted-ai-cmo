@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { safeFetch } from "../net/safeFetch.ts";
 
 export type CrawledContent = {
   title: string;
@@ -15,23 +16,18 @@ export type CrawledContent = {
  */
 export async function crawlCompetitorSite(url: string, timeoutMs: number = 10000): Promise<CrawledContent | null> {
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-    const res = await fetch(url, {
+    // Competitor URLs are user-supplied: guarded fetch (pinned DNS, per-hop checks, deadline, byte cap).
+    const res = await safeFetch(url, {
+      timeoutMs,
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
-      signal: controller.signal,
     });
 
-    clearTimeout(timeout);
+    if (res.status < 200 || res.status >= 300) return null;
 
-    if (!res.ok) return null;
-
-    const html = await res.text();
-    const $ = cheerio.load(html);
+    const $ = cheerio.load(res.bodyText);
 
     // Extract meta title & description
     const title = $("title").text().trim() || $("meta[property='og:title']").attr("content") || "";
