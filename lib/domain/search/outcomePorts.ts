@@ -27,8 +27,8 @@ export function platformOutcomePorts(db: SupabaseClient, userId: string, project
       const latest = await getLatestSnapshotSupabase(db, userId, projectId);
       return latest ? { snapshotDate: latest.snapshotDate, payload: latest.payload } : null;
     },
-    getSnapshotOnOrBefore: async (date) => {
-      const found = await getSnapshotOnOrBeforeSupabase(db, userId, projectId, date);
+    getSnapshotOnOrBefore: async (at) => {
+      const found = await getSnapshotOnOrBeforeSupabase(db, userId, projectId, at);
       return found ? { snapshotDate: found.snapshotDate, payload: found.payload } : null;
     },
     completeAction: (id, result) => transitionActionSupabase(db, userId, projectId, id, "completed", result),
@@ -52,8 +52,8 @@ export function selfHostOutcomePorts(projectId: string, projectUrl: string | nul
       const latest = getLatestSnapshot(getDb(), projectId);
       return latest ? { snapshotDate: latest.snapshotDate, payload: latest.payload } : null;
     },
-    getSnapshotOnOrBefore: async (date) => {
-      const found = getSnapshotOnOrBefore(getDb(), projectId, date);
+    getSnapshotOnOrBefore: async (at) => {
+      const found = getSnapshotOnOrBefore(getDb(), projectId, at);
       return found ? { snapshotDate: found.snapshotDate, payload: found.payload } : null;
     },
     completeAction: async (id, result) => transitionAction(projectId, id, "completed", result),

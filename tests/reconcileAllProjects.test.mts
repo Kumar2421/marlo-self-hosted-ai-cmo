@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { reconcileAllProjects, rotateForDay, type LinkedProject, type ReconcileAllPorts } from "../lib/domain/fixes/reconcileAllProjects.ts";
+import { reconcileAllProjects, rotateForDay, tokenForPendingPullRequests, type LinkedProject, type ReconcileAllPorts } from "../lib/domain/fixes/reconcileAllProjects.ts";
 import { fixDeliveryFake } from "../lib/domain/fixes/fixDeliveryFake.ts";
 import type { OutcomePorts } from "../lib/domain/search/outcomeService.ts";
 import type { Action } from "../lib/domain/actions/actionTypes.ts";
@@ -105,4 +105,29 @@ test("rotation starts at a different project each day, and keeps every project",
   assert.deepEqual(rotateForDay(["a", "b", "c"], 1), ["b", "c", "a"]);
   assert.deepEqual(rotateForDay(["a", "b", "c"], 5), ["c", "a", "b"]);
   assert.deepEqual(rotateForDay([], 3), []);
+});
+
+test("a project whose storage call never answers uses up the budget and the sweep still ends on time", async () => {
+  const f = fleet();
+  f.ports.actionsFor = () => new Promise(() => {});
+  const started = Date.now();
+  const summary = await reconcileAllProjects(f.ports, { budgetMs: 300 });
+
+  assert.ok(Date.now() - started < 3000, "the cron run is not held open by the hung call");
+  assert.equal(summary.processed, 0);
+  assert.equal(summary.failedProjects.length, 1, "the project that hung is reported generically");
+  assert.equal(summary.interrupted, true, "the remaining projects are left for the next run");
+});
+
+test("a GitHub token is minted only when a linked pull request is still pending", async () => {
+  let minted = 0;
+  const mint = async () => { minted += 1; return "installation-token"; };
+  const pending = makeAction("a1", "https://github.com/o/r/pull/1");
+  const done = makeAction("a2", "https://github.com/o/r/pull/2", "completed");
+  const unlinked = makeAction("a3", null);
+
+  assert.equal(await tokenForPendingPullRequests([done, unlinked], mint), null);
+  assert.equal(minted, 0, "nothing pending: no token minted");
+  assert.equal(await tokenForPendingPullRequests([done, pending], mint), "installation-token");
+  assert.equal(minted, 1);
 });

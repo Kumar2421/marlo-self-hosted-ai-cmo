@@ -2,6 +2,8 @@ import type { FixDeliveryPort, PRInfo } from "./FixDelivery.ts";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const API_VERSION = "2022-11-28";
+/** A slow GitHub must not hold a cron run or a page request open; a timeout is "unknown", like any other failure. */
+const GITHUB_TIMEOUT_MS = 5000;
 
 function headers(token: string): HeadersInit {
   return {
@@ -47,7 +49,7 @@ export function fixDeliveryGithub(githubToken: string): FixDeliveryPort {
       try {
         const res = await fetch(
           `${GITHUB_API_BASE}/repos/${parsed.owner}/${parsed.repo}/pulls/${parsed.number}`,
-          { headers: headers(githubToken) }
+          { headers: headers(githubToken), signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS) }
         );
 
         if (!res.ok) {

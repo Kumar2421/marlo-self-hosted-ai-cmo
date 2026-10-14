@@ -52,3 +52,32 @@ test("a URL that is not a GitHub pull request is unknown and makes no request", 
   assert.deepEqual(result, { state: "unknown" });
   assert.equal(called, false);
 });
+
+test("a GitHub call that hangs is cut off by a timeout and reported unknown, never closed", async () => {
+  const originalTimeout = AbortSignal.timeout;
+  const originalFetch = globalThis.fetch;
+  const requested: number[] = [];
+  let signalSeen: AbortSignal | undefined;
+  // Stand-in for the timeout: aborts after 20ms instead of 5s. A ref'd timer keeps the test alive while it waits.
+  AbortSignal.timeout = ((ms: number) => {
+    requested.push(ms);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(new Error("timed out")), 20);
+    return controller.signal;
+  }) as typeof AbortSignal.timeout;
+  // A fetch that never answers on its own; it only ends when the request's signal aborts.
+  globalThis.fetch = ((_url: string | URL | Request, init?: RequestInit) => {
+    signalSeen = init?.signal ?? undefined;
+    return new Promise<Response>((_, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+    });
+  }) as typeof fetch;
+  try {
+    assert.deepEqual(await fixDeliveryGithub("token-for-test").status(PR), { state: "unknown" });
+    assert.deepEqual(requested, [5000], "the request is bounded by a 5 second timeout");
+    assert.ok(signalSeen?.aborted, "the request was actually aborted");
+  } finally {
+    AbortSignal.timeout = originalTimeout;
+    globalThis.fetch = originalFetch;
+  }
+});

@@ -34,15 +34,18 @@ export async function getLatestSnapshot(db: SupabaseClient, userId: string, proj
   return { snapshotDate: String(data.snapshot_date), capturedAt: String(data.captured_at), payload: data.payload as SearchSnapshotPayload };
 }
 
-/** The newest snapshot dated on or before `date` (YYYY-MM-DD): the state at a past moment, e.g. a merge. */
-export async function getSnapshotOnOrBefore(db: SupabaseClient, userId: string, projectId: string, date: string): Promise<StoredSnapshot | null> {
+/**
+ * The newest snapshot captured at or before `at` (ISO timestamp): the state at a past moment, e.g. a merge.
+ * Compared by capture time, not day, so a snapshot taken later the same day is never the "before" state.
+ */
+export async function getSnapshotOnOrBefore(db: SupabaseClient, userId: string, projectId: string, at: string): Promise<StoredSnapshot | null> {
   const { data, error } = await db
     .from("search_snapshots")
     .select("snapshot_date, captured_at, payload")
     .eq("project_id", projectId)
     .eq("user_id", userId)
-    .lte("snapshot_date", date)
-    .order("snapshot_date", { ascending: false })
+    .lte("captured_at", at)
+    .order("captured_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(`Could not load search snapshot: ${error.message}`);

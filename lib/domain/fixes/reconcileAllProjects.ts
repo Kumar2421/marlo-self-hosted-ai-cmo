@@ -3,6 +3,7 @@ import type { OutcomePorts } from "../search/outcomeService.ts";
 import type { FixDeliveryPort } from "./FixDelivery.ts";
 import { pullRequestUrlOf } from "./linkPullRequest.ts";
 import { reconcileFixPullRequests } from "./reconcileFixPullRequests.ts";
+import { withDeadline } from "./withDeadline.ts";
 
 /**
  * Daily sweep over every project with a GitHub App link, so a merged PR is noticed even when nobody
@@ -45,6 +46,14 @@ export function hasPendingPullRequest(action: Action): boolean {
   return (action.status === "proposed" || action.status === "approved") && pullRequestUrlOf(action.result) !== null;
 }
 
+/**
+ * Mint the GitHub token only when a linked pull request is actually pending. Minting is the costly step, so a
+ * page load or cron run with nothing to check must not do it.
+ */
+export async function tokenForPendingPullRequests<T>(actions: Action[], mint: () => Promise<T | null>): Promise<T | null> {
+  return actions.some(hasPendingPullRequest) ? mint() : null;
+}
+
 /** Stable order first, then a different starting project each day, so a short budget never favours the same projects. */
 export function rotateForDay<T>(items: T[], dayIndex: number): T[] {
   if (items.length === 0) return [];
@@ -58,7 +67,8 @@ export async function reconcileAllProjects(
 ): Promise<ReconcileAllSummary> {
   const now = options.now ?? Date.now;
   const deadline = now() + options.budgetMs;
-  const linkedAll = await ports.linkedProjects();
+  const remaining = () => deadline - now();
+  const linkedAll = await withDeadline(() => ports.linkedProjects(), options.budgetMs);
   const sorted = [...linkedAll].sort((a, b) => a.projectId.localeCompare(b.projectId) || a.userId.localeCompare(b.userId));
   const ordered = rotateForDay(sorted, Math.floor(now() / DAY_MS));
 
@@ -74,25 +84,25 @@ export async function reconcileAllProjects(
   };
 
   for (let index = 0; index < ordered.length; index += 1) {
-    if (now() >= deadline) {
+    if (remaining() <= 0) {
       summary.interrupted = true;
       summary.skipped += ordered.length - index;
       break;
     }
     const project = ordered[index];
     try {
-      const actions = await ports.actionsFor(project);
+      const actions = await withDeadline(() => ports.actionsFor(project), remaining());
       if (!actions.some(hasPendingPullRequest)) {
         summary.skipped += 1;
         continue;
       }
-      const inputs = await ports.inputsFor(project);
+      const inputs = await withDeadline(() => ports.inputsFor(project), remaining());
       if (!inputs) {
         summary.skipped += 1;
         continue;
       }
       summary.processed += 1;
-      const outcome = await reconcileFixPullRequests(inputs.ports, inputs.fixDelivery, actions, new Date(now()));
+      const outcome = await reconcileFixPullRequests(inputs.ports, inputs.fixDelivery, actions, new Date(now()), { remainingMs: remaining });
       summary.implemented += outcome.implemented;
       summary.closed += outcome.closed;
       summary.failedActions += outcome.failed.length;

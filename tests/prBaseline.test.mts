@@ -37,10 +37,10 @@ function makeAction(result: Record<string, unknown> | null = null): Action {
 
 const fp = (title: string): PageFingerprint => ({ title, description: "d", h1: "h" });
 
-type Snap = { snapshotDate: string; payload: SearchSnapshotPayload };
+type Snap = { snapshotDate: string; capturedAt: string; payload: SearchSnapshotPayload };
 
 function harness(opts: { action?: Action; snapshots?: Snap[]; onOrBefore?: boolean; fingerprints?: Array<PageFingerprint | null> } = {}) {
-  const state = { action: opts.action ?? makeAction(), fetched: [] as string[], datesAsked: [] as string[] };
+  const state = { action: opts.action ?? makeAction(), fetched: [] as string[], timesAsked: [] as string[] };
   const snaps = opts.snapshots ?? [];
   const queue = [...(opts.fingerprints ?? [])];
   const ports: OutcomePorts = {
@@ -51,9 +51,9 @@ function harness(opts: { action?: Action; snapshots?: Snap[]; onOrBefore?: boole
     ...(opts.onOrBefore === false
       ? {}
       : {
-          getSnapshotOnOrBefore: async (date: string) => {
-            state.datesAsked.push(date);
-            return [...snaps].reverse().find((s) => s.snapshotDate <= date) ?? null;
+          getSnapshotOnOrBefore: async (at: string) => {
+            state.timesAsked.push(at);
+            return [...snaps].sort((a, b) => b.capturedAt.localeCompare(a.capturedAt)).find((s) => s.capturedAt <= at) ?? null;
           },
         }),
     completeAction: async (_id, result) => (state.action = { ...state.action, status: "completed", result, completedAt: "now" }),
@@ -67,11 +67,14 @@ function harness(opts: { action?: Action; snapshots?: Snap[]; onOrBefore?: boole
 
 test("merge noticed 9 days late: the baseline is the snapshot from the merge day, not the newest one", async () => {
   const h = harness({
-    snapshots: [{ snapshotDate: "2026-10-01", payload: payload(11) }, { snapshotDate: "2026-10-10", payload: payload(4) }],
+    snapshots: [
+      { snapshotDate: "2026-10-01", capturedAt: "2026-09-30T06:00:00.000Z", payload: payload(11) },
+      { snapshotDate: "2026-10-10", capturedAt: "2026-10-10T06:00:00.000Z", payload: payload(4) },
+    ],
   });
   const res = await implementAction(h.ports, { actionId: "a1", via: "github_pr", change: { prUrl: PR }, now: T0 });
   assert.equal(res.ok, true);
-  assert.deepEqual(h.state.datesAsked, ["2026-10-01"]);
+  assert.deepEqual(h.state.timesAsked, [T0.toISOString()], "asked for the merge moment, not the day");
   const baseline = implementationOf(h.state.action.result)!.baseline!;
   assert.equal(baseline.position, 11, "pre-merge position, not the post-merge 4");
   assert.equal(baseline.snapshotDate, "2026-10-01");
@@ -80,7 +83,7 @@ test("merge noticed 9 days late: the baseline is the snapshot from the merge day
 });
 
 test("no snapshot on or before the merge: fall back to the latest, flag it approximate, and never save that verdict", async () => {
-  const h = harness({ snapshots: [{ snapshotDate: "2026-10-10", payload: payload(4) }] });
+  const h = harness({ snapshots: [{ snapshotDate: "2026-10-10", capturedAt: "2026-10-10T06:00:00.000Z", payload: payload(4) }] });
   await implementAction(h.ports, { actionId: "a1", via: "github_pr", change: { prUrl: PR }, now: T0 });
   const implementation = implementationOf(h.state.action.result)!;
   assert.equal(implementation.baseline?.source, "latest_snapshot");
@@ -99,9 +102,14 @@ test("no snapshot on or before the merge: fall back to the latest, flag it appro
 });
 
 test("manual flow is unchanged: a change reported now uses the latest snapshot and asks for no earlier one", async () => {
-  const h = harness({ snapshots: [{ snapshotDate: "2026-10-01", payload: payload(11) }, { snapshotDate: "2026-10-10", payload: payload(9) }] });
+  const h = harness({
+    snapshots: [
+      { snapshotDate: "2026-10-01", capturedAt: "2026-09-30T06:00:00.000Z", payload: payload(11) },
+      { snapshotDate: "2026-10-10", capturedAt: "2026-10-10T06:00:00.000Z", payload: payload(9) },
+    ],
+  });
   await implementAction(h.ports, { actionId: "a1", now: new Date() });
-  assert.deepEqual(h.state.datesAsked, []);
+  assert.deepEqual(h.state.timesAsked, []);
   const baseline = implementationOf(h.state.action.result)!.baseline!;
   assert.equal(baseline.snapshotDate, "2026-10-10");
   assert.equal(baseline.source, "snapshot");
@@ -116,11 +124,47 @@ test("a merged PR uses the 'before' page recorded when the PR was opened, not a 
   assert.equal(implementationOf(h.state.action.result)?.pageBefore?.title, "Before the merge");
 });
 
-test("a PR linked before the before-page was recorded falls back to a live fetch", async () => {
-  const h = harness({ action: makeAction({ pullRequest: { url: PR } }), fingerprints: [fp("Live")] });
+test("a PR linked before the before-page was recorded is compared to nothing: the merged page is never fetched as before", async () => {
+  const h = harness({ action: makeAction({ pullRequest: { url: PR } }), fingerprints: [fp("Merged page")] });
   await implementAction(h.ports, { actionId: "a1", via: "github_pr", change: { prUrl: PR }, now: T0 });
-  assert.equal(h.state.fetched.length, 1);
-  assert.equal(implementationOf(h.state.action.result)?.pageBefore?.title, "Live");
+  assert.deepEqual(h.state.fetched, [], "no live fetch for a merged PR");
+  assert.equal(implementationOf(h.state.action.result)?.pageBefore, undefined);
+  assert.equal(h.state.action.status, "completed");
+});
+
+test("a snapshot captured the same day but after the merge is never the exact baseline, and its verdict is not final", async () => {
+  // Merged at 00:00 UTC on 2026-10-01; the only snapshot is from later that same day.
+  const h = harness({
+    snapshots: [{ snapshotDate: "2026-10-01", capturedAt: "2026-10-01T09:00:00.000Z", payload: payload(4) }],
+  });
+  await implementAction(h.ports, { actionId: "a1", via: "github_pr", change: { prUrl: PR }, now: T0 });
+  assert.deepEqual(h.state.timesAsked, [T0.toISOString()]);
+  const baseline = implementationOf(h.state.action.result)!.baseline!;
+  assert.equal(baseline.source, "latest_snapshot", "not an exact match on or before the merge");
+  assert.equal(baseline.approximate, true);
+
+  const outcome = outcomeForAction({
+    action: { type: "improve_content_relevance", result: h.state.action.result as Record<string, unknown> },
+    finding: makeFinding(),
+    snapshot: { snapshotDate: "2026-10-01", payload: payload(4) },
+    now: new Date(T0.getTime() + 20 * DAY),
+  });
+  assert.ok(outcome);
+  assert.equal(shouldSaveOutcome(outcome), false, "a late, approximate verdict is never saved as final");
+});
+
+test("a same-day snapshot captured before the merge is the exact baseline", async () => {
+  const h = harness({
+    snapshots: [
+      { snapshotDate: "2026-10-01", capturedAt: "2026-09-30T23:59:00.000Z", payload: payload(11) },
+      { snapshotDate: "2026-10-01", capturedAt: "2026-10-01T00:30:00.000Z", payload: payload(4) },
+    ],
+  });
+  await implementAction(h.ports, { actionId: "a1", via: "github_pr", change: { prUrl: PR }, now: T0 });
+  const baseline = implementationOf(h.state.action.result)!.baseline!;
+  assert.equal(baseline.position, 11, "the snapshot taken before the merge, not the one after it");
+  assert.equal(baseline.source, "snapshot");
+  assert.equal(baseline.approximate, undefined);
 });
 
 test("a PR whose before-page could not be read is recorded as no comparison, never the merged page", async () => {
