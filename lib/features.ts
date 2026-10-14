@@ -9,6 +9,7 @@ export type PlatformModeEnv = {
   NEXT_PUBLIC_SUPABASE_URL?: string;
   NEXT_PUBLIC_SUPABASE_ANON_KEY?: string;
   VERCEL?: string;
+  /** Not read by resolvePlatformMode; accepted so callers can pass a full env object. */
   NODE_ENV?: string;
 };
 
@@ -16,17 +17,18 @@ export type PlatformModeEnv = {
  * Pure platform-mode decision (see FEATURES.PLATFORM_MODE for the rules).
  * Takes an explicit env object so it can be tested without touching process.env.
  *
- * Default-deny for hosted builds: on Vercel or in a production build, a
+ * Default-deny for Vercel: Vercel sets VERCEL at build and at runtime, so a
  * deployment that sets neither NEXT_PUBLIC_PLATFORM_MODE nor
  * NEXT_PUBLIC_SELF_HOST is treated as platform mode. Missing Supabase config
  * then fails closed (proxy.ts answers 503) instead of silently running the
- * unauthenticated self-host app.
+ * unauthenticated self-host app. NODE_ENV is deliberately not used: Next sets
+ * it to "production" on every build and start, self-host builds included.
  */
 export function resolvePlatformMode(env: PlatformModeEnv): boolean {
   if (env.NEXT_PUBLIC_PLATFORM_MODE === "true") return true;
   if (env.NEXT_PUBLIC_SELF_HOST === "true") return false;
-  const hostedBuild = Boolean(env.VERCEL) || env.NODE_ENV === "production";
-  if (hostedBuild && env.NEXT_PUBLIC_PLATFORM_MODE === undefined) return true;
+  const onVercel = Boolean(env.VERCEL);
+  if (onVercel && env.NEXT_PUBLIC_PLATFORM_MODE === undefined) return true;
   const hasSupabasePlatformConfig = Boolean(env.NEXT_PUBLIC_SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
   return hasSupabasePlatformConfig;
 }
@@ -39,7 +41,6 @@ const platformModeEnv: PlatformModeEnv = {
   NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   VERCEL: process.env.VERCEL,
-  NODE_ENV: process.env.NODE_ENV,
 };
 
 export const FEATURES = {
@@ -57,8 +58,8 @@ export const FEATURES = {
    *
    * An explicit NEXT_PUBLIC_PLATFORM_MODE=true still enables platform mode,
    * while configured public Supabase credentials enable it automatically
-   * unless NEXT_PUBLIC_SELF_HOST=true is set. On Vercel / production builds
-   * with neither flag set, platform mode is the default (fail closed). Server
+   * unless NEXT_PUBLIC_SELF_HOST=true is set. On Vercel with neither flag set,
+   * platform mode is the default (fail closed). Server
    * routes still require SUPABASE_SECRET_KEY when they create the service-role
    * client.
    */
