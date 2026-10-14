@@ -24,18 +24,8 @@ import { useProject } from "@/lib/project-store";
 import { useAuthUser } from "@/lib/useAuthUser";
 import { useToast } from "./Toast";
 import NotificationBell from "./notifications/NotificationBell";
-
-function useClickOutside(onOutside: () => void) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onOutside();
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [onOutside]);
-  return ref;
-}
+import SocialNavMenu from "./social/SocialNavMenu";
+import { useClickOutside } from "./useClickOutside";
 
 function useCredits() {
   const [balance, setBalance] = useState<number | null>(null);
@@ -379,6 +369,7 @@ export default function TerminalLog() {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            <SocialNavMenu />
             <NotificationBell />
             <UserMenu />
           </div>

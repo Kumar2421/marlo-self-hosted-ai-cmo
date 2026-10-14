@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/query/fetchJson";
 import { qk } from "@/lib/query/keys";
 import type { NotificationKind } from "@/lib/domain/notifications/types";
+import type { SocialNavTarget } from "@/lib/domain/social/socialNav";
 
 export type ClientNotification = {
   id: string;
@@ -13,6 +14,8 @@ export type ClientNotification = {
   body: string;
   createdAt: string;
   read: boolean;
+  /** Set when clicking the notification should open a social draft panel. */
+  nav?: SocialNavTarget | null;
 };
 
 type ListResponse = { unreadCount: number; notifications: ClientNotification[] };

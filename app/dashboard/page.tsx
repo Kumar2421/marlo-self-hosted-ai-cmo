@@ -13,6 +13,7 @@ import MobileTabBar, { type MobileTab } from "@/components/dashboard/MobileTabBa
 import Loading from "../loading";
 import { DashboardDataProvider, useDashboardData } from "@/lib/dashboard-data";
 import OnboardingModal from "@/components/dashboard/OnboardingModal";
+import { SocialPanelProvider } from "@/components/dashboard/social/SocialPanelProvider";
 
 const RAIL = "56px";
 
@@ -83,6 +84,7 @@ export default function DashboardPage() {
   if (isMobile) {
     return (
       <DashboardDataProvider>
+        <SocialPanelProvider>
         <OnboardingGate>
           <div className="flex h-dvh flex-col bg-white">
             <TerminalLog />
@@ -99,12 +101,14 @@ export default function DashboardPage() {
             <MobileTabBar active={mobileTab} onChange={setMobileTab} />
           </div>
         </OnboardingGate>
+        </SocialPanelProvider>
       </DashboardDataProvider>
     );
   }
 
   return (
     <DashboardDataProvider>
+      <SocialPanelProvider>
       <OnboardingGate>
         <div className="flex h-dvh flex-col bg-white">
           <TerminalLog />
@@ -118,6 +122,7 @@ export default function DashboardPage() {
           </div>
         </div>
       </OnboardingGate>
+      </SocialPanelProvider>
     </DashboardDataProvider>
   );
 }
