@@ -2,6 +2,7 @@ import * as cheerio from "cheerio";
 import { assertPublicHttpUrl } from "@/lib/domain/seo/SEOAgent";
 import { jinaRead } from "@/lib/domain/shared/jinaReader";
 import type { PageSpeedResult } from "@/lib/domain/seo/pageSpeedInsights";
+import { safeFetch } from "../net/safeFetch.ts";
 
 export type CrawledPage = {
   url: string;
@@ -57,20 +58,16 @@ const MAX_PAGES = 8;
 const SKIP_PATH_PATTERNS = [/\/(login|signup|sign-in|sign-up|logout)\/?($|[?#])/i];
 
 async function cheapFetchPage(url: string): Promise<{ title: string; content: string } | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), PAGE_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { headers: { "User-Agent": "OkaraAlternative/1.0" }, signal: controller.signal });
-    if (!res.ok) return null;
-    const html = await res.text();
-    const $ = cheerio.load(html);
+    // Pages are linked from the audited site, so they are untrusted targets: guarded fetch.
+    const res = await safeFetch(url, { timeoutMs: PAGE_TIMEOUT_MS, headers: { "User-Agent": "OkaraAlternative/1.0" } });
+    if (res.status < 200 || res.status >= 300) return null;
+    const $ = cheerio.load(res.bodyText);
     $("script, style, noscript").remove();
     const content = $("body").text().replace(/\s+/g, " ").trim();
     return { title: $("title").text() || "", content };
   } catch {
     return null;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCachedFavicon } from "@/lib/domain/shared/faviconFetch";
-
 export function WebsiteIcon({ url, size = 8 }: { url: string; size?: number }) {
   const [favicon, setFavicon] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -10,8 +8,15 @@ export function WebsiteIcon({ url, size = 8 }: { url: string; size?: number }) {
   useEffect(() => {
     let mounted = true;
 
+    // Resolved on the server (guarded fetch): the browser never fetches the user-supplied site.
     async function load() {
-      const fav = await getCachedFavicon(url);
+      let fav: string | null = null;
+      try {
+        const res = await fetch(`/api/favicon?url=${encodeURIComponent(url)}`);
+        if (res.ok) fav = ((await res.json()) as { favicon?: string | null }).favicon ?? null;
+      } catch {
+        fav = null;
+      }
       if (mounted) {
         setFavicon(fav);
         setLoading(false);

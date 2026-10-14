@@ -4,6 +4,7 @@ import { LeadsAgent } from "@/lib/domain/leads/LeadsAgent";
 import { isConfirmed, pickSearch } from "@/lib/domain/leads/leadProfile";
 import { getLeadProfile } from "@/lib/domain/leads/leadProfileStoreSupabase";
 import { verifyMissingEmails } from "@/lib/domain/leads/verifyMissingEmails";
+import { createLeadDedupe } from "./leadDedupe.ts";
 import { PLATFORM_PROVIDER_KEYS, PLATFORM_DEFAULT_MODELS } from "@/lib/llm/platformKeys";
 
 // Free tier always runs on the platform's own key/model, never a user's BYOK
@@ -80,20 +81,17 @@ export async function generateAutoLeads(
   }
   if (leads.length === 0) return nothing("none_found", runTarget);
 
-  // Dedup against every lead already saved for this project -- by email
-  // where we have one, else by name+company. Manual search has no dedup at
-  // all today (a pre-existing gap, out of scope here), but a feature that
-  // re-runs itself daily absolutely cannot skip this or the same handful of
-  // people would get re-added every day forever.
-  const { data: existingRows } = await db.from("leads").select("email, name, company").eq("project_id", project.id);
-  const existingEmails = new Set(
-    (existingRows ?? []).map((r) => r.email?.toLowerCase().trim()).filter((v): v is string => !!v)
-  );
-  const existingNameCompany = new Set(
-    (existingRows ?? [])
-      .filter((r) => r.name && r.company)
-      .map((r) => `${r.name!.toLowerCase().trim()}|${r.company!.toLowerCase().trim()}`)
-  );
+  // Dedup against every lead already saved for this project: by email, by
+  // source page, by name+company, and by name+title when the company is empty
+  // (leads often arrive without one). Manual search has no dedup at all today
+  // (a pre-existing gap, out of scope here), but a feature that re-runs itself
+  // daily absolutely cannot skip this or the same handful of people would get
+  // re-added every day forever.
+  const { data: existingRows } = await db
+    .from("leads")
+    .select("email, name, company, title, source_url")
+    .eq("project_id", project.id);
+  const dedupe = createLeadDedupe(existingRows ?? []);
 
   const verifiedEmails = await verifyMissingEmails(leads);
   const now = new Date().toISOString();
@@ -104,10 +102,9 @@ export async function generateAutoLeads(
     const lead = leads[i];
     const verifiedEmail = verifiedEmails.get(i);
     const email = lead.email ?? verifiedEmail ?? null;
-    const nameCompanyKey = `${lead.name.toLowerCase().trim()}|${lead.company.toLowerCase().trim()}`;
+    const identity = { name: lead.name, company: lead.company, title: lead.title, email, sourceUrl: lead.sourceUrl };
 
-    if (email && existingEmails.has(email.toLowerCase().trim())) continue;
-    if (existingNameCompany.has(nameCompanyKey)) continue;
+    if (dedupe.isDuplicate(identity)) continue;
 
     rows.push({
       user_id: userId,
@@ -125,8 +122,7 @@ export async function generateAutoLeads(
     });
     // Reserve this row's own identity so a duplicate later in the same
     // batch doesn't also get inserted.
-    if (email) existingEmails.add(email.toLowerCase().trim());
-    existingNameCompany.add(nameCompanyKey);
+    dedupe.reserve(identity);
   }
 
   if (rows.length === 0) return nothing("all_duplicates", runTarget);

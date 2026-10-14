@@ -7,6 +7,7 @@ import {
 import { hashCmsChanges, issueCmsTicket, redeemCmsTicket, reviseCmsTicket } from "../lib/domain/cms/cmsTicket.ts";
 import { buildCmsCopyPrompt, parseModelJson, prepareCmsFix } from "../lib/domain/cms/cmsFixService.ts";
 import { assertPublicCmsUrl, cmsFetch } from "../lib/domain/cms/cmsFetch.ts";
+import { fakeFetch } from "./support/cmsTransport.mts";
 import { WordPressPublisher } from "../lib/domain/cms/wordpressPublisher.ts";
 import { WebflowPublisher, listWebflowSites } from "../lib/domain/cms/webflowPublisher.ts";
 import type { TicketClaimPort } from "../lib/domain/codefix/ticket.ts";
@@ -23,17 +24,6 @@ function guard(raw: string): URL {
 }
 const assertUrl = (u: string) => void assertPublicCmsUrl(u, guard);
 
-type Call = { url: string; method: string; headers: Record<string, string>; body?: string };
-function fakeFetch(routes: (c: Call) => { status?: number; body?: unknown; headers?: Record<string, string> } | undefined) {
-  const calls: Call[] = [];
-  const impl = (async (url: string, init: RequestInit = {}) => {
-    const call: Call = { url: String(url), method: init.method ?? "GET", headers: (init.headers ?? {}) as Record<string, string>, body: init.body as string | undefined };
-    calls.push(call);
-    const r = routes(call) ?? { status: 404, body: {} };
-    return new Response(JSON.stringify(r.body ?? {}), { status: r.status ?? 200, headers: r.headers });
-  }) as unknown as typeof fetch;
-  return { calls, impl };
-}
 
 const finding = (entityId: string, source = "seo-audit") => ({ source, entityId, entityType: "page", evidence: {} });
 
@@ -155,25 +145,25 @@ test("ticket: revise re-signs an edit once, and the old ticket is spent", async 
 test("ssrf: private, loopback, link-local and non-http addresses are rejected before any request", async () => {
   for (const u of ["http://localhost/x", "http://127.0.0.1/x", "http://10.0.0.5/x", "http://192.168.1.1/x", "http://169.254.169.254/latest", "http://[::1]/x", "http://[fd00::1]/x", "ftp://example.com/x", "http://100.64.0.1/x"]) {
     const f = fakeFetch(() => ({ body: {} }));
-    await assert.rejects(cmsFetch(u, {}, { assertUrl, fetchImpl: f.impl }), CmsError, u);
+    await assert.rejects(cmsFetch(u, {}, { assertUrl, ...f.net }), CmsError, u);
     assert.equal(f.calls.length, 0, u);
   }
 });
 
 test("ssrf: redirects are capped, re-checked and never leave the host", async () => {
   const loop = fakeFetch((c) => ({ status: 302, headers: { location: c.url + "x" } }));
-  await assert.rejects(cmsFetch("https://example.com/a", {}, { assertUrl, fetchImpl: loop.impl }), /too many/);
+  await assert.rejects(cmsFetch("https://example.com/a", {}, { assertUrl, ...loop.net }), /too many/);
   assert.equal(loop.calls.length, 4);
   const toPrivate = fakeFetch(() => ({ status: 302, headers: { location: "http://169.254.169.254/" } }));
-  await assert.rejects(cmsFetch("https://example.com/a", {}, { assertUrl, fetchImpl: toPrivate.impl }), /different host/);
+  await assert.rejects(cmsFetch("https://example.com/a", {}, { assertUrl, ...toPrivate.net }), /different host/);
   const toOther = fakeFetch(() => ({ status: 302, headers: { location: "https://attacker.example/" } }));
-  await assert.rejects(cmsFetch("https://example.com/a", { headers: { Authorization: "Basic abc" } }, { assertUrl, fetchImpl: toOther.impl }), /different host/);
+  await assert.rejects(cmsFetch("https://example.com/a", { headers: { Authorization: "Basic abc" } }, { assertUrl, ...toOther.net }), /different host/);
   assert.equal(toOther.calls.length, 1, "credentials never sent to the other host");
   const sameHost = fakeFetch((c) => (c.url.startsWith("http:") ? { status: 301, headers: { location: "https://example.com/a" } } : { body: { ok: 1 } }));
-  const ok = await cmsFetch("http://example.com/a", {}, { assertUrl, fetchImpl: sameHost.impl });
+  const ok = await cmsFetch("http://example.com/a", {}, { assertUrl, ...sameHost.net });
   assert.equal(ok.ok, true);
   const write = fakeFetch(() => ({ status: 302, headers: { location: "https://example.com/b" } }));
-  await assert.rejects(cmsFetch("https://example.com/a", { method: "POST", body: "{}" }, { assertUrl, fetchImpl: write.impl }), /redirected a write/);
+  await assert.rejects(cmsFetch("https://example.com/a", { method: "POST", body: "{}" }, { assertUrl, ...write.net }), /redirected a write/);
 });
 
 // ---------- WordPress ----------
@@ -194,7 +184,7 @@ function wpRoutes(rec: unknown = WP_RECORD) {
     return undefined;
   });
 }
-const wp = (f: ReturnType<typeof fakeFetch>) => new WordPressPublisher({ baseUrl: "https://example.com", credentials: "bob:app pass" }, { assertUrl, fetchImpl: f.impl });
+const wp = (f: ReturnType<typeof fakeFetch>) => new WordPressPublisher({ baseUrl: "https://example.com", credentials: "bob:app pass" }, { assertUrl, ...f.net });
 
 test("wordpress: locate by slug, preview before/after, supported SEO fields via Yoast meta, alt text via media id", async () => {
   const f = wpRoutes();
@@ -246,10 +236,10 @@ test("wordpress: forged targets, other hosts and bad credentials are refused; th
   await assert.rejects(p.locate("https://other.com/about"), /isn't on your connected/);
   assert.equal(await p.locate("https://example.com/"), null);
   await assert.rejects(p.apply({ ...it, id: "7; DROP" }, [{ field: "title", before: "", after: "x" }]), /isn't valid/);
-  const bad = new WordPressPublisher({ baseUrl: "https://example.com", credentials: "bob:secretpw" }, { assertUrl, fetchImpl: fakeFetch(() => ({ status: 401 })).impl });
+  const bad = new WordPressPublisher({ baseUrl: "https://example.com", credentials: "bob:secretpw" }, { assertUrl, ...fakeFetch(() => ({ status: 401 })).net });
   await assert.rejects(bad.locate("https://example.com/about"), (e: Error) => /rejected the saved credentials/.test(e.message) && !e.message.includes("secretpw"));
   assert.ok(f.calls.every((c) => !c.url.includes("app%20pass") && !c.url.includes("app pass")));
-  const priv = new WordPressPublisher({ baseUrl: "http://10.0.0.1", credentials: "a:b" }, { assertUrl, fetchImpl: f.impl });
+  const priv = new WordPressPublisher({ baseUrl: "http://10.0.0.1", credentials: "a:b" }, { assertUrl, ...f.net });
   await assert.rejects(priv.locate("http://10.0.0.1/about"), CmsError);
 });
 
@@ -277,12 +267,12 @@ function wfRoutes(item = wfItem(), fields = WF_FIELDS) {
     return undefined;
   });
 }
-const wf = (f: ReturnType<typeof fakeFetch>) => new WebflowPublisher({ token: "tok", siteId: "s1", collectionId: "c1" }, { assertUrl, fetchImpl: f.impl });
+const wf = (f: ReturnType<typeof fakeFetch>) => new WebflowPublisher({ token: "tok", siteId: "s1", collectionId: "c1" }, { assertUrl, ...f.net });
 
 test("webflow: validate token via sites, locate by slug, preview, apply patches fieldData then republishes a live item", async () => {
   const f = wfRoutes();
-  assert.deepEqual(await listWebflowSites("tok", { assertUrl, fetchImpl: f.impl }), [{ id: "s1", name: "My site" }]);
-  await assert.rejects(listWebflowSites("nope", { assertUrl, fetchImpl: f.impl }), /rejected/);
+  assert.deepEqual(await listWebflowSites("tok", { assertUrl, ...f.net }), [{ id: "s1", name: "My site" }]);
+  await assert.rejects(listWebflowSites("nope", { assertUrl, ...f.net }), /rejected/);
   const p = wf(f);
   const it = (await p.locate("https://www.example.com/blog/post"))!;
   assert.equal(it.collectionId, "c1");

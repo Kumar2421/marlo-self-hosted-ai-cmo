@@ -51,7 +51,7 @@ function getQueryKeys(platform: SocialPlatform, projectId: string | undefined) {
   }
 }
 
-export function useSocialDraftList(platform: SocialPlatform, view: DraftView, enabled = true) {
+export function useSocialDraftList(platform: SocialPlatform, view: DraftView, enabled = true, staleTime?: number) {
   const { project } = useProject();
   const keys = getQueryKeys(platform, project?.id);
   const url = ENDPOINTS[platform];
@@ -63,6 +63,7 @@ export function useSocialDraftList(platform: SocialPlatform, view: DraftView, en
       return response.drafts;
     },
     enabled: Boolean(project) && enabled,
+    ...(staleTime !== undefined && { staleTime }),
   });
 }
 

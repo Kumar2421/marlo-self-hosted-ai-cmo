@@ -1,10 +1,10 @@
 import * as cheerio from "cheerio";
-import { request as httpRequest, type IncomingHttpHeaders } from "http";
-import { request as httpsRequest } from "https";
 import { jinaRead, extractMarkdownLinks } from "@/lib/domain/shared/jinaReader";
 import { assertPublicHostLiteral } from "@/lib/domain/net/ssrf";
+import { SafeFetchError } from "../net/safeFetch.ts";
 import { extractTitle } from "@/lib/domain/seo/extractTitle";
 import { fetchPageSpeed, type CwvSnapshot, type LighthouseIssue } from "@/lib/domain/seo/pageSpeedInsights";
+import { checkRobotsTxt, fetchSitePage, SITE_MAX_REDIRECTS, type SitePageFetch } from "./siteFetch.ts";
 
 export type { CwvStatus, CwvMetric, CwvSnapshot } from "@/lib/domain/seo/pageSpeedInsights";
 
@@ -163,160 +163,7 @@ export function assertPublicHttpUrl(raw: string): URL {
   return parsed;
 }
 
-type FetchTiming = {
-  connectMs?: number;
-  tlsHandshakeMs?: number;
-  ttfbMs?: number;
-  downloadMs?: number;
-};
-
-type TimedFetchResult = {
-  html: string;
-  status: number;
-  headers: IncomingHttpHeaders;
-  timing: FetchTiming;
-  redirectCount: number;
-};
-
-/** Real network-phase timing (connect/TLS/TTFB/download) requires the raw
- * socket lifecycle events — plain fetch() doesn't expose them. This is the
- * one and only crawl request (not a second call just for timing): its HTML
- * is what cheerio parses everything else from. */
-const MAX_REDIRECTS = 5;
-
-/** Unlike fetch(), Node's raw http(s).request doesn't follow redirects —
- * real sites redirect constantly (http→https, apex↔www, trailing slash), so
- * this has to be handled explicitly or the crawl breaks for most of them.
- * TTFB/download are reported from the FINAL hop (that's the response whose
- * HTML we actually use). connect/TLS are NOT, though — a redirect to
- * another path on the *same host* (very common: "/" → a canonical page)
- * reuses that same TCP/TLS socket, so those two events never fire again on
- * the final hop and would otherwise come back as a false "N/A" even though
- * the connection genuinely was established, just one hop earlier. Carried
- * forward from wherever they were actually measured instead of dropped. */
-async function timedFetch(
-  url: URL,
-  timeoutMs: number,
-  redirectsLeft = MAX_REDIRECTS,
-  hopsSoFar = 0,
-  connectionTiming: Pick<FetchTiming, "connectMs" | "tlsHandshakeMs"> = {}
-): Promise<TimedFetchResult> {
-  const result = await timedFetchOnce(url, timeoutMs);
-  const carriedConnectionTiming = {
-    connectMs: result.timing.connectMs ?? connectionTiming.connectMs,
-    tlsHandshakeMs: result.timing.tlsHandshakeMs ?? connectionTiming.tlsHandshakeMs,
-  };
-  const location = result.headers.location;
-  if (result.status >= 300 && result.status < 400 && location && redirectsLeft > 0) {
-    const nextUrl = new URL(location, url);
-    assertPublicHttpUrl(nextUrl.toString());
-    return timedFetch(nextUrl, timeoutMs, redirectsLeft - 1, hopsSoFar + 1, carriedConnectionTiming);
-  }
-  return { ...result, timing: { ...result.timing, ...carriedConnectionTiming }, redirectCount: hopsSoFar };
-}
-
-function timedFetchOnce(url: URL, timeoutMs: number): Promise<TimedFetchResult> {
-  return new Promise((resolve, reject) => {
-    const isHttps = url.protocol === "https:";
-    const reqFn = isHttps ? httpsRequest : httpRequest;
-    const start = process.hrtime.bigint();
-    let lookupStart: bigint | undefined;
-    let connectStartAt: bigint | undefined;
-    let tlsStart: bigint | undefined;
-    let connectMs: number | undefined;
-    let tlsHandshakeMs: number | undefined;
-
-    const req = reqFn(
-      {
-        hostname: url.hostname,
-        port: url.port || (isHttps ? 443 : 80),
-        path: url.pathname + url.search,
-        method: "GET",
-        headers: { "User-Agent": "OkaraAlternative/1.0" },
-        timeout: timeoutMs,
-      },
-      (res) => {
-        const ttfbMs = Number(process.hrtime.bigint() - start) / 1e6;
-        const chunks: Buffer[] = [];
-        const downloadStart = process.hrtime.bigint();
-        res.on("data", (chunk: Buffer) => chunks.push(chunk));
-        res.on("end", () => {
-          resolve({
-            html: Buffer.concat(chunks).toString("utf8"),
-            status: res.statusCode ?? 0,
-            headers: res.headers,
-            timing: {
-              connectMs,
-              tlsHandshakeMs,
-              ttfbMs,
-              downloadMs: Number(process.hrtime.bigint() - downloadStart) / 1e6,
-            },
-            redirectCount: 0, // overwritten by timedFetch() once the real hop count is known
-          });
-        });
-        res.on("error", reject);
-      }
-    );
-
-    req.on("socket", (socket) => {
-      socket.once("lookup", () => {
-        lookupStart = process.hrtime.bigint();
-      });
-      socket.once("connect", () => {
-        connectStartAt = lookupStart ?? start;
-        connectMs = Number(process.hrtime.bigint() - connectStartAt) / 1e6;
-        tlsStart = process.hrtime.bigint();
-      });
-      socket.once("secureConnect", () => {
-        if (tlsStart) tlsHandshakeMs = Number(process.hrtime.bigint() - tlsStart) / 1e6;
-      });
-    });
-
-    req.on("timeout", () => req.destroy(new Error(`Crawl timed out after ${timeoutMs / 1000}s`)));
-    req.on("error", reject);
-    req.end();
-  });
-}
-
-const ROBOTS_TIMEOUT_MS = 5000;
-
-/** Real fetch+parse of /robots.txt — only the "User-agent: *" group (we
- * don't spoof a specific bot's UA, so per-bot groups don't apply to us).
- * Simple prefix matching on Disallow paths, which is how robots.txt matching
- * actually works for the common case. Never blocks the crawl itself — this
- * is the site owner auditing their own page, not a generic bot — just reports
- * what a generic crawler would see. */
-async function checkRobotsTxt(origin: string, pagePath: string): Promise<{ exists: boolean; disallowsThisPage: boolean }> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), ROBOTS_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${origin}/robots.txt`, { signal: controller.signal, headers: { "User-Agent": "OkaraAlternative/1.0" } });
-    if (!res.ok) return { exists: false, disallowsThisPage: false };
-    const text = await res.text();
-
-    let inWildcardGroup = false;
-    const disallowPaths: string[] = [];
-    for (const rawLine of text.split("\n")) {
-      const line = rawLine.split("#")[0].trim();
-      if (!line) continue;
-      const [rawKey, ...rest] = line.split(":");
-      const key = rawKey.trim().toLowerCase();
-      const value = rest.join(":").trim();
-      if (key === "user-agent") {
-        inWildcardGroup = value === "*";
-      } else if (key === "disallow" && inWildcardGroup && value) {
-        disallowPaths.push(value);
-      }
-    }
-
-    const disallowsThisPage = disallowPaths.some((p) => pagePath.startsWith(p));
-    return { exists: true, disallowsThisPage };
-  } catch {
-    return { exists: false, disallowsThisPage: false };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
+/** Crawl of the page and the robots check live in ./siteFetch.ts (guarded fetcher). */
 
 export class SEOAgent {
   constructor(private pageSpeedApiKey?: string) {}
@@ -328,25 +175,27 @@ export class SEOAgent {
     const validated = assertPublicHttpUrl(url);
 
     // 1. Crawl URL — bounded by a timeout so a hung/slow target can't stall the
-    // request forever. Uses the raw http(s) module (not fetch) so real
-    // connection-phase timing is available for the Technical tab.
-    let crawl: TimedFetchResult;
+    // request forever. Uses the guarded fetcher (pinned DNS, total deadline) so real
+    // connection-phase timing is still available for the Technical tab.
+    let crawl: SitePageFetch;
     try {
-      crawl = await timedFetch(validated, CRAWL_TIMEOUT_MS);
-      if (crawl.status < 200 || crawl.status >= 400) {
-        throw new Error(`HTTP ${crawl.status}`);
-      }
+      crawl = await fetchSitePage(validated, CRAWL_TIMEOUT_MS);
     } catch (e) {
-      const detail = e instanceof Error ? e.message : String(e);
-      throw new Error(`Failed to crawl URL: ${detail}`);
+      // The caller gets only the generic public message; the code goes to the server log.
+      const publicMessage = e instanceof SafeFetchError ? e.message : "The site could not be reached.";
+      console.warn("seo.crawl.failed", e instanceof SafeFetchError ? e.code : "unknown");
+      throw new Error(publicMessage);
+    }
+    if (crawl.status < 200 || crawl.status >= 400) {
+      console.warn("seo.crawl.failed", "http-status");
+      throw new Error("The site did not return a usable page.");
     }
     const html = crawl.html;
 
-    // Redirect-chain/loop — real signal from the hop-following already done
-    // in timedFetch(). A single hop (http→https, apex↔www) is normal and not
+    // Redirect-chain/loop: a single hop (http to https, apex and www) is normal and not
     // worth flagging; 2+ hops or hitting the cap while still 3xx (a loop) is.
-    if (crawl.redirectCount >= MAX_REDIRECTS && crawl.status >= 300 && crawl.status < 400) {
-      issues.push({ label: `Redirect loop detected — didn't resolve after ${MAX_REDIRECTS} hops`, level: "Error" });
+    if (crawl.redirectCount >= SITE_MAX_REDIRECTS && crawl.status >= 300 && crawl.status < 400) {
+      issues.push({ label: `Redirect loop detected — didn't resolve after ${SITE_MAX_REDIRECTS} hops`, level: "Error" });
     } else if (crawl.redirectCount >= 2) {
       issues.push({ label: `Redirect chain detected (${crawl.redirectCount} hops before reaching the final page)`, level: "Warning" });
     }
