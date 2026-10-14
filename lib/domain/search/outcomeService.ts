@@ -4,10 +4,14 @@ import { pathToFixed } from "../findings/pathToFixed.ts";
 import {
   buildImplementation, implementationOf, MIN_DAYS, outcomeForAction, savedOutcomeOf, shouldSaveOutcome, type ImplementationRecord, type Outcome,
 } from "./actionOutcome.ts";
+import { pullRequestPageBeforeOf } from "../fixes/linkPullRequest.ts";
 import { isPublicHttpUrl, type PageFingerprint } from "./pageFingerprint.ts";
-import type { SearchSnapshotPayload } from "./searchSnapshot.ts";
+import { isoDate, type SearchSnapshotPayload } from "./searchSnapshot.ts";
 
 type Snapshot = { snapshotDate: string; payload: SearchSnapshotPayload } | null;
+
+/** A change reported more than this long after it went live is "late": the latest snapshot may already include its effect. */
+const LATE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 /**
  * What the outcome service needs from storage and the web. Self-host
@@ -18,6 +22,8 @@ export type OutcomePorts = {
   getAction(id: string): Promise<Action | null>;
   getFinding(id: string): Promise<Finding | null>;
   getSnapshot(): Promise<Snapshot>;
+  /** The newest snapshot dated on or before `date` (YYYY-MM-DD). Optional: without it, the latest snapshot is used. */
+  getSnapshotOnOrBefore?(date: string): Promise<Snapshot>;
   /** Move the action to completed, saving `result` with it. */
   completeAction(id: string, result: Record<string, unknown>): Promise<Action | null>;
   /** Replace an action's saved result without changing its status. */
@@ -73,10 +79,31 @@ export async function implementAction(
     }
   }
   const pageUrl = requested ?? action.target.url ?? finding.url ?? null;
-  const pageBefore = args.pageBefore !== undefined ? args.pageBefore : pageUrl ? await ports.fetchFingerprint(pageUrl) : null;
+  // A merged PR was opened with its "before" page already recorded; a live fetch now would read the merged page.
+  const storedPageBefore = args.via === "github_pr" ? pullRequestPageBeforeOf(action.result) : undefined;
+  const pageBefore = args.pageBefore !== undefined
+    ? args.pageBefore
+    : storedPageBefore !== undefined
+      ? storedPageBefore
+      : pageUrl ? await ports.fetchFingerprint(pageUrl) : null;
+
+  // The baseline is the numbers as of the change's own day. When the change is merged or reported late, the newest
+  // snapshot may already be after it, so use the one dated on or before it, and flag it if none exists.
+  const late = args.via === "github_pr" || Date.now() - now.getTime() > LATE_AFTER_MS;
+  let snapshot: Snapshot = null;
+  let approximateBaseline = false;
+  if (late && ports.getSnapshotOnOrBefore) {
+    snapshot = await ports.getSnapshotOnOrBefore(isoDate(now));
+    if (!snapshot) {
+      snapshot = await ports.getSnapshot();
+      approximateBaseline = snapshot !== null;
+    }
+  } else {
+    snapshot = await ports.getSnapshot();
+  }
 
   const implementation = buildImplementation({
-    finding, snapshot: await ports.getSnapshot(), via: args.via, now, change: args.change, pageUrl, pageBefore,
+    finding, snapshot, via: args.via, now, change: args.change, pageUrl, pageBefore, approximateBaseline,
   });
   const result = { implementation };
 

@@ -33,13 +33,16 @@ function parseGitHubPrUrl(prUrl: string): { owner: string; repo: string; number:
 }
 
 /**
- * GitHub PR status adapter. Queries GitHub API to determine PR state and merge time.
+ * GitHub PR status adapter. Queries the GitHub API for the PR's state and merge time.
+ * Only a PR that GitHub reports as closed without a merge is "closed". Anything we could not
+ * learn (a non-OK response, a network error, an unexpected body) is "unknown", so an outage or
+ * an expired token never looks like a closed pull request.
  */
 export function fixDeliveryGithub(githubToken: string): FixDeliveryPort {
   return {
     status: async (prUrl): Promise<PRInfo> => {
       const parsed = parseGitHubPrUrl(prUrl);
-      if (!parsed) return { state: "closed" };
+      if (!parsed) return { state: "unknown" };
 
       try {
         const res = await fetch(
@@ -48,7 +51,7 @@ export function fixDeliveryGithub(githubToken: string): FixDeliveryPort {
         );
 
         if (!res.ok) {
-          return { state: "closed" };
+          return { state: "unknown" };
         }
 
         const data = await res.json();
@@ -58,10 +61,13 @@ export function fixDeliveryGithub(githubToken: string): FixDeliveryPort {
         if (data.state === "open") {
           return { state: "open" };
         }
-        return { state: "closed" };
+        if (data.state === "closed") {
+          return { state: "closed" };
+        }
+        return { state: "unknown" };
       } catch {
-        // Network error or parsing failure → assume closed (conservative)
-        return { state: "closed" };
+        // Network error or parsing failure: we don't know, so it is not reported as closed.
+        return { state: "unknown" };
       }
     },
   };

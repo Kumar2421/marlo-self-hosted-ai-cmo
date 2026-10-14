@@ -13,8 +13,8 @@ import { getProjectFinding } from "@/lib/domain/findings/findingStore";
 import { getProjectFinding as getProjectFindingSupabase } from "@/lib/domain/findings/findingStoreSupabase";
 import { fetchPageFingerprint } from "./pageFingerprint";
 import type { OutcomePorts } from "./outcomeService";
-import { getLatestSnapshot } from "./searchSnapshotStore";
-import { getLatestSnapshot as getLatestSnapshotSupabase } from "./searchSnapshotStoreSupabase";
+import { getLatestSnapshot, getSnapshotOnOrBefore } from "./searchSnapshotStore";
+import { getLatestSnapshot as getLatestSnapshotSupabase, getSnapshotOnOrBefore as getSnapshotOnOrBeforeSupabase } from "./searchSnapshotStoreSupabase";
 
 /** Platform (Supabase) wiring for the outcome service; every call is scoped to one user and project. */
 export function platformOutcomePorts(db: SupabaseClient, userId: string, projectId: string, projectUrl: string | null): OutcomePorts {
@@ -26,6 +26,10 @@ export function platformOutcomePorts(db: SupabaseClient, userId: string, project
     getSnapshot: async () => {
       const latest = await getLatestSnapshotSupabase(db, userId, projectId);
       return latest ? { snapshotDate: latest.snapshotDate, payload: latest.payload } : null;
+    },
+    getSnapshotOnOrBefore: async (date) => {
+      const found = await getSnapshotOnOrBeforeSupabase(db, userId, projectId, date);
+      return found ? { snapshotDate: found.snapshotDate, payload: found.payload } : null;
     },
     completeAction: (id, result) => transitionActionSupabase(db, userId, projectId, id, "completed", result),
     saveResult: (id, result) => setActionResultSupabase(db, userId, projectId, id, result),
@@ -47,6 +51,10 @@ export function selfHostOutcomePorts(projectId: string, projectUrl: string | nul
     getSnapshot: async () => {
       const latest = getLatestSnapshot(getDb(), projectId);
       return latest ? { snapshotDate: latest.snapshotDate, payload: latest.payload } : null;
+    },
+    getSnapshotOnOrBefore: async (date) => {
+      const found = getSnapshotOnOrBefore(getDb(), projectId, date);
+      return found ? { snapshotDate: found.snapshotDate, payload: found.payload } : null;
     },
     completeAction: async (id, result) => transitionAction(projectId, id, "completed", result),
     saveResult: async (id, result) => setActionResult(projectId, id, result),
