@@ -20,6 +20,8 @@ import {
   upsertProjectIntegration as upsertProjectIntegrationSupabase,
 } from "@/lib/domain/integrations/integrationStoreSupabase";
 import { consumeOAuthState as consumeOAuthStateSupabase } from "@/lib/domain/integrations/oauthStateSupabase";
+import { createClient } from "@/utils/supabase/server";
+import { checkOAuthCallbackOwner, OAUTH_OWNER_MISMATCH_MESSAGE } from "@/lib/domain/integrations/oauthCallbackGuard";
 
 function redirectUrl(req: NextRequest, returnTo: "dashboard" | "settings", params: Record<string, string>) {
   const base = returnTo === "dashboard" ? req.nextUrl.origin + "/dashboard" : req.nextUrl.origin + CREDENTIALS_PATH;
@@ -44,6 +46,13 @@ export async function GET(req: NextRequest) {
     const oauthState = await consumeOAuthStateSupabase(db, state);
     if (!oauthState) {
       return NextResponse.redirect(fallback + "?ga_error=" + encodeURIComponent("Google authorization expired or was already used. Please reconnect."));
+    }
+
+    // The state is already consumed (single use). Only the signed-in user it was issued to may store tokens for it.
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!checkOAuthCallbackOwner(user?.id, oauthState.userId).ok) {
+      return NextResponse.redirect(fallback + "?ga_error=" + encodeURIComponent(OAUTH_OWNER_MISMATCH_MESSAGE));
     }
 
     try {
