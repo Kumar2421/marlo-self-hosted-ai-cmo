@@ -24,8 +24,12 @@ function safeCount(value: unknown): number | undefined {
   return Math.max(0, Math.min(MAX_COUNT, Math.floor(value)));
 }
 
+// Client ids come from crypto.randomUUID() (app/audit/page.tsx), which is lowercase hex with
+// dashes. The alphabet also allows letters, digits, "_" and "-", so other generators still pass.
+const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
+
 function safeSessionId(value: unknown): string | undefined {
-  if (typeof value !== "string" || value.length < 16 || value.length > 128) return undefined;
+  if (typeof value !== "string" || !SESSION_ID_PATTERN.test(value)) return undefined;
   return value;
 }
 

@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   AUDIT_MAX_BODY_BYTES,
   EVENT_MAX_BODY_BYTES,
+  clientKey,
+  createUnknownIdentityWarner,
   guardPublicAudit,
   guardPublicEvent,
   readLimitedText,
@@ -326,4 +328,115 @@ test("events are limited per client at 30 per minute", async () => {
     if (!guard.ok) blocked += 1;
   }
   assert.equal(blocked, 1);
+});
+
+test("IPv6 clients are keyed by /64: addresses in one /64 share a bucket", async () => {
+  assert.equal(trustedClientIp(headers({ "x-real-ip": "2001:db8:1:2::1" }), { VERCEL: "1" }), "2001:db8:1:2::/64");
+  assert.equal(trustedClientIp(headers({ "x-real-ip": "2001:db8:1:2:ffff:ffff:ffff:ffff" }), { VERCEL: "1" }), "2001:db8:1:2::/64");
+  assert.equal(trustedClientIp(headers({ "x-real-ip": "2001:DB8:1:2:0:0:0:9" }), { VERCEL: "1" }), "2001:db8:1:2::/64");
+  assert.equal(trustedClientIp(headers({ "x-real-ip": "2001:db8::1" }), { VERCEL: "1" }), "2001:db8:0:0::/64");
+
+  // Ten different addresses in one /64 still hit the 5/min per-client limit together.
+  const store = fakeDb();
+  const limiter = supabaseRateLimiter(store.db, "closed", silent);
+  const gate = memoryConcurrencyGate();
+  const statuses: number[] = [];
+  for (let i = 0; i < 6; i += 1) {
+    const guard = await guardPublicAudit(
+      auditInput({ headers: headers({ "x-real-ip": `2001:db8:1:2::${i + 1}` }), limiter, gate }),
+    );
+    statuses.push(guard.ok ? 200 : guard.status);
+    if (guard.ok) await guard.release();
+  }
+  assert.deepEqual(statuses, [200, 200, 200, 200, 200, 429]);
+});
+
+test("IPv6 clients in different /64 prefixes do not share a bucket", () => {
+  const env = { VERCEL: "1" };
+  const a = trustedClientIp(headers({ "x-real-ip": "2001:db8:1:2::1" }), env);
+  const b = trustedClientIp(headers({ "x-real-ip": "2001:db8:1:3::1" }), env);
+  assert.notEqual(a, b);
+  assert.notEqual(trustedClientIp(headers({ "x-real-ip": "2001:db8::1" }), env), trustedClientIp(headers({ "x-real-ip": "2001:db9::1" }), env));
+});
+
+test("IPv4 client keys are unchanged", () => {
+  assert.equal(trustedClientIp(headers({ "x-real-ip": "203.0.113.7" }), { VERCEL: "1" }), "203.0.113.7");
+  assert.equal(trustedClientIp(headers({ "x-forwarded-for": "6.6.6.6, 203.0.113.8" }), { TRUST_PROXY_HOPS: "1" }), "203.0.113.8");
+});
+
+test("IPv4-mapped IPv6 maps to the IPv4 key", () => {
+  assert.equal(clientKey("::ffff:203.0.113.7"), "203.0.113.7");
+  assert.equal(clientKey("::FFFF:203.0.113.7"), "203.0.113.7");
+  assert.equal(clientKey("0:0:0:0:0:ffff:cb00:7107"), "203.0.113.7");
+  assert.equal(trustedClientIp(headers({ "x-real-ip": "::ffff:203.0.113.7" }), { VERCEL: "1" }), "203.0.113.7");
+});
+
+test("malformed IPv6 is not trusted as a client identity", () => {
+  assert.equal(clientKey("2001:db8:::1"), null);
+  assert.equal(clientKey("2001:db8:1:2:3:4:5:6:7"), null);
+  assert.equal(clientKey("2001:zz8::1"), null);
+  assert.equal(trustedClientIp(headers({ "x-real-ip": "2001:db8:::1" }), { VERCEL: "1" }), null);
+});
+
+test("global cap counts only requests that passed their per-client checks", async () => {
+  const store = fakeDb();
+  const limiter = supabaseRateLimiter(store.db, "closed", silent);
+  const gate = memoryConcurrencyGate();
+  const env = { VERCEL: "1", AUDIT_GLOBAL_PER_MIN: "100" };
+  const statuses: number[] = [];
+  for (let i = 0; i < 6; i += 1) {
+    const guard = await guardPublicAudit(auditInput({ env, limiter, gate }));
+    statuses.push(guard.ok ? 200 : guard.status);
+    if (guard.ok) await guard.release();
+  }
+  assert.deepEqual(statuses, [200, 200, 200, 200, 200, 429]);
+  // The sixth request was stopped by its own limit, so it must not have spent a global hit.
+  assert.equal(store.counts.get("public-audit:global"), 5);
+});
+
+test("global cap is configurable and blocks other clients when exhausted", async () => {
+  const store = fakeDb();
+  const limiter = supabaseRateLimiter(store.db, "closed", silent);
+  const gate = memoryConcurrencyGate();
+  const env = { VERCEL: "1", AUDIT_GLOBAL_PER_MIN: "2" };
+  const statuses: number[] = [];
+  for (let i = 1; i <= 3; i += 1) {
+    const guard = await guardPublicAudit(auditInput({ headers: headers({ "x-real-ip": `198.51.100.${i}` }), env, limiter, gate }));
+    statuses.push(guard.ok ? 200 : guard.status);
+    if (guard.ok) await guard.release();
+  }
+  assert.deepEqual(statuses, [200, 200, 429]);
+});
+
+test("unknown-identity limit is configurable with AUDIT_UNKNOWN_PER_MIN, invalid values fall back to 2", async () => {
+  const run = async (value: string | undefined) => {
+    const store = fakeDb();
+    const limiter = supabaseRateLimiter(store.db, "closed", silent);
+    const gate = memoryConcurrencyGate();
+    const env = value === undefined ? {} : { AUDIT_UNKNOWN_PER_MIN: value };
+    const statuses: number[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      const guard = await guardPublicAudit(auditInput({ headers: headers({}), env, limiter, gate }));
+      statuses.push(guard.ok ? 200 : guard.status);
+      if (guard.ok) await guard.release();
+    }
+    return statuses;
+  };
+  assert.deepEqual(await run("4"), [200, 200, 200, 200, 429]);
+  assert.deepEqual(await run("abc"), [200, 200, 429, 429, 429]);
+  assert.deepEqual(await run("0"), [200, 200, 429, 429, 429]);
+  assert.deepEqual(await run(undefined), [200, 200, 429, 429, 429]);
+});
+
+test("unknown-identity warning is throttled to one per minute", () => {
+  const lines: string[] = [];
+  const warn = createUnknownIdentityWarner((message) => lines.push(message));
+  warn(0);
+  warn(1_000);
+  warn(59_999);
+  assert.equal(lines.length, 1);
+  warn(60_000);
+  warn(61_000);
+  assert.equal(lines.length, 2);
+  assert.ok(lines.every((line) => !/\d+\.\d+\.\d+\.\d+|:[0-9a-f]{1,4}:/i.test(line)), "warning carries no client data");
 });

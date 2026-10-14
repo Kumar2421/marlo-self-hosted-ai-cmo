@@ -14,7 +14,15 @@ export const AUDIT_CRAWL_SLOT_TTL_SEC = 90;
 export type HeaderSource = { get(name: string): string | null };
 
 /** The env keys this module reads. Pass process.env (the index signature keeps it assignable). */
-export type GuardEnv = { VERCEL?: string; TRUST_PROXY_HOPS?: string; [key: string]: string | undefined };
+export type GuardEnv = {
+  VERCEL?: string;
+  TRUST_PROXY_HOPS?: string;
+  /** Global audit cap per minute across all clients (default 60). */
+  AUDIT_GLOBAL_PER_MIN?: string;
+  /** Shared audit limit per minute for requests with no client address on hosted (default 2). */
+  AUDIT_UNKNOWN_PER_MIN?: string;
+  [key: string]: string | undefined;
+};
 
 export type GuardSuccess = { ok: true; body: Record<string, unknown> | null; release: () => Promise<void> };
 export type GuardFailure = { ok: false; status: number; headers: Record<string, string>; message: string };
@@ -22,10 +30,89 @@ export type GuardResult = GuardSuccess | GuardFailure;
 
 const IP_PATTERN = /^[0-9A-Fa-f:.]{2,64}$/;
 
+export const DEFAULT_GLOBAL_AUDIT_PER_MIN = 60;
+export const DEFAULT_UNKNOWN_AUDIT_PER_MIN = 2;
+
+function positiveIntEnv(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback;
+}
+
+/** Eight 16-bit groups for an IPv6 literal (handles one "::" and an embedded IPv4 tail), or null. */
+function ipv6Groups(address: string): number[] | null {
+  let text = address;
+  const v4 = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(text);
+  if (v4) {
+    const octets = v4[1].split(".").map(Number);
+    if (octets.some((octet) => octet > 255)) return null;
+    const high = ((octets[0] << 8) | octets[1]).toString(16);
+    const low = ((octets[2] << 8) | octets[3]).toString(16);
+    text = `${text.slice(0, text.length - v4[1].length)}${high}:${low}`;
+  }
+  const halves = text.split("::");
+  if (halves.length > 2) return null;
+  const head = halves[0] === "" ? [] : halves[0].split(":");
+  let parts: string[] = head;
+  if (halves.length === 2) {
+    const tail = halves[1] === "" ? [] : halves[1].split(":");
+    const fill = 8 - head.length - tail.length;
+    if (fill < 1) return null;
+    parts = [...head, ...new Array<string>(fill).fill("0"), ...tail];
+  }
+  if (parts.length !== 8) return null;
+  const groups: number[] = [];
+  for (const part of parts) {
+    if (!/^[0-9A-Fa-f]{1,4}$/.test(part)) return null;
+    groups.push(Number.parseInt(part, 16));
+  }
+  return groups;
+}
+
+/**
+ * The rate-limit key for a client address. IPv4 is used as is. An IPv4-mapped IPv6 address
+ * (::ffff:a.b.c.d) is keyed as that IPv4 address. Any other IPv6 address is keyed by its /64
+ * prefix, since one customer usually owns a whole /64 (2^64 addresses) and per-address keys
+ * would let one customer bypass every limit.
+ */
+export function clientKey(ip: string): string | null {
+  if (!ip.includes(":")) return ip;
+  const groups = ipv6Groups(ip);
+  if (!groups) return null;
+  const mapped = groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff;
+  if (mapped) {
+    return `${groups[6] >> 8}.${groups[6] & 0xff}.${groups[7] >> 8}.${groups[7] & 0xff}`;
+  }
+  return `${groups
+    .slice(0, 4)
+    .map((group) => group.toString(16))
+    .join(":")}::/64`;
+}
+
 function validIp(value: string | null | undefined): string | null {
   const trimmed = value?.trim() ?? "";
-  return IP_PATTERN.test(trimmed) ? trimmed : null;
+  return IP_PATTERN.test(trimmed) ? clientKey(trimmed) : null;
 }
+
+/**
+ * Logs at most one warning per interval while hosted requests have no client address (for
+ * example x-real-ip is not forwarded). Such requests share one low bucket, so the warning
+ * makes that misconfiguration visible. The message carries no client data.
+ */
+export function createUnknownIdentityWarner(
+  log: (message: string) => void,
+  intervalMs = 60_000,
+): (now: number) => void {
+  let lastWarnedAt: number | null = null;
+  return (now) => {
+    if (lastWarnedAt !== null && now - lastWarnedAt < intervalMs) return;
+    lastWarnedAt = now;
+    log(
+      "[public-guard] hosted request has no client address (x-real-ip missing); it shares the unknown rate-limit bucket. Check proxy configuration.",
+    );
+  };
+}
+
+const warnUnknownIdentity = createUnknownIdentityWarner((message) => console.warn(message));
 
 /**
  * The client address, or null when none can be trusted. The leftmost x-forwarded-for
@@ -162,7 +249,12 @@ export async function guardPublicAudit(input: AuditGuardInput): Promise<GuardRes
     );
   } else if (input.hosted) {
     // Identity unknown on hosted: one shared, low limit for everyone in that bucket.
-    checks.push({ key: "public-audit:unknown:min", windowSec: 60, limit: 2 });
+    warnUnknownIdentity(Date.now());
+    checks.push({
+      key: "public-audit:unknown:min",
+      windowSec: 60,
+      limit: positiveIntEnv(input.env.AUDIT_UNKNOWN_PER_MIN, DEFAULT_UNKNOWN_AUDIT_PER_MIN),
+    });
   } else {
     // Self-host without a proxy is normally one user; keep the normal per-client limits.
     checks.push(
@@ -170,10 +262,26 @@ export async function guardPublicAudit(input: AuditGuardInput): Promise<GuardRes
       { key: "public-audit:local:hour", windowSec: 3600, limit: 30 },
     );
   }
-  checks.push({ key: "public-audit:global", windowSec: 60, limit: 60 });
 
-  const limitFailure = await enforce(input.limiter, checks, AUDIT_MESSAGE);
-  if (limitFailure) return limitFailure;
+  // Per-client checks first. A client blocked here never spends the shared global cap.
+  const clientFailure = await enforce(input.limiter, checks, AUDIT_MESSAGE);
+  if (clientFailure) return clientFailure;
+
+  // Global cap last, counted only for requests that passed the per-client checks. It is a
+  // hard cost ceiling. Tradeoff: a large botnet of distinct clients can still saturate it and
+  // block other audits until the window resets. Raise AUDIT_GLOBAL_PER_MIN if that is too tight.
+  const globalFailure = await enforce(
+    input.limiter,
+    [
+      {
+        key: "public-audit:global",
+        windowSec: 60,
+        limit: positiveIntEnv(input.env.AUDIT_GLOBAL_PER_MIN, DEFAULT_GLOBAL_AUDIT_PER_MIN),
+      },
+    ],
+    AUDIT_MESSAGE,
+  );
+  if (globalFailure) return globalFailure;
 
   const text = await input.readBody();
   if (text === null) return { ok: false, status: 413, headers: {}, message: "Request is too large." };
@@ -216,6 +324,7 @@ const EVENT_MESSAGE = "Too many events. Please slow down.";
  */
 export async function guardPublicEvent(input: EventGuardInput): Promise<GuardResult> {
   const ip = trustedClientIp(input.headers, input.env);
+  if (!ip && input.hosted) warnUnknownIdentity(Date.now());
   const identity = ip ?? (input.hosted ? "unknown" : "local");
   const limit = ip || !input.hosted ? 30 : 10;
   const limitFailure = await enforce(

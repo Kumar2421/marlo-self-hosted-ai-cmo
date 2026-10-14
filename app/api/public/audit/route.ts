@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SEOAgent, assertPublicHttpUrl, type Finding } from "@/lib/domain/seo/SEOAgent";
+import { assertPublicHttpUrlResolved } from "@/lib/domain/net/ssrf";
 import { setCachedPublicAudit } from "@/lib/domain/seo/publicAuditCache";
 import { explainFinding } from "@/lib/domain/seo/findingExplanations";
 import { guardPublicAudit, readLimitedText, withRelease, AUDIT_MAX_BODY_BYTES } from "@/lib/domain/net/publicGuard";
@@ -45,6 +46,13 @@ async function runPublicAudit(body: Record<string, unknown> | null) {
       { error: error instanceof Error ? error.message : "Invalid URL." },
       { status: 400 }
     );
+  }
+
+  // DNS check (also run inside the crawl once the resolver PR lands). Generic text only: no hostname.
+  try {
+    await assertPublicHttpUrlResolved(url.toString());
+  } catch {
+    return NextResponse.json({ error: "That address can't be used." }, { status: 400 });
   }
 
   try {
