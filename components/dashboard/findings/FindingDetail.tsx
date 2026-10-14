@@ -2,7 +2,7 @@
 
 import { AlertTriangle, Check, ChevronRight } from "lucide-react";
 import type { Finding, FindingStatus } from "@/lib/domain/findings/findingTypes";
-import { evidenceRowsForFinding, whyItMattersForFinding } from "@/lib/domain/findings/evidenceDisplay";
+import { autoVerificationLine, evidenceRowsForFinding, whyItMattersForFinding } from "@/lib/domain/findings/evidenceDisplay";
 import { SkeletonLines } from "@/components/shared/Skeleton";
 import FindingActionsSection from "../FindingActionsSection";
 import FindingCodeFix from "./FindingCodeFix";
@@ -68,12 +68,27 @@ export default function FindingDetail({
   const why = whyItMattersForFinding(finding);
   const currentIndex = STATUS_ORDER.indexOf(finding.status);
   const lastCheckReason = (finding.evidence.lastCheck as { reason?: string } | undefined)?.reason;
+  const autoLine = autoVerificationLine(finding.evidence);
   const loadError = work.recommendations.isError ? "Couldn't generate recommendations for this finding." : null;
 
   return (
     <div className="space-y-5">
       {(error || work.error) && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-[12px] text-red-700">{error ?? work.error}</div>
+      )}
+
+      {autoLine && (
+        <div
+          className={`rounded-xl border p-3 text-[12px] ${
+            autoLine.tone === "verified"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : autoLine.tone === "failed"
+                ? "border-red-200 bg-red-50 text-red-800"
+                : "border-amber-200 bg-amber-50 text-amber-800"
+          }`}
+        >
+          {autoLine.text}
+        </div>
       )}
 
       {verification && (
