@@ -49,6 +49,10 @@ function v6Groups(ip: string): number[] | null {
   return nums.length === 8 && nums.every((n) => Number.isInteger(n) && n >= 0 && n <= 0xffff) ? nums : null;
 }
 
+function embeddedV4(hi: number, lo: number): string {
+  return `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+}
+
 function isPrivateV4(ip: string): boolean {
   const [a, b, c] = ip.split(".").map(Number);
   return (
@@ -78,12 +82,19 @@ export function isPrivateIp(raw: string): boolean {
   if ((g[0] & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
   if ((g[0] & 0xff00) === 0xff00) return true; // multicast
   if (g[0] === 0x2001 && g[1] === 0x0db8) return true; // documentation
-  // IPv4-mapped (::ffff:a.b.c.d), IPv4-compatible and NAT64 (64:ff9b::/96): judge by the embedded IPv4.
+  if ((g[0] & 0xffc0) === 0xfec0) return true; // fec0::/10 site-local (deprecated, never public)
+  if (g[0] === 0x2001 && g[1] === 0) return true; // Teredo 2001:0000::/32 (tunnels, never a safe target)
+  if (g[0] === 0x64 && g[1] === 0xff9b && g[2] === 0x0001) return true; // 64:ff9b:1::/48 local-use NAT64
+  // IPv4-mapped (::ffff:a.b.c.d), IPv4-translated (::ffff:0:a.b.c.d), IPv4-compatible and NAT64
+  // (64:ff9b::/96): judge by the embedded IPv4 in the last two groups.
   const mapped = g.slice(0, 5).every((n) => n === 0) && g[5] === 0xffff;
+  const translated = g.slice(0, 4).every((n) => n === 0) && g[4] === 0xffff && g[5] === 0;
   const nat64 = g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((n) => n === 0);
-  if (mapped || nat64 || g.slice(0, 6).every((n) => n === 0)) {
-    return isPrivateV4(`${g[6] >> 8}.${g[6] & 255}.${g[7] >> 8}.${g[7] & 255}`);
+  if (mapped || translated || nat64 || g.slice(0, 6).every((n) => n === 0)) {
+    return isPrivateV4(embeddedV4(g[6], g[7]));
   }
+  // 6to4 2002::/16: the IPv4 sits in groups 1-2.
+  if (g[0] === 0x2002) return isPrivateV4(embeddedV4(g[1], g[2]));
   return false;
 }
 

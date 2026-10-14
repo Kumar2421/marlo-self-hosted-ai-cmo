@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SEOAgent, assertPublicHttpUrl, type Finding } from "@/lib/domain/seo/SEOAgent";
+import { SEOAgent, type Finding } from "@/lib/domain/seo/SEOAgent";
+import { assertSafeUserUrl, INVALID_USER_URL_MESSAGE } from "@/lib/domain/net/publicUrl";
 import { setCachedPublicAudit } from "@/lib/domain/seo/publicAuditCache";
 import { explainFinding } from "@/lib/domain/seo/findingExplanations";
 
@@ -7,18 +8,26 @@ export const maxDuration = 60;
 
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS_PER_WINDOW = 5;
+const MAX_TRACKED_KEYS = 10_000;
 const requests = new Map<string, { count: number; resetAt: number }>();
 
+/** Behind Vercel, x-real-ip is set by the platform. The leftmost x-forwarded-for is client-controlled, so it is never used. */
 function clientKey(req: NextRequest): string {
-  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("x-real-ip") ||
-    "anonymous";
+  if (process.env.VERCEL) return req.headers.get("x-real-ip")?.trim() || "unknown";
+  return "unknown";
 }
 
 function rateLimit(key: string): boolean {
   const now = Date.now();
+  for (const [k, entry] of requests) {
+    if (entry.resetAt <= now) requests.delete(k);
+  }
   const current = requests.get(key);
-  if (!current || current.resetAt <= now) {
+  if (!current) {
+    if (requests.size >= MAX_TRACKED_KEYS) {
+      const oldest = requests.keys().next().value;
+      if (oldest !== undefined) requests.delete(oldest);
+    }
     requests.set(key, { count: 1, resetAt: now + WINDOW_MS });
     return true;
   }
@@ -51,12 +60,11 @@ export async function POST(req: NextRequest) {
 
   let url: URL;
   try {
-    url = assertPublicHttpUrl(rawUrl);
+    // Resolves DNS and checks every answer, rejects credentials, odd ports and overlong input.
+    url = await assertSafeUserUrl(rawUrl);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Invalid URL." },
-      { status: 400 }
-    );
+    const message = error instanceof Error ? error.message : INVALID_USER_URL_MESSAGE;
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 
   try {
@@ -81,8 +89,8 @@ export async function POST(req: NextRequest) {
         redirectCount: result.technical.redirectCount,
       },
     });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Audit failed.";
-    return NextResponse.json({ error: message }, { status: 502 });
+  } catch {
+    // Generic on purpose: the audit failure detail is logged server-side by SEOAgent, never returned.
+    return NextResponse.json({ error: "Audit failed. Check the URL and try again." }, { status: 502 });
   }
 }

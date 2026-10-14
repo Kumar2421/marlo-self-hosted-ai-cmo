@@ -1,3 +1,5 @@
+import { assertPublicHttpUrlResolved, type LookupFn } from "../net/ssrf.ts";
+
 /** Real headless-browser page render via Jina AI Reader (https://r.jina.ai) —
  * no API key required for reasonable volume (20 req/min). Used as a fallback
  * when a plain fetch()+cheerio crawl comes back too thin to be useful, which
@@ -11,11 +13,18 @@ export type JinaReadResult = { title: string; description: string; url: string; 
 
 const JINA_TIMEOUT_MS = 35_000;
 
-export async function jinaRead(url: string): Promise<JinaReadResult | null> {
+export async function jinaRead(url: string, lookup?: LookupFn): Promise<JinaReadResult | null> {
+  // The target is handed to a third party, so it must pass the public-address check (DNS included)
+  // before anything is sent. The target is URL-encoded so it cannot change the path or query.
+  try {
+    await assertPublicHttpUrlResolved(url, lookup);
+  } catch {
+    return null;
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), JINA_TIMEOUT_MS);
   try {
-    const res = await fetch(`https://r.jina.ai/${url}`, {
+    const res = await fetch(`https://r.jina.ai/${encodeURIComponent(url)}`, {
       headers: {
         Accept: "application/json",
         "X-Engine": "browser",
