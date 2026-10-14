@@ -14,6 +14,7 @@ const ICONS: Record<NotificationKind, typeof Bell> = {
   credits_low: CircleDollarSign,
   approval_needed: GitPullRequest,
   integration_disconnected: AlertTriangle,
+  social_drafts_ready: MessageCircle,
 };
 
 function timeAgo(iso: string, now = Date.now()): string {
