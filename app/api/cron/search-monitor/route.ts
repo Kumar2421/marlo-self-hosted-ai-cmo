@@ -123,6 +123,15 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Housekeeping for the public audit rate limiter (drops fixed windows older than a day).
+  // Failure is logged and never changes this run's response.
+  try {
+    const { error: cleanupError } = await db.rpc("rate_limits_cleanup");
+    if (cleanupError) console.warn("[rate-limits] cleanup failed:", cleanupError.message);
+  } catch {
+    console.warn("[rate-limits] cleanup failed");
+  }
+
   return NextResponse.json({
     notifications,
     due: due.length,
