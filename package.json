@@ -20,7 +20,7 @@
     "better-sqlite3": "^13.0.3",
     "cheerio": "^1.2.0",
     "lucide-react": "^1.38.0",
-    "next": "16.3.3",
+    "next": "16.4.0",
     "openai": "^7.8.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
@@ -35,11 +35,16 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.3",
+    "eslint-config-next": "16.4.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
   "engines": {
     "node": ">=24.12.0"
+  },
+  "overrides": {
+    "undici": "7.30.0",
+    "sharp": "0.35.5",
+    "source-map-js": "1.2.2"
   }
 }
