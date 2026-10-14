@@ -24,6 +24,7 @@ import {
   suggestCategory,
   suggestLocation,
   tagsWithStatus,
+  websiteHref,
   type LeadStatus,
 } from "@/lib/domain/leads/local/businessLead";
 
@@ -706,9 +707,9 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                     ) : (
                       <span className="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-400">No email found</span>
                     )}
-                    {lead.source_url && (
+                    {websiteHref(lead.source_url) && (
                       <a
-                        href={lead.source_url}
+                        href={websiteHref(lead.source_url) ?? undefined}
                         target="_blank"
                         rel="noreferrer"
                         className="flex items-center gap-0.5 text-gray-400 hover:text-gray-700"

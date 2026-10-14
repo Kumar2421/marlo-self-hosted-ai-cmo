@@ -9,15 +9,20 @@ import { PlacesApiError, searchPlacesPage } from "@/lib/domain/leads/local/place
 import { searchLocalLeads, type LocalLeadDraft, type LocalSearchPorts } from "@/lib/domain/leads/local/localLeadService";
 import { enrichBusiness } from "@/lib/domain/leads/local/websiteContact";
 import { resolveMailHost } from "@/lib/domain/leads/emailVerify";
+import {
+  MANAGED_DAILY_CAP,
+  reserveManagedSlot,
+  shouldChargeSearch,
+  type SlotStore,
+} from "@/lib/domain/leads/local/managedSearchPolicy";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Vercel: a search runs one Places call plus website enrichment (budgeted to 35s).
 export const maxDuration = 60;
 
-/** Searches per user per UTC day on the managed (operator) Google key. Own-key searches are not capped. */
-const MANAGED_DAILY_CAP = 30;
 /** Stored as usage_events.model so managed-key searches can be counted for the daily cap. */
 const PLACES_USAGE_MODEL = "places_api";
+const SEARCH_AGENT_TYPE = "lead_search";
 const NOT_CONFIGURED = "Local search is not set up yet";
 const OWN_KEY_HINT = "Connect a Google Cloud API key in Settings → API Credentials (with Places API enabled) to search local businesses.";
 const MAX_FIELD = 100;
@@ -43,20 +48,15 @@ async function hasMailServer(email: string): Promise<boolean> {
   return (await resolveMailHost(email.slice(at + 1))) !== null;
 }
 
-/** Shared search: one Places page, dedupe, enrich, score. `afterPage` runs only after Google answered. */
+/** Shared search: one Places page, dedupe, enrich, score. Charging is decided by the caller, after the save. */
 async function runLocalSearch(args: {
   apiKey: string;
   projectId: string;
   input: SearchInput;
   existingPlaceIds: (projectId: string) => Promise<Set<string>>;
-  afterPage?: () => Promise<void>;
 }) {
   const ports: LocalSearchPorts = {
-    searchPage: async (q) => {
-      const page = await searchPlacesPage(fetch, args.apiKey, q);
-      if (args.afterPage) await args.afterPage();
-      return page;
-    },
+    searchPage: (q) => searchPlacesPage(fetch, args.apiKey, q),
     existingPlaceIds: args.existingPlaceIds,
     enrich: (website) => enrichBusiness(website),
     emailCheck: hasMailServer,
@@ -137,21 +137,25 @@ async function hostedSearch(input: SearchInput): Promise<NextResponse> {
     return NextResponse.json({ error: "No active project. Link a website first." }, { status: 422 });
   }
 
-  if (usingManaged) {
-    const used = await countManagedSearchesToday(db, user.id);
-    if (used >= MANAGED_DAILY_CAP) {
-      return NextResponse.json(
-        { error: `You've used today's ${MANAGED_DAILY_CAP} local searches. Connect your own Google Cloud key to keep searching.` },
-        { status: 429 }
-      );
-    }
-    const state = await getCreditState(user.id, "lead_search");
-    if (state.billingEnabled && state.balance < state.cost) {
-      return NextResponse.json({ error: "Out of credits. Upgrade or connect your own key." }, { status: 402 });
-    }
-  }
-
+  // Managed searches reserve a daily slot before the Google call. The reservation is a usage_events
+  // row, released in `finally` on every path, so a failed or empty search gives its slot back.
+  let reservation: string | null = null;
   try {
+    if (usingManaged) {
+      const slot = await reserveManagedSlot(managedSlotStore(db, user.id, activeId));
+      if (!slot.allowed) {
+        return NextResponse.json(
+          { error: `You've used today's ${MANAGED_DAILY_CAP} local searches. Connect your own Google Cloud key to keep searching.` },
+          { status: 429 }
+        );
+      }
+      reservation = slot.handle;
+      const state = await getCreditState(user.id, SEARCH_AGENT_TYPE);
+      if (state.billingEnabled && state.balance < state.cost) {
+        return NextResponse.json({ error: "Out of credits. Upgrade or connect your own key." }, { status: 402 });
+      }
+    }
+
     const result = await runLocalSearch({
       apiKey: ownKey || managedKey,
       projectId: activeId,
@@ -165,16 +169,11 @@ async function hostedSearch(input: SearchInput): Promise<NextResponse> {
           .not("place_id", "is", null);
         return new Set((data ?? []).map((r) => r.place_id as string));
       },
-      // Charged only once Google has answered successfully, and never on the user's own key.
-      afterPage: usingManaged
-        ? async () => {
-            await chargeCredits(user.id, "lead_search", { projectId: activeId, model: PLACES_USAGE_MODEL });
-          }
-        : undefined,
     });
 
     const saved: Record<string, unknown>[] = [];
     let raced = 0;
+    let saveFailed = false;
     const now = new Date().toISOString();
     for (const draft of result.leads) {
       const { data, error } = await db
@@ -197,9 +196,19 @@ async function hostedSearch(input: SearchInput): Promise<NextResponse> {
           raced += 1;
           continue;
         }
-        return NextResponse.json({ error: "Couldn't save the leads. Try again." }, { status: 500 });
+        saveFailed = true;
+        break;
       }
       if (data) saved.push(data);
+    }
+    if (saveFailed) {
+      // The user gets an error, so the search is not charged.
+      return NextResponse.json({ error: "Couldn't save the leads. Try again." }, { status: 500 });
+    }
+
+    // Charged once, after the save, and only when at least one new lead was kept.
+    if (shouldChargeSearch({ usingManaged, savedCount: saved.length, failed: saveFailed })) {
+      await chargeCredits(user.id, SEARCH_AGENT_TYPE, { projectId: activeId, model: PLACES_USAGE_MODEL });
     }
 
     return NextResponse.json({
@@ -210,20 +219,52 @@ async function hostedSearch(input: SearchInput): Promise<NextResponse> {
     });
   } catch (err) {
     return errorResponse(err);
+  } finally {
+    if (reservation) await releaseReservation(db, reservation);
   }
 }
 
-async function countManagedSearchesToday(db: SupabaseClient, userId: string): Promise<number> {
-  const startOfDay = new Date();
-  startOfDay.setUTCHours(0, 0, 0, 0);
-  const { count } = await db
-    .from("usage_events")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("agent_type", "lead_search")
-    .eq("model", PLACES_USAGE_MODEL)
-    .gte("created_at", startOfDay.toISOString());
-  return count ?? 0;
+/** usage_events rows for this user's managed searches today, used as the daily-cap slots. */
+function managedSlotStore(db: SupabaseClient, userId: string, projectId: string): SlotStore<string> {
+  return {
+    reserve: async () => {
+      const { data, error } = await db
+        .from("usage_events")
+        .insert({
+          user_id: userId,
+          project_id: projectId,
+          agent_type: SEARCH_AGENT_TYPE,
+          model: PLACES_USAGE_MODEL,
+          credits_charged: 0,
+        })
+        .select("id")
+        .single();
+      if (error || !data) throw new Error("Could not reserve a local search slot");
+      return data.id as string;
+    },
+    count: async () => {
+      const startOfDay = new Date();
+      startOfDay.setUTCHours(0, 0, 0, 0);
+      const { count, error } = await db
+        .from("usage_events")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("agent_type", SEARCH_AGENT_TYPE)
+        .eq("model", PLACES_USAGE_MODEL)
+        .gte("created_at", startOfDay.toISOString());
+      if (error) throw new Error("Could not count local searches");
+      return count ?? 0;
+    },
+    release: (id) => releaseReservation(db, id),
+  };
+}
+
+async function releaseReservation(db: SupabaseClient, id: string): Promise<void> {
+  try {
+    await db.from("usage_events").delete().eq("id", id);
+  } catch {
+    // A row left behind only counts against today's cap, which fails safe.
+  }
 }
 
 async function selfHostSearch(input: SearchInput): Promise<NextResponse> {

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { enrichBusiness, extractContact, rankEmails } from "../lib/domain/leads/local/websiteContact.ts";
+import { assertResolvesPublic } from "../lib/domain/net/ssrf.ts";
 
 const PUBLIC = async () => [{ address: "93.184.216.34" }];
 const PRIVATE = async () => [{ address: "10.0.0.5" }];
@@ -31,10 +32,15 @@ test("extractContact reads mailto links first, drops junk, and prefers the site'
   assert.deepEqual(out.emails, ["hello@acme.example.com", "sales@gmail.com"]);
 });
 
-test("extractContact de-obfuscates only obvious [at] / [dot] and ' at ... dot ...' forms", () => {
-  const html = `<body><p>info [at] acme [dot] com</p><p>team at acme dot com</p><p>we are at the mall dot store</p></body>`;
+test("extractContact de-obfuscates bracketed forms and labelled spelled-out forms only", () => {
+  const html = `<body><p>info [at] acme [dot] com</p><p>sales (at) acme (dot) com</p><p>Email: team at acme dot com</p></body>`;
   const out = extractContact(html, "https://acme.com/");
-  assert.deepEqual(out.emails, ["info@acme.com", "team@acme.com"]);
+  assert.deepEqual(out.emails, ["info@acme.com", "sales@acme.com", "team@acme.com"]);
+});
+
+test("extractContact does not turn ordinary prose into an email", () => {
+  const html = `<body><p>ask Jane at Acme dot com about pricing</p><p>we are at the mall dot store</p></body>`;
+  assert.deepEqual(extractContact(html, "https://acme.com/").emails, []);
 });
 
 test("extractContact ignores scripts and styles when reading visible text", () => {
@@ -106,6 +112,13 @@ test("enrichBusiness reads the homepage and the contact page, at most three fetc
   assert.equal(out.description, "Plumbing in Austin.");
   assert.equal(out.contactUrl, "https://acme.com/contact");
   assert.ok(calls.length <= 3);
+});
+
+test("assertResolvesPublic gives up on a DNS lookup that stalls past the timeout", async () => {
+  const never = () => new Promise<{ address: string }[]>(() => {});
+  const started = Date.now();
+  await assert.rejects(assertResolvesPublic("slow.example.com", never, 25), { message: "That address can't be used." });
+  assert.ok(Date.now() - started < 1000);
 });
 
 test("enrichBusiness blocks private addresses before any fetch", async () => {

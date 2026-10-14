@@ -35,6 +35,15 @@ export function tagsWithStatus(tags: readonly string[] | null | undefined, statu
   return status === "new" ? kept : [...kept, `${STATUS_TAG_PREFIX}${status}`];
 }
 
+/**
+ * Postgres text[] literal for an exact-match filter on the tags column, e.g. {"status:new","x"}.
+ * Quotes and backslashes inside a tag are escaped.
+ */
+export function tagsLiteral(tags: readonly string[]): string {
+  const items = tags.map((tag) => `"${tag.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`);
+  return `{${items.join(",")}}`;
+}
+
 /** Digits only, for wa.me. Enrichment stores WhatsApp numbers as bare digits (8 to 15). */
 export function whatsappLink(raw: string | null | undefined): string | null {
   if (!raw) return null;

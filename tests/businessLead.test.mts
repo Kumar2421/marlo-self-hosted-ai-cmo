@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   categoryFromQuery,
+  tagsLiteral,
   emailLabel,
   enrichmentNote,
   leadChips,
@@ -131,4 +132,10 @@ test("sortByFitScore sorts high to low, treats missing as 0, and is stable", () 
     sortByFitScore(items).map((i) => i.id),
     ["c", "a", "d", "b"]
   );
+});
+
+test("tagsLiteral builds an exact Postgres text[] literal, escaping quotes and backslashes", () => {
+  assert.equal(tagsLiteral([]), "{}");
+  assert.equal(tagsLiteral(["status:new", "vip"]), '{"status:new","vip"}');
+  assert.equal(tagsLiteral(['a"b', "c\\d"]), '{"a\\"b","c\\\\d"}');
 });

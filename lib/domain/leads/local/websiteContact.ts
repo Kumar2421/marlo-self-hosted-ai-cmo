@@ -88,12 +88,19 @@ export function rankEmails(candidates: string[], siteHost: string): string[] {
   return [...clean.filter(own), ...clean.filter((e) => !own(e))].slice(0, MAX_EMAILS);
 }
 
-/** Unobfuscate only the obvious forms: "name [at] domain [dot] com", "(at)", and "name at domain dot com". */
+// Bracketed forms are explicit obfuscation, so they are unobfuscated anywhere.
+const BRACKET_AT_RE = /([A-Za-z0-9._%+-]{1,64})\s{0,4}(?:\[at\]|\(at\))\s{0,4}([A-Za-z0-9-]{1,63})\s{0,4}(?:\[dot\]|\(dot\)|\.)\s{0,4}([A-Za-z]{2,24})/gi;
+// Spelled-out "name at domain dot com" is ordinary prose ("ask Jane at Acme dot com"), so it is
+// unobfuscated only right after a contact label such as "email:" or "contact".
+const LABELLED_WORD_AT_RE = /((?:e-?mail|mail|contact)\s{0,4}:?\s{0,4})([A-Za-z0-9._%+-]{1,64})\s{1,4}at\s{1,4}([A-Za-z0-9-]{1,63})\s{1,4}dot\s{1,4}([A-Za-z]{2,24})/gi;
+
+/**
+ * Unobfuscate only explicit forms: "name [at] domain [dot] com" and "(at)"/"(dot)", or a spelled
+ * "name at domain dot com" directly after a contact label. Bounded quantifiers only: unbounded
+ * ones backtrack quadratically on long runs of word characters.
+ */
 function deobfuscate(text: string): string {
-  return text
-    // Bounded quantifiers only: unbounded ones backtrack quadratically on long runs of word characters.
-    .replace(/([A-Za-z0-9._%+-]{1,64})\s{0,4}(?:\[at\]|\(at\))\s{0,4}([A-Za-z0-9-]{1,63})\s{0,4}(?:\[dot\]|\(dot\)|\.)\s{0,4}([A-Za-z]{2,24})/gi, "$1@$2.$3")
-    .replace(/([A-Za-z0-9._%+-]{1,64})\s{1,4}at\s{1,4}([A-Za-z0-9-]{1,63})\s{1,4}dot\s{1,4}([A-Za-z]{2,24})/gi, "$1@$2.$3");
+  return text.replace(BRACKET_AT_RE, "$1@$2.$3").replace(LABELLED_WORD_AT_RE, "$1$2@$3.$4");
 }
 
 function extractWhatsapp($: cheerio.CheerioAPI): string | null {
@@ -219,7 +226,11 @@ async function cancelBody(res: Response): Promise<void> {
   }
 }
 
-/** One guarded GET: every hop is checked, redirects stay on the same site, no cookies are sent. */
+/**
+ * One guarded GET: every hop is checked, redirects stay on the same site, no cookies are sent.
+ * Each hop's DNS check is bounded (LOOKUP_TIMEOUT_MS). The connect fetch() makes after the check
+ * can still re-resolve the name; see the residual-window note in assertResolvesPublic.
+ */
 async function fetchPage(start: string, deps: EnrichDeps): Promise<PageFetch> {
   const doFetch = deps.fetchImpl ?? fetch;
   const timeoutMs = deps.timeoutMs ?? PAGE_TIMEOUT_MS;

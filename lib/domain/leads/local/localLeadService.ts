@@ -92,6 +92,27 @@ async function mapPool<T, R>(items: T[], concurrency: number, fn: (item: T) => P
 
 const NO_CONTACT: Enrichment = { status: "no_website", emails: [], whatsapp: null, contactUrl: null, description: null };
 
+/** Host of a stored website ("acme.com" or a full URL), without "www.". Null when it has none. */
+function siteHost(website: string): string | null {
+  const raw = website.trim();
+  if (!raw) return null;
+  try {
+    const host = new URL(raw.includes("://") ? raw : `https://${raw}`).hostname.toLowerCase();
+    return host.replace(/^www\./, "") || null;
+  } catch {
+    return null;
+  }
+}
+
+/** True when the address sits on the business's own site domain (or a subdomain of it). */
+export function isOwnSiteEmail(email: string, website: string): boolean {
+  const host = siteHost(website);
+  const at = email.lastIndexOf("@");
+  if (!host || at < 0) return false;
+  const domain = email.slice(at + 1).toLowerCase().replace(/\.+$/, "");
+  return domain === host || domain.endsWith(`.${host}`);
+}
+
 export async function searchLocalLeads(ports: LocalSearchPorts, input: LocalSearchInput): Promise<LocalSearchResult> {
   const page = await ports.searchPage({
     category: input.category,
@@ -130,11 +151,16 @@ export async function searchLocalLeads(ports: LocalSearchPorts, input: LocalSear
     let emailQuality: EmailQuality | null = null;
     if (enrichment && enrichment.emails.length > 0) {
       email = enrichment.emails[0];
-      const mx = await withinMs(
-        ports.emailCheck(email).catch(() => false),
-        deadline - Date.now()
-      );
-      emailQuality = mx.done && mx.value ? "domain_found" : "unknown";
+      if (isOwnSiteEmail(email, place.website ?? "")) {
+        // Printed on the business's own site: the source is the site itself, no mail check needed.
+        emailQuality = "source_found";
+      } else {
+        const mx = await withinMs(
+          ports.emailCheck(email).catch(() => false),
+          deadline - Date.now()
+        );
+        emailQuality = mx.done && mx.value ? "domain_found" : "unknown";
+      }
     }
 
     const scored = scoreLocalLead(place, enrichment ?? { emails: [], whatsapp: null, contactUrl: null, description: null }, wanted);

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { LocalPlace, PlacesPageResult } from "../lib/domain/leads/local/placesSearch.ts";
 import { scoreLocalLead } from "../lib/domain/leads/local/fitReason.ts";
-import { searchLocalLeads, type LocalSearchPorts } from "../lib/domain/leads/local/localLeadService.ts";
+import { isOwnSiteEmail, searchLocalLeads, type LocalSearchPorts } from "../lib/domain/leads/local/localLeadService.ts";
 import type { Enrichment } from "../lib/domain/leads/local/websiteContact.ts";
 
 function place(id: string, extra: Partial<LocalPlace> = {}): LocalPlace {
@@ -84,8 +84,8 @@ test("blocked enrichment is kept as blocked with no contact fields", async () =>
 test("email: the best scraped email is MX-checked and marked domain_found or unknown", async () => {
   const enrich = async (website: string): Promise<Enrichment> =>
     website.includes("good")
-      ? { ...EMPTY, emails: ["owner@good.example.com", "other@good.example.com"] }
-      : { ...EMPTY, emails: ["hi@bad.example.com"] };
+      ? { ...EMPTY, emails: ["owner@mailhost.example.net", "other@mailhost.example.net"] }
+      : { ...EMPTY, emails: ["hi@elsewhere.example.org"] };
   const checked: string[] = [];
   const result = await searchLocalLeads(
     ports({
@@ -93,24 +93,50 @@ test("email: the best scraped email is MX-checked and marked domain_found or unk
       enrich,
       emailCheck: async (email) => {
         checked.push(email);
-        return email.endsWith("good.example.com");
+        return email.endsWith("mailhost.example.net");
       },
     }),
     base
   );
   const byId = Object.fromEntries(result.leads.map((l) => [l.placeId, l]));
-  assert.equal(byId.good.email, "owner@good.example.com");
+  assert.equal(byId.good.email, "owner@mailhost.example.net");
   assert.equal(byId.good.emailQuality, "domain_found");
-  assert.equal(byId.bad.email, "hi@bad.example.com");
+  assert.equal(byId.bad.email, "hi@elsewhere.example.org");
   assert.equal(byId.bad.emailQuality, "unknown");
-  assert.deepEqual(checked.sort(), ["hi@bad.example.com", "owner@good.example.com"]);
+  assert.deepEqual(checked.sort(), ["hi@elsewhere.example.org", "owner@mailhost.example.net"]);
+});
+
+test("email on the business's own domain is source_found and skips the mail check", async () => {
+  const checked: string[] = [];
+  const result = await searchLocalLeads(
+    ports({
+      places: [place("own")],
+      enrich: async () => ({ ...EMPTY, emails: ["hello@own.example.com", "x@gmail.com"] }),
+      emailCheck: async (email) => {
+        checked.push(email);
+        return true;
+      },
+    }),
+    base
+  );
+  assert.equal(result.leads[0].email, "hello@own.example.com");
+  assert.equal(result.leads[0].emailQuality, "source_found");
+  assert.deepEqual(checked, []);
+});
+
+test("isOwnSiteEmail matches the site domain and its subdomains only", () => {
+  assert.equal(isOwnSiteEmail("a@acme.com", "https://www.acme.com/contact"), true);
+  assert.equal(isOwnSiteEmail("a@mail.acme.com", "acme.com"), true);
+  assert.equal(isOwnSiteEmail("a@notacme.com", "acme.com"), false);
+  assert.equal(isOwnSiteEmail("a@gmail.com", "acme.com"), false);
+  assert.equal(isOwnSiteEmail("a@acme.com", ""), false);
 });
 
 test("email check that throws is treated as unknown, not a crash", async () => {
   const result = await searchLocalLeads(
     ports({
       places: [place("x")],
-      enrich: async () => ({ ...EMPTY, emails: ["a@x.example.com"] }),
+      enrich: async () => ({ ...EMPTY, emails: ["a@elsewhere.example.org"] }),
       emailCheck: async () => {
         throw new Error("dns down");
       },
