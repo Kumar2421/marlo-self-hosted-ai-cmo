@@ -19,10 +19,11 @@ export type NotificationPrefs = {
 /**
  * The digest is the only category with its own daily/weekly rhythm. For the
  * rest, "instant" means an email of its own; "daily"/"weekly" means an in-app
- * item only, which the digest rolls up.
+ * item only, which the digest rolls up. Content (social drafts) is in-app
+ * only by default and is never part of the digest.
  */
 export const DEFAULT_PREFS: NotificationPrefs = {
-  categories: { digest: "weekly", outcomes: "instant", credits: "instant", approvals: "daily", integrations: "instant" },
+  categories: { digest: "weekly", outcomes: "instant", credits: "instant", approvals: "daily", integrations: "instant", content: "daily" },
   paused: false,
   timezone: null,
   quietHours: null,

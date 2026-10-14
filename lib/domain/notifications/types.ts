@@ -4,10 +4,11 @@ export const NOTIFICATION_KINDS = [
   "credits_low",
   "approval_needed",
   "integration_disconnected",
+  "social_drafts_ready",
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
-export const NOTIFICATION_CATEGORIES = ["digest", "outcomes", "credits", "approvals", "integrations"] as const;
+export const NOTIFICATION_CATEGORIES = ["digest", "outcomes", "credits", "approvals", "integrations", "content"] as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 
 export const FREQUENCIES = ["instant", "daily", "weekly", "off"] as const;
@@ -19,6 +20,7 @@ const CATEGORY_OF: Record<NotificationKind, NotificationCategory> = {
   credits_low: "credits",
   approval_needed: "approvals",
   integration_disconnected: "integrations",
+  social_drafts_ready: "content",
 };
 
 export function categoryOf(kind: NotificationKind): NotificationCategory {

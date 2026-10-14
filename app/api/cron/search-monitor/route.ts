@@ -11,6 +11,7 @@ import { runNotificationJob, type NotificationJobSummary } from "@/lib/domain/no
 import { supabaseNotificationStore } from "@/lib/domain/notifications/notificationStoreSupabase";
 import { platformNotificationSource } from "@/lib/domain/notifications/platformSource";
 import { emailLinksFor, notificationConfig } from "@/lib/domain/notifications/runtime";
+import { runSocialDailyJob, type SocialDailyJobSummary } from "@/lib/domain/social/dailyDraftJob";
 
 // Hobby caps cron functions at 60s. Stop a little short of it and resume on
 // the next run rather than being killed mid-project.
@@ -26,6 +27,9 @@ const BUDGET_MS = 45_000;
 // budget delays people by a day instead of starving the same tail forever.
 const NOTIFY_DEADLINE_MS = 57_000;
 const NOTIFY_MIN_BUDGET_MS = 2_000;
+// Daily social drafts (one per network per project) run after the proposals and before the
+// notifications, so the in-app item they create is there for the notification pass. Capped.
+const SOCIAL_BUDGET_MS = 15_000;
 
 /**
  * Daily Search Console snapshot for every project with GSC connected —
@@ -99,6 +103,21 @@ export async function GET(req: NextRequest) {
     { budgetMs: Math.max(0, BUDGET_MS - (Date.now() - startedAt)) },
   );
 
+  // Phase 3: one draft per network per project for review (nothing is posted). Failures are
+  // isolated per project inside the job; this only guards the whole phase.
+  let social: SocialDailyJobSummary | { error: string };
+  const socialBudget = Math.min(SOCIAL_BUDGET_MS, Math.max(0, NOTIFY_DEADLINE_MS - NOTIFY_MIN_BUDGET_MS - (Date.now() - startedAt)));
+  if (socialBudget < NOTIFY_MIN_BUDGET_MS) {
+    social = { error: "No time left; will run tomorrow." };
+  } else {
+    try {
+      social = await runSocialDailyJob(db, supabaseNotificationStore(db), { now: new Date(), budgetMs: socialBudget });
+    } catch {
+      console.warn("[social] daily drafts job failed.");
+      social = { error: "Social drafts job failed." };
+    }
+  }
+
   // Failures here never fail the snapshot run, and never carry secrets into the response.
   let notifications: Pick<NotificationJobSummary, "users" | "skipped" | "created" | "emailed" | "emailFailed" | "interrupted"> & { failed: number } | { error: string };
   const notifyBudget = NOTIFY_DEADLINE_MS - (Date.now() - startedAt);
@@ -130,5 +149,6 @@ export async function GET(req: NextRequest) {
     skipped: summary.skipped,
     failed: summary.failed.map(({ item, error: message }) => ({ projectId: item.projectId, error: message })),
     proposals: { ...proposalSummary, processed: proposalRun.processed, skipped: proposalRun.skipped, failed: proposalFailures },
+    social,
   });
 }

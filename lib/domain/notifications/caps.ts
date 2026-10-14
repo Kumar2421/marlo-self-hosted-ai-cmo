@@ -21,6 +21,8 @@ export const creditsKey = (threshold: 20 | 0, now: Date) => `credits_low:${thres
 export const integrationKey = (integration: string, now: Date) => `integration_disconnected:${integration}:${Math.floor(now.getTime() / (3 * DAY_MS))}`;
 /** At most one approvals reminder per day. */
 export const approvalsKey = (isoDate: string) => `approval_needed:${isoDate}`;
+/** At most one "new social drafts" item per user per day (the daily drafts job may run for several projects). */
+export const socialDraftsKey = (userId: string, isoDate: string) => `social_drafts_ready:${userId}:${isoDate}`;
 
 /** Max individual emails per kind in any 24 hours. Kinds not listed are limited by their dedupe key alone. */
 export const EMAIL_DAILY_CAPS: Partial<Record<NotificationKind, number>> = { outcome_measured: 1, approval_needed: 1 };

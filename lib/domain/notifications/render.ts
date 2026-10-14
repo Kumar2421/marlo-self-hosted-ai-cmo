@@ -1,6 +1,22 @@
 import { OUTCOME_CAVEAT, type Digest, type DigestProject, type MeasuredFix } from "./digest.ts";
 import type { NotificationKind } from "./types.ts";
 
+/** Title of the in-app item for social drafts; singular and plural aware. */
+export function socialDraftsTitle(total: number): string {
+  return total === 1 ? "1 new social draft is ready" : `${total} new social drafts are ready`;
+}
+
+const NETWORK_NAMES: Record<string, string> = { x: "X", linkedin: "LinkedIn", reddit: "Reddit" };
+
+/** Body for the social drafts item: names the networks that got a draft, in a fixed order. */
+export function socialDraftsBody(networks: string[]): string {
+  const names = ["x", "linkedin", "reddit"].filter((n) => networks.includes(n)).map((n) => NETWORK_NAMES[n]);
+  const list = names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return list
+    ? `Drafts for ${list} are waiting in the Social tab. Nothing is posted until you post it yourself.`
+    : "Drafts are waiting in the Social tab. Nothing is posted until you post it yourself.";
+}
+
 export type EmailLinks = {
   /** Where the primary button goes (the dashboard). */
   openUrl: string;
