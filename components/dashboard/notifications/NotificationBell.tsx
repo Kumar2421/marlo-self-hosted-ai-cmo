@@ -6,6 +6,8 @@ import { AlertTriangle, Bell, CheckCheck, CircleDollarSign, GitPullRequest, Mess
 import SidePanel from "@/components/shared/SidePanel";
 import { SkeletonLines } from "@/components/shared/Skeleton";
 import type { NotificationKind } from "@/lib/domain/notifications/types";
+import { resolveSocialPlatform } from "@/lib/domain/social/socialNav";
+import { useSocialPanel } from "@/components/dashboard/social/SocialPanelProvider";
 import { useNotifications, type ClientNotification } from "./useNotifications";
 
 const ICONS: Record<NotificationKind, typeof Bell> = {
@@ -28,13 +30,13 @@ function timeAgo(iso: string, now = Date.now()): string {
   return days < 30 ? `${days}d ago` : new Date(iso).toLocaleDateString();
 }
 
-function Row({ n, onRead }: { n: ClientNotification; onRead: (id: string) => void }) {
+function Row({ n, onActivate }: { n: ClientNotification; onActivate: (n: ClientNotification) => void }) {
   const Icon = ICONS[n.kind] ?? Bell;
   return (
     <li>
       <button
         type="button"
-        onClick={() => !n.read && onRead(n.id)}
+        onClick={() => onActivate(n)}
         className={`flex w-full gap-3 rounded-lg px-3 py-3 text-left transition-colors ${n.read ? "hover:bg-gray-50" : "bg-[#f3fbf9] hover:bg-[#e9f7f4]"}`}
         aria-label={`${n.title}. ${n.read ? "Read" : "Unread. Press to mark as read"}`}
       >
@@ -56,6 +58,16 @@ function Row({ n, onRead }: { n: ClientNotification; onRead: (id: string) => voi
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const { notifications, unreadCount, isLoading, isError, unavailable, refetch, markRead } = useNotifications();
+  const social = useSocialPanel();
+
+  /** Mark read; a social notification also opens that network draft panel (the bell closes first). */
+  function activate(n: ClientNotification) {
+    if (!n.read) markRead.mutate({ ids: [n.id] });
+    if (n.nav) {
+      setOpen(false);
+      social.open(resolveSocialPlatform(n.nav.platform));
+    }
+  }
 
   // Not signed in: there is nothing to show and nothing to explain here.
   if (unavailable) return null;
@@ -121,7 +133,7 @@ export default function NotificationBell() {
         ) : (
           <ul className="-mx-3 space-y-1">
             {notifications.map((n) => (
-              <Row key={n.id} n={n} onRead={(id) => markRead.mutate({ ids: [id] })} />
+              <Row key={n.id} n={n} onActivate={activate} />
             ))}
           </ul>
         )}

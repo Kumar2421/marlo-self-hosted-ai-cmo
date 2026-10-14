@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getDriver } from "@/lib/llm";
-import { LeadsAgent } from "@/lib/domain/leads/LeadsAgent";
+import { LeadsAgent, type ExtractedLead } from "@/lib/domain/leads/LeadsAgent";
+import { runPaidLeadSearch } from "@/lib/domain/leads/paidLeadSearch";
 import { getLeadProfile } from "@/lib/domain/leads/leadProfileStore";
 import { getLeadProfile as getLeadProfileSupabase } from "@/lib/domain/leads/leadProfileStoreSupabase";
 import { verifyMissingEmails } from "@/lib/domain/leads/verifyMissingEmails";
@@ -10,7 +11,7 @@ import { FEATURES } from "@/lib/features";
 import { canFetchLeadsToday } from "@/lib/entitlements";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
-import { chargeCredits, InsufficientCreditsError } from "@/lib/credits";
+import { chargeCredits, getCreditState, InsufficientCreditsError } from "@/lib/credits";
 import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -126,60 +127,68 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No active project. Link a website first." }, { status: 422 });
     }
 
-    try {
-      await chargeCredits(user.id, "lead_search", { projectId: activeId, model });
-    } catch (err) {
-      if (err instanceof InsufficientCreditsError) {
-        return NextResponse.json({ error: "Out of credits. Upgrade or connect your own key." }, { status: 402 });
-      }
-      throw err;
-    }
+    // Limit check and credit pre-check first (nothing spent yet), then search,
+    // then save, and only then charge: a failed save is never billed, and a
+    // charge refused after the save keeps the saved leads (see runPaidLeadSearch).
+    const query = `${role} ${companyOrIndustry} ${location}`.trim();
+    const outcome = await runPaidLeadSearch<ExtractedLead, Record<string, unknown>>({
+      checkDailyLimit: () => canFetchLeadsToday(user.id),
+      hasCredits: async () => {
+        const state = await getCreditState(user.id, "lead_search");
+        return !state.billingEnabled || state.balance >= state.cost;
+      },
+      search: async () => {
+        const agent = new LeadsAgent(driver, providerApiKey, providerConn?.base_url ?? undefined);
+        const profile = body?.useProfile === true ? await getLeadProfileSupabase(db, user.id, activeId) : null;
+        return agent.search({ role, companyOrIndustry, location }, tavilyKey, model, google, profile ?? undefined);
+      },
+      save: async (leads) => {
+        try {
+          const verifiedEmails = await verifyMissingEmails(leads);
 
-    // Check daily leads limit before searching
-    const dailyLeadsCheck = await canFetchLeadsToday(user.id);
-    if (!dailyLeadsCheck.allowed) {
-      return NextResponse.json(
-        { error: dailyLeadsCheck.message || "Daily lead limit reached" },
-        { status: 403 }
-      );
-    }
+          const now = new Date().toISOString();
+          const rowsToInsert = leads.map((lead, index) => {
+            const verifiedEmail = verifiedEmails.get(index);
+            const email = lead.email ?? verifiedEmail ?? null;
+            const emailVerified = !lead.email && !!verifiedEmail;
+            return {
+              user_id: user.id,
+              project_id: activeId,
+              name: lead.name,
+              title: lead.title,
+              company: lead.company,
+              location: lead.location,
+              email,
+              email_verified: emailVerified,
+              source_url: lead.sourceUrl,
+              query,
+              created_at: now,
+            };
+          });
 
-    try {
-      const agent = new LeadsAgent(driver, providerApiKey, providerConn?.base_url ?? undefined);
-      const query = `${role} ${companyOrIndustry} ${location}`.trim();
-      const profile = body?.useProfile === true ? await getLeadProfileSupabase(db, user.id, activeId) : null;
-      const leads = await agent.search({ role, companyOrIndustry, location }, tavilyKey, model, google, profile ?? undefined);
-
-      const verifiedEmails = await verifyMissingEmails(leads);
-
-      const now = new Date().toISOString();
-      const rowsToInsert = leads.map((lead, index) => {
-        const verifiedEmail = verifiedEmails.get(index);
-        const email = lead.email ?? verifiedEmail ?? null;
-        const emailVerified = !lead.email && !!verifiedEmail;
-        return {
-          user_id: user.id,
-          project_id: activeId,
-          name: lead.name,
-          title: lead.title,
-          company: lead.company,
-          location: lead.location,
-          email,
-          email_verified: emailVerified,
-          source_url: lead.sourceUrl,
-          query,
-          created_at: now,
-        };
-      });
-
-      const { data: saved, error } = await db.from("leads").insert(rowsToInsert).select();
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-      return NextResponse.json({ leads: saved });
-    } catch (err) {
-      const raw = err instanceof Error ? err.message : String(err);
-      return NextResponse.json({ error: raw }, { status: 502 });
-    }
+          const { data: saved, error } = await db.from("leads").insert(rowsToInsert).select();
+          if (error) return { ok: false, status: 500, error: error.message };
+          return { ok: true, rows: (saved ?? []) as Record<string, unknown>[] };
+        } catch (err) {
+          const raw = err instanceof Error ? err.message : String(err);
+          return { ok: false, status: 502, error: raw };
+        }
+      },
+      charge: async () => {
+        try {
+          await chargeCredits(user.id, "lead_search", { projectId: activeId, model });
+          return true;
+        } catch (err) {
+          // The leads are already saved, so they stay and are returned. Log a
+          // fixed reason only: no message text, no keys.
+          const reason = err instanceof InsufficientCreditsError ? "insufficient_credits" : "charge_error";
+          console.warn(`[leads] lead_search saved leads but charge was refused (${reason}) for user ${user.id}`);
+          return false;
+        }
+      },
+    });
+    if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status });
+    return NextResponse.json({ leads: outcome.leads });
   }
 
   const db = getDb();
