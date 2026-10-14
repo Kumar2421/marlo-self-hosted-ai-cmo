@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getDriver } from "@/lib/llm";
-import { LeadsAgent } from "@/lib/domain/leads/LeadsAgent";
+import { LeadsAgent, type ExtractedLead } from "@/lib/domain/leads/LeadsAgent";
+import { runPaidLeadSearch } from "@/lib/domain/leads/paidLeadSearch";
 import { getLeadProfile } from "@/lib/domain/leads/leadProfileStore";
 import { getLeadProfile as getLeadProfileSupabase } from "@/lib/domain/leads/leadProfileStoreSupabase";
 import { verifyMissingEmails } from "@/lib/domain/leads/verifyMissingEmails";
@@ -10,7 +11,7 @@ import { FEATURES } from "@/lib/features";
 import { canFetchLeadsToday } from "@/lib/entitlements";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
-import { chargeCredits, InsufficientCreditsError } from "@/lib/credits";
+import { chargeCredits, getCreditState, InsufficientCreditsError } from "@/lib/credits";
 import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -126,29 +127,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No active project. Link a website first." }, { status: 422 });
     }
 
-    try {
-      await chargeCredits(user.id, "lead_search", { projectId: activeId, model });
-    } catch (err) {
-      if (err instanceof InsufficientCreditsError) {
-        return NextResponse.json({ error: "Out of credits. Upgrade or connect your own key." }, { status: 402 });
-      }
-      throw err;
-    }
+    // Limit check first, then search, and credits only once the search found
+    // at least one lead (see runPaidLeadSearch for the order and why).
+    const outcome = await runPaidLeadSearch<ExtractedLead>({
+      checkDailyLimit: () => canFetchLeadsToday(user.id),
+      hasCredits: async () => {
+        const state = await getCreditState(user.id, "lead_search");
+        return !state.billingEnabled || state.balance >= state.cost;
+      },
+      search: async () => {
+        const agent = new LeadsAgent(driver, providerApiKey, providerConn?.base_url ?? undefined);
+        const profile = body?.useProfile === true ? await getLeadProfileSupabase(db, user.id, activeId) : null;
+        return agent.search({ role, companyOrIndustry, location }, tavilyKey, model, google, profile ?? undefined);
+      },
+      charge: async () => {
+        try {
+          await chargeCredits(user.id, "lead_search", { projectId: activeId, model });
+          return true;
+        } catch (err) {
+          if (err instanceof InsufficientCreditsError) return false;
+          throw err;
+        }
+      },
+    });
+    if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status });
+    if (outcome.leads.length === 0) return NextResponse.json({ leads: [] });
 
-    // Check daily leads limit before searching
-    const dailyLeadsCheck = await canFetchLeadsToday(user.id);
-    if (!dailyLeadsCheck.allowed) {
-      return NextResponse.json(
-        { error: dailyLeadsCheck.message || "Daily lead limit reached" },
-        { status: 403 }
-      );
-    }
-
     try {
-      const agent = new LeadsAgent(driver, providerApiKey, providerConn?.base_url ?? undefined);
       const query = `${role} ${companyOrIndustry} ${location}`.trim();
-      const profile = body?.useProfile === true ? await getLeadProfileSupabase(db, user.id, activeId) : null;
-      const leads = await agent.search({ role, companyOrIndustry, location }, tavilyKey, model, google, profile ?? undefined);
+      const leads = outcome.leads;
 
       const verifiedEmails = await verifyMissingEmails(leads);
 
