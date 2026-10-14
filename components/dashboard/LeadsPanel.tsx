@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Users, ChevronLeft, Loader2, RefreshCw, X, ExternalLink, Mail, Search, Phone, Building2, Reply } from "lucide-react";
+import { Users, ChevronLeft, Loader2, RefreshCw, X, ExternalLink, Mail, Search, Phone, Reply } from "lucide-react";
 import CollapsedRail, { RailButton } from "./CollapsedRail";
 import { useToast } from "./Toast";
 import { useProject } from "@/lib/project-store";
@@ -13,8 +13,19 @@ import { useGmailStatus } from "./leads/useGmailStatus";
 import { useLeadProfile } from "./leads/useLeadProfile";
 import LeadProfileWizard from "./leads/LeadProfileWizard";
 import LeadProfileSearch from "./leads/LeadProfileSearch";
+import BusinessSearchForm from "./leads/BusinessSearchForm";
+import BusinessResults, { type BusinessSearchError } from "./leads/BusinessResults";
+import type { BusinessLead } from "./leads/BusinessLeadCard";
 import { SkeletonCard } from "@/components/shared/Skeleton";
+import { FEATURES } from "@/lib/features";
 import type { LeadSearchTarget } from "@/lib/domain/leads/leadProfile";
+import {
+  sortByFitScore,
+  suggestCategory,
+  suggestLocation,
+  tagsWithStatus,
+  type LeadStatus,
+} from "@/lib/domain/leads/local/businessLead";
 
 type Lead = {
   id: string;
@@ -48,7 +59,38 @@ type Lead = {
   fit_score?: number | null;
   enrichment_status?: string | null;
   email_quality?: string | null;
+  tags?: string[] | null;
 };
+
+/** Person leads keep their order; business leads are shown best fit first. */
+function arrangeLeads(list: Lead[]): Lead[] {
+  const persons = list.filter((l) => l.lead_type !== "business");
+  const businesses = sortByFitScore(list.filter((l) => l.lead_type === "business"));
+  return [...persons, ...businesses];
+}
+
+type PlacesPage = { leads?: Lead[]; nextPageToken?: string | null; duplicates?: number; error?: string };
+
+/** One page of local places. Never throws: a network failure comes back as an error. */
+async function requestPlaces(
+  query: { category: string; location: string },
+  pageToken?: string
+): Promise<{ ok: true; page: PlacesPage } | { ok: false; error: BusinessSearchError }> {
+  try {
+    const res = await fetch("/api/agents/leads/places-search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(pageToken ? { ...query, pageToken } : query),
+    });
+    const data = (await res.json().catch(() => ({}))) as PlacesPage;
+    if (!res.ok) {
+      return { ok: false, error: { message: data.error || "Failed to search local businesses.", status: res.status } };
+    }
+    return { ok: true, page: data };
+  } catch {
+    return { ok: false, error: { message: "Couldn't reach the server. Check your connection and retry.", status: 0 } };
+  }
+}
 
 export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -59,8 +101,20 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
   const [role, setRole] = useState("");
   const [companyOrIndustry, setCompanyOrIndustry] = useState("");
   const [location, setLocation] = useState("");
-  const [category, setCategory] = useState("");
-  const [bizLocation, setBizLocation] = useState("");
+  // null means "not edited": the field shows the lead profile's suggestion.
+  const [bizCategoryInput, setBizCategoryInput] = useState<string | null>(null);
+  const [bizLocationInput, setBizLocationInput] = useState<string | null>(null);
+  // The current session's business results, in the order they arrived.
+  const [bizResultIds, setBizResultIds] = useState<string[]>([]);
+  // The search that produced the current nextPageToken. Load more must reuse it, not the form.
+  const [bizQuery, setBizQuery] = useState<{ category: string; location: string } | null>(null);
+  const [bizNextToken, setBizNextToken] = useState<string | null>(null);
+  const [bizDuplicates, setBizDuplicates] = useState(0);
+  const [bizSearched, setBizSearched] = useState(false);
+  const [bizLoadingMore, setBizLoadingMore] = useState(false);
+  const [bizError, setBizError] = useState<BusinessSearchError | null>(null);
+  const [bizRetry, setBizRetry] = useState<"search" | "more">("search");
+  const [bizEmailLead, setBizEmailLead] = useState<Lead | null>(null);
   const gmail = useGmailStatus();
   const leadProfile = useLeadProfile();
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -75,14 +129,29 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
   const { primaryModel } = useProviders();
   const { log, logDone } = useTerminalLog();
 
+  // Business fields start from the confirmed lead profile and stay editable.
+  const confirmedProfile = leadProfile.confirmed ? leadProfile.profile : null;
+  const profileCategory = suggestCategory(confirmedProfile?.industries);
+  const profileLocation = suggestLocation(confirmedProfile?.locations);
+  const bizCategory = bizCategoryInput ?? profileCategory;
+  const bizLocation = bizLocationInput ?? profileLocation;
+  const bizFromProfile = (bizCategoryInput === null && profileCategory !== "") || (bizLocationInput === null && profileLocation !== "");
+
+  const personLeads = leads.filter((l) => l.lead_type !== "business");
+  const businessLeads = leads.filter((l) => l.lead_type === "business");
+  const businessById = new Map(businessLeads.map((l) => [l.id, l]));
+  const resultIdSet = new Set(bizResultIds);
+  const bizResults = bizResultIds.map((id) => businessById.get(id)).filter((l): l is Lead => Boolean(l));
+  const bizSaved = sortByFitScore(businessLeads.filter((l) => !resultIdSet.has(l.id)));
+
   const loadLeads = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/agents/leads/search");
       const data = await res.json();
-      setLeads(data.leads ?? []);
+      setLeads(arrangeLeads(data.leads ?? []));
     } catch {
-      // route unreachable — list just stays empty
+      // route unreachable - list just stays empty
     } finally {
       setLoading(false);
     }
@@ -237,35 +306,88 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
   }
 
   async function handleBizSearch() {
-    if (!category.trim() || !bizLocation.trim()) {
-      show("Enter both a category and a location.");
+    const query = { category: bizCategory.trim(), location: bizLocation.trim() };
+    setBizRetry("search");
+    if (!query.category || !query.location) {
+      setBizError({ message: "Enter both a category and a location.", status: 400 });
       return;
     }
 
+    setBizError(null);
     setSearching(true);
-    log(`Searching local businesses: ${category} in ${bizLocation}...`);
-    try {
-      const res = await fetch("/api/agents/leads/places-search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category, location: bizLocation }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        log(`⚠ ${data.error ?? "Failed to search local businesses"}`);
-        show(data.error || "Failed to search local businesses.");
-        return;
-      }
-      const found: Lead[] = data.leads ?? [];
-      setLeads((prev) => [...found, ...prev]);
-      logDone(`Found ${found.length} real local business${found.length === 1 ? "" : "es"}.`);
-      show(`Found ${found.length} business${found.length === 1 ? "" : "es"}.`);
-    } catch {
-      log("⚠ Failed to search local businesses.");
-      show("Failed to search local businesses.");
-    } finally {
-      setSearching(false);
+    log(`Searching local businesses: ${query.category} in ${query.location}...`);
+    const outcome = await requestPlaces(query);
+    setSearching(false);
+    if (!outcome.ok) {
+      log(`⚠ ${outcome.error.message}`);
+      setBizError(outcome.error);
+      return;
     }
+
+    const found = outcome.page.leads ?? [];
+    const foundIds = new Set(found.map((l) => l.id));
+    setLeads((prev) => [...found, ...prev.filter((l) => !foundIds.has(l.id))]);
+    setBizResultIds(found.map((l) => l.id));
+    setBizQuery(query);
+    setBizNextToken(outcome.page.nextPageToken ?? null);
+    setBizDuplicates(outcome.page.duplicates ?? 0);
+    setBizSearched(true);
+    logDone(`Found ${found.length} real local business${found.length === 1 ? "" : "es"}.`);
+    show(`Found ${found.length} business${found.length === 1 ? "" : "es"}.`);
+  }
+
+  /** Next page of the search that produced the current token. Appends, so nothing above moves. */
+  async function handleBizLoadMore() {
+    if (!bizQuery || !bizNextToken || bizLoadingMore) return;
+    setBizRetry("more");
+    setBizError(null);
+    setBizLoadingMore(true);
+    const outcome = await requestPlaces(bizQuery, bizNextToken);
+    setBizLoadingMore(false);
+    if (!outcome.ok) {
+      setBizError(outcome.error);
+      return;
+    }
+
+    const found = outcome.page.leads ?? [];
+    setLeads((prev) => {
+      const known = new Set(prev.map((l) => l.id));
+      return [...prev, ...found.filter((l) => !known.has(l.id))];
+    });
+    setBizResultIds((prev) => [...prev, ...found.map((l) => l.id)]);
+    setBizNextToken(outcome.page.nextPageToken ?? null);
+    setBizDuplicates((prev) => prev + (outcome.page.duplicates ?? 0));
+  }
+
+  function retryBizRequest() {
+    if (bizRetry === "more") void handleBizLoadMore();
+    else void handleBizSearch();
+  }
+
+  /** Optimistic status change; the server's tags replace the guess, and a failure rolls it back. */
+  async function handleBusinessStatus(id: string, status: LeadStatus) {
+    const before = leads.find((l) => l.id === id)?.tags ?? null;
+    const optimistic = tagsWithStatus(before, status);
+    setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, tags: optimistic } : l)));
+    try {
+      const res = await fetch("/api/agents/leads/status", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Couldn't update the status.");
+      const saved = Array.isArray(data.tags) ? (data.tags as string[]) : optimistic;
+      setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, tags: saved } : l)));
+    } catch (err) {
+      setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, tags: before } : l)));
+      show(err instanceof Error ? err.message : "Couldn't update the status.");
+    }
+  }
+
+  function openBusinessEmail(lead: BusinessLead) {
+    const full = leads.find((l) => l.id === lead.id);
+    if (full) setBizEmailLead(full);
   }
 
   async function handleRemove(id: string) {
@@ -306,7 +428,9 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
         <div className="flex items-center gap-2 text-[13px] font-semibold text-gray-900">
           <Users size={15} className="text-gray-500" />
           Leads
-          {leads.length > 0 && <span className="text-[11px] font-normal text-gray-400">({leads.length})</span>}
+          {(mode === "business" ? businessLeads.length : personLeads.length) > 0 && (
+            <span className="text-[11px] font-normal text-gray-400">({mode === "business" ? businessLeads.length : personLeads.length})</span>
+          )}
         </div>
         <button onClick={onToggle} title="Collapse" className="hidden text-gray-400 hover:text-gray-700 md:block">
           <ChevronLeft size={15} />
@@ -399,42 +523,22 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
             )}
           </>
         ) : (
-          <>
-            <input
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleBizSearch()}
-              placeholder="Category — e.g. dentist, gym, coffee shop"
-              className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-[12px] text-gray-800 placeholder:text-gray-400"
-            />
-            <input
-              value={bizLocation}
-              onChange={(e) => setBizLocation(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleBizSearch()}
-              placeholder="Location — e.g. Austin, TX"
-              className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-[12px] text-gray-800 placeholder:text-gray-400"
-            />
-            <button
-              onClick={handleBizSearch}
-              disabled={searching || !project || !googleCloudConnected}
-              title={googleCloudConnected ? undefined : "Connect a Google Cloud API key in Settings → API Credentials first"}
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#111111] py-1.5 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50"
-            >
-              {searching ? <Loader2 size={13} className="animate-spin" /> : <Building2 size={13} />}
-              {searching ? "Searching..." : "Search Businesses"}
-            </button>
-            {googleCloudConnected ? (
-              <p className="text-[11px] text-gray-400">Real Places API data.</p>
-            ) : (
-              <p className="text-[11px] text-amber-600">
-                ⚠ No Google Cloud key connected —{" "}
-                <a href="/settings/api-credentials" className="underline hover:text-amber-700">
-                  connect one in Settings
-                </a>{" "}
-                (with Places API enabled) to search real businesses.
-              </p>
-            )}
-          </>
+          <BusinessSearchForm
+            category={bizCategory}
+            location={bizLocation}
+            onCategoryChange={setBizCategoryInput}
+            onLocationChange={setBizLocationInput}
+            fromProfile={bizFromProfile}
+            hasProfile={Boolean(confirmedProfile)}
+            onEditProfile={() => {
+              setMode("person");
+              setWizardOpen(true);
+            }}
+            searching={searching}
+            disabled={!project}
+            onSearch={handleBizSearch}
+            showKeyHint={!FEATURES.PLATFORM_MODE && !googleCloudConnected}
+          />
         )}
       </div>
 
@@ -502,6 +606,24 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
         />
       )}
 
+      {bizEmailLead && (
+        <ComposeEmailModal
+          leads={[bizEmailLead]}
+          onClose={() => setBizEmailLead(null)}
+          onSent={(results) => {
+            const r = results.find((x) => x.id === bizEmailLead.id);
+            if (r) {
+              setLeads((prev) =>
+                prev.map((l) =>
+                  l.id === r.id ? { ...l, email_status: r.status, emailed_at: r.status === "sent" ? new Date().toISOString() : l.emailed_at } : l
+                )
+              );
+            }
+            show(r?.status === "sent" ? "Email sent." : "Failed to send the email.");
+          }}
+        />
+      )}
+
       <div className="okara-scroll flex-1 overflow-y-auto">
         {!project ? (
           <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
@@ -514,7 +636,25 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
               <div key={i} className="h-16 animate-pulse rounded-xl bg-gray-100" />
             ))}
           </div>
-        ) : leads.length === 0 ? (
+        ) : mode === "business" ? (
+          <BusinessResults
+            searching={searching}
+            searched={bizSearched}
+            results={bizResults}
+            saved={bizSaved}
+            nextPageToken={bizNextToken}
+            duplicates={bizDuplicates}
+            loadingMore={bizLoadingMore}
+            error={bizError}
+            showStatus={FEATURES.PLATFORM_MODE}
+            canEmail={gmail.canSend}
+            onRetry={retryBizRequest}
+            onLoadMore={handleBizLoadMore}
+            onRemove={handleRemove}
+            onEmail={openBusinessEmail}
+            onStatusChange={handleBusinessStatus}
+          />
+        ) : personLeads.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
             <Search size={18} className="text-gray-300" />
             <p className="text-[13px] font-medium text-gray-700">No leads yet</p>
@@ -525,7 +665,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {leads.map((lead) => (
+            {personLeads.map((lead) => (
               <div key={lead.id} className="group flex gap-2.5 px-3 py-2.5">
                 <input
                   type="checkbox"
