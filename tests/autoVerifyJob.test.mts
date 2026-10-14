@@ -50,6 +50,8 @@ function fake(items: FixedFinding[], opts: {
   audit?: (id: string) => FreshAuditFinding[] | Error;
   failReadProject?: string;
   failTransitionFor?: string;
+  /** The audit never settles (a hung background call). */
+  hang?: boolean;
 } = {}): Fake {
   const transitions: Array<[string, string]> = [];
   const evidence: Array<{ id: string; evidence: Record<string, unknown> }> = [];
@@ -70,6 +72,7 @@ function fake(items: FixedFinding[], opts: {
     checkPorts: (item): VerifyCheckPorts => ({
       runSeoAudit: async () => {
         checked.push(item.finding.id);
+        if (opts.hang) return new Promise<FreshAuditFinding[]>(() => {});
         const result = opts.audit?.(item.finding.id) ?? [];
         if (result instanceof Error) throw result;
         return result;
@@ -164,7 +167,7 @@ test("budget stop: the run stops once the time budget is spent and leaves the re
   let t = 0;
   const items = [fixedItem("a"), fixedItem("b"), fixedItem("c")];
   const f = fake(items, { audit: () => { t += 1000; return []; } });
-  const summary = await runAutoVerify(f.ports, NOW, { budgetMs: 1500, maxItems: 50, clock: () => t });
+  const summary = await runAutoVerify(f.ports, NOW, { budgetMs: 1500, maxItems: 50, clock: () => t, minAuditMs: 10 });
   assert.deepEqual(f.checked, ["a", "b"]);
   assert.equal(summary.verified, 2);
   assert.equal(summary.budgetSkipped, 1);
@@ -204,4 +207,24 @@ test("failure isolation: one storage write that throws is counted and the rest o
 
 test("the marker key is per finding", () => {
   assert.equal(autoVerifyDocType("finding_1"), "auto_verify:finding_1");
+});
+
+test("a hung audit is cut off at the timeout: the phase returns within budget and the item is skipped", async () => {
+  const f = fake([fixedItem("a")], { hang: true });
+  const started = Date.now();
+  const summary = await runAutoVerify(f.ports, NOW, { budgetMs: 400, maxItems: 10, auditTimeoutMs: 50, minAuditMs: 20 });
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 400 + 1000, `returned in ${elapsed} ms`);
+  assert.equal(summary.skipped, 1);
+  assert.deepEqual(f.transitions, []);
+  // A timeout counts as one attempt, so a permanently slow page stops after the attempt cap.
+  assert.equal(f.markers.get("p1")?.get("a")?.attempts, 1);
+});
+
+test("budget guard: no audit starts without the minimum budget, and no marker is written", async () => {
+  const f = fake([fixedItem("a")], { audit: () => [] });
+  const summary = await runAutoVerify(f.ports, NOW, { budgetMs: 100, maxItems: 10, minAuditMs: 9_000 });
+  assert.deepEqual(f.checked, []);
+  assert.equal(summary.budgetSkipped, 1);
+  assert.equal(f.markers.get("p1")?.get("a"), undefined);
 });

@@ -2,6 +2,7 @@ import type { Finding } from "./findingTypes.ts";
 import { implementationOf } from "../search/actionOutcome.ts";
 import { runWithBudget } from "../../jobs/jobRunner.ts";
 import { verifyFinding, type VerifyCheckPorts, type VerifyResult } from "./verifyFinding.ts";
+import { BACKGROUND_AUDIT_TIMEOUT_MS, MIN_AUDIT_BUDGET_MS, timedCall } from "./timedAudit.ts";
 
 /**
  * The daily auto-verification pass. A fix is checked once its change has been
@@ -33,6 +34,10 @@ export type JobBudget = {
   maxItems: number;
   /** Injectable clock for the time budget; defaults to Date.now. */
   clock?: () => number;
+  /** Per-audit timeout ceiling (defaults to BACKGROUND_AUDIT_TIMEOUT_MS). */
+  auditTimeoutMs?: number;
+  /** Minimum budget left before an audit may start (defaults to MIN_AUDIT_BUDGET_MS). */
+  minAuditMs?: number;
 };
 
 export type AutoVerifyPorts = {
@@ -123,10 +128,25 @@ export async function runAutoVerify(ports: AutoVerifyPorts, now: Date, budget: J
   const picked = eligible.slice(0, Math.max(0, budget.maxItems));
   summary.budgetSkipped += eligible.length - picked.length;
 
+  const clock = budget.clock ?? Date.now;
+  const deadline = clock() + budget.budgetMs;
+  const minAuditMs = budget.minAuditMs ?? MIN_AUDIT_BUDGET_MS;
+  const auditTimeoutMs = budget.auditTimeoutMs ?? BACKGROUND_AUDIT_TIMEOUT_MS;
+
   const run = await runWithBudget(
     picked,
     async ({ item, attempts }) => {
-      const result = await verifyFinding(ports.checkPorts(item), item.finding, now);
+      // Stop the phase before an audit that cannot finish inside the budget.
+      const left = deadline - clock();
+      if (left < minAuditMs) {
+        summary.budgetSkipped += 1;
+        return;
+      }
+      // Hard timeout per audit: a timeout is a skip (retried later), and it uses one attempt.
+      const timed = await timedCall(() => verifyFinding(ports.checkPorts(item), item.finding, now), Math.min(auditTimeoutMs, left));
+      const result: VerifyResult = timed.ok
+        ? timed.value
+        : { outcome: "skipped", reason: "The check ran out of time. It will be retried.", checkedAt: now.toISOString() };
       const decided = result.outcome === "verified" ? "verified" : result.outcome === "failed" ? "failed" : null;
       if (decided === null) {
         summary.skipped += 1;
@@ -137,7 +157,7 @@ export async function runAutoVerify(ports: AutoVerifyPorts, now: Date, budget: J
       }
       await ports.writeMarker(item, item.finding.id, { attempts: attempts + 1, lastCheckedAt: now.toISOString() });
     },
-    { budgetMs: budget.budgetMs, now: budget.clock },
+    { budgetMs: budget.budgetMs, now: clock },
   );
 
   summary.budgetSkipped += run.skipped;

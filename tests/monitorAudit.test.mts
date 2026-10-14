@@ -59,6 +59,8 @@ function fake(targets: MonitorScope[], opts: {
   pages?: Record<string, AuditLike>;
   known?: Record<string, Finding[]>;
   failProject?: string;
+  /** Every page audit never settles. */
+  hang?: boolean;
 } = {}): Fake {
   const store: Store = new Map();
   const audits: string[] = [];
@@ -71,6 +73,7 @@ function fake(targets: MonitorScope[], opts: {
     listTargets: async () => targets,
     knownFindings: async (s) => [...store.values()].filter((f) => f.projectId === s.projectId),
     audit: async (s, url) => {
+      if (opts.hang) return new Promise<AuditLike>(() => {});
       if (opts.failProject === s.projectId) throw new Error("crawl failed");
       audits.push(`${s.projectId}:${url}`);
       const page = opts.pages?.[url];
@@ -171,22 +174,24 @@ test("the global audit cap limits the page audits in one run", async () => {
 
 test("with less than 15 seconds of budget, only one project is monitored per call", async () => {
   const f = fake([scope("p1", null), scope("p2", null), scope("p3", null)]);
-  const summary = await runMonitorAudit(f.ports, NOW, { budgetMs: 5_000, maxAudits: 50, clock: () => 0 });
+  const summary = await runMonitorAudit(f.ports, NOW, { budgetMs: 5_000, maxAudits: 50, clock: () => 0, minAuditMs: 10 });
   assert.equal(summary.monitored, 1);
   assert.equal(summary.budgetSkipped, 2);
 });
 
 test("rotation: the project monitored longest ago goes first", async () => {
   const f = fake([scope("p1", iso(7 * DAY)), scope("p2", iso(20 * DAY)), scope("p3", null)]);
-  await runMonitorAudit(f.ports, NOW, { budgetMs: 5_000, maxAudits: 50, clock: () => 0 });
+  await runMonitorAudit(f.ports, NOW, { budgetMs: 5_000, maxAudits: 50, clock: () => 0, minAuditMs: 10 });
   assert.deepEqual(f.markers, ["p3"]);
 });
 
 test("failure isolation: a project whose audit throws does not stop the next project", async () => {
   const f = fake([scope("p1"), scope("p2")], { failProject: "p1", pages: { [SITE]: { url: SITE, findings: [titleIssue] } } });
   const summary = await runMonitorAudit(f.ports, NOW, budget);
-  assert.equal(summary.errored, 1);
-  assert.equal(summary.monitored, 1);
+  // A throwing page audit skips that page; the project and the next project still run.
+  assert.equal(summary.skippedPages, 1);
+  assert.equal(summary.errored, 0);
+  assert.equal(summary.monitored, 2);
   assert.equal([...f.store.values()].filter((x) => x.projectId === "p2").length, 1);
 });
 
@@ -199,6 +204,38 @@ test("budget: the page loop stops when the clock passes the deadline", async () 
     t += 1000;
     return origAudit(s, url);
   };
-  await runMonitorAudit(f.ports, NOW, { budgetMs: 1500, maxAudits: 50, clock: () => t });
+  await runMonitorAudit(f.ports, NOW, { budgetMs: 1500, maxAudits: 50, clock: () => t, minAuditMs: 10 });
   assert.equal(f.audits.length, 2);
+});
+
+test("a hung page audit is skipped at the timeout and the phase returns within budget", async () => {
+  const f = fake([scope("p1")], { hang: true });
+  const started = Date.now();
+  const summary = await runMonitorAudit(f.ports, NOW, { budgetMs: 400, maxAudits: 10, auditTimeoutMs: 50, minAuditMs: 20 });
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 400 + 1000, `returned in ${elapsed} ms`);
+  assert.equal(summary.skippedPages, 1);
+  assert.equal(summary.audited, 0);
+  assert.equal(f.upserts.length, 0);
+});
+
+test("budget guard: a project gets no marker when no audit can start in the budget", async () => {
+  const f = fake([scope("p1", null)]);
+  const summary = await runMonitorAudit(f.ports, NOW, { budgetMs: 5_000, maxAudits: 10, clock: () => 0 });
+  assert.equal(summary.budgetSkipped, 1);
+  assert.equal(summary.monitored, 0);
+  assert.deepEqual(f.markers, []);
+  assert.deepEqual(f.audits, []);
+});
+
+test("PageSpeed-only findings: a crawl audit never creates them and never touches an existing one", async () => {
+  const seeded = new Map<string, Finding>();
+  const lh = finding(seeded, SITE, "lighthouse-mobile-image-alt", "verified", "lighthouse");
+  const lhIssue = { issueId: "lighthouse-mobile-image-alt", category: "lighthouse", severity: "Error" as const, label: "Image alt", evidence: {} };
+  const f = fake([scope("p1")], { known: { p1: [lh] }, pages: { [SITE]: { url: SITE, findings: [lhIssue] } } });
+  const summary = await runMonitorAudit(f.ports, NOW, budget);
+  assert.equal(f.upserts.length, 0);
+  assert.equal(summary.newIssues, 0);
+  assert.equal(summary.regressions, 0);
+  assert.equal(f.store.get(identity(lh))?.status, "verified");
 });

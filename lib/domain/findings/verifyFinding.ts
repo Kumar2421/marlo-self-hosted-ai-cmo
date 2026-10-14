@@ -29,6 +29,17 @@ export type VerifyCheckPorts = {
   runGeoReadiness(url: string): Promise<ReadinessCheck[]>;
 };
 
+export const PAGESPEED_SKIP_REASON = "Needs a PageSpeed run: use Re-check";
+
+/**
+ * Findings that only exist when a PageSpeed run produced them (Lighthouse
+ * issues). A crawl-only audit never reports them, so their absence proves
+ * nothing and they are never verified or failed automatically.
+ */
+export function needsPageSpeed(finding: { category: string; entityId: string }): boolean {
+  return finding.category === "lighthouse" || finding.entityId.startsWith("lighthouse-");
+}
+
 const SEVERITY_FOR_RECHECK: Record<Finding["severity"], "info" | "warning" | "critical"> = {
   info: "info",
   warning: "warning",
@@ -47,6 +58,7 @@ export async function verifyFinding(
     return skipped("This finding is measured from search data, not re-checked on the page.");
   }
   if (!finding.url) return skipped("The finding has no page to check.");
+  if (needsPageSpeed(finding)) return skipped(PAGESPEED_SKIP_REASON);
 
   try {
     if (finding.source === "seo-audit") {

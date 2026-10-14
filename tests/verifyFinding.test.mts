@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { verifyFinding, type FreshAuditFinding, type VerifyCheckPorts } from "../lib/domain/findings/verifyFinding.ts";
+import { needsPageSpeed, verifyFinding, type FreshAuditFinding, type VerifyCheckPorts } from "../lib/domain/findings/verifyFinding.ts";
 import { autoVerificationLine } from "../lib/domain/findings/evidenceDisplay.ts";
 import type { ReadinessCheck } from "../lib/domain/geo/readiness.ts";
 
@@ -114,4 +114,33 @@ test("autoVerificationLine: verified, failed, reappeared, and nothing when never
   );
   assert.deepEqual(autoVerificationLine({ regression: "Reappeared on 2026-10-21" }), { tone: "reappeared", text: "Reappeared on 2026-10-21" });
   assert.equal(autoVerificationLine({ label: "x" }), null);
+});
+
+test("PageSpeed-only findings are skipped without running any audit, never verified or failed", async () => {
+  let audits = 0;
+  const counting: VerifyCheckPorts = {
+    runSeoAudit: async () => {
+      audits += 1;
+      return [];
+    },
+    runGeoReadiness: async () => [],
+  };
+  const lighthouse = { source: "seo-audit", category: "lighthouse", entityId: "lighthouse-mobile-image-alt", url: "https://example.com/", severity: "warning" as const };
+  const result = await verifyFinding(counting, lighthouse, NOW);
+  assert.equal(result.outcome, "skipped");
+  assert.equal(result.reason, "Needs a PageSpeed run: use Re-check");
+  assert.equal(audits, 0);
+  // Same for an id that starts with lighthouse- even under another category.
+  assert.equal((await verifyFinding(counting, { ...lighthouse, category: "meta-title" }, NOW)).outcome, "skipped");
+  assert.equal(audits, 0);
+});
+
+test("needsPageSpeed: only Lighthouse issues qualify", () => {
+  assert.equal(needsPageSpeed({ category: "lighthouse", entityId: "x" }), true);
+  assert.equal(needsPageSpeed({ category: "meta-title", entityId: "lighthouse-desktop-foo" }), true);
+  assert.equal(needsPageSpeed({ category: "meta-title", entityId: "meta-title-too-long" }), false);
+});
+
+test("crawl-derived SEO checks still verify normally", async () => {
+  assert.equal((await verifyFinding(ports({ audit: [] }), seoFinding, NOW)).outcome, "verified");
 });

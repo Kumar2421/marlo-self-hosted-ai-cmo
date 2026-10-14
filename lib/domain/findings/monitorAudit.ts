@@ -1,6 +1,8 @@
 import type { Finding } from "./findingTypes.ts";
 import { runWithBudget } from "../../jobs/jobRunner.ts";
 import { auditFindingInputs, saveAuditFindings, type AuditFindingInput, type AuditLike } from "./auditFindings.ts";
+import { needsPageSpeed } from "./verifyFinding.ts";
+import { BACKGROUND_AUDIT_TIMEOUT_MS, MIN_AUDIT_BUDGET_MS, timedCall } from "./timedAudit.ts";
 
 /**
  * The regression watch. Once a project's monitor marker is older than six days,
@@ -30,6 +32,10 @@ export type MonitorBudget = {
   /** Global cap on page audits in one run. */
   maxAudits: number;
   clock?: () => number;
+  /** Per-page timeout ceiling (defaults to BACKGROUND_AUDIT_TIMEOUT_MS). */
+  auditTimeoutMs?: number;
+  /** Minimum budget left before a page audit may start (defaults to MIN_AUDIT_BUDGET_MS). */
+  minAuditMs?: number;
 };
 
 export type MonitorPorts = {
@@ -47,6 +53,8 @@ export type MonitorPorts = {
 export type MonitorSummary = {
   monitored: number;
   audited: number;
+  /** Pages that timed out or failed; skipped, not retried in this pass. */
+  skippedPages: number;
   newIssues: number;
   regressions: number;
   budgetSkipped: number;
@@ -82,10 +90,11 @@ function isDue(lastRunAt: string | null, nowMs: number): boolean {
 }
 
 export async function runMonitorAudit(ports: MonitorPorts, now: Date, budget: MonitorBudget): Promise<MonitorSummary> {
-  const summary: MonitorSummary = { monitored: 0, audited: 0, newIssues: 0, regressions: 0, budgetSkipped: 0, errored: 0 };
+  const summary: MonitorSummary = { monitored: 0, audited: 0, skippedPages: 0, newIssues: 0, regressions: 0, budgetSkipped: 0, errored: 0 };
   const clock = budget.clock ?? Date.now;
   const deadline = clock() + budget.budgetMs;
-  const timeUp = () => clock() >= deadline;
+  const minAuditMs = budget.minAuditMs ?? MIN_AUDIT_BUDGET_MS;
+  const auditTimeoutMs = budget.auditTimeoutMs ?? BACKGROUND_AUDIT_TIMEOUT_MS;
   const day = now.toISOString().slice(0, 10);
 
   const due = (await ports.listTargets())
@@ -100,7 +109,8 @@ export async function runMonitorAudit(ports: MonitorPorts, now: Date, budget: Mo
   const run = await runWithBudget(
     picked,
     async (scope) => {
-      if (auditsLeft <= 0) {
+      // No marker for a project that gets no audit this run: it stays first in line for the next run.
+      if (auditsLeft <= 0 || deadline - clock() < minAuditMs) {
         summary.budgetSkipped += 1;
         return;
       }
@@ -110,10 +120,19 @@ export async function runMonitorAudit(ports: MonitorPorts, now: Date, budget: Mo
       const pages = pagesToAudit(scope.siteUrl, known).slice(0, 1 + Math.min(MONITOR_MAX_EXTRA_PAGES, auditsLeft - 1));
 
       for (const url of pages) {
-        if (auditsLeft <= 0 || timeUp()) break;
-        const audit = await ports.audit(scope, url);
+        // Stop before a page audit that cannot finish inside the budget.
+        const left = deadline - clock();
+        if (auditsLeft <= 0 || left < minAuditMs) break;
+        // Hard timeout per page: a page that times out or fails is skipped, the rest of the project continues.
+        const timed = await timedCall(() => ports.audit(scope, url), Math.min(auditTimeoutMs, left));
         auditsLeft -= 1;
+        if (!timed.ok) {
+          summary.skippedPages += 1;
+          continue;
+        }
         summary.audited += 1;
+        // PageSpeed-only issues never come from a crawl audit: never create or touch them here.
+        const audit: AuditLike = { url: timed.value.url, findings: timed.value.findings.filter((f) => !needsPageSpeed({ category: f.category, entityId: f.issueId })) };
 
         const previousFor = (issueId: string, category: string) => byKey.get(identityKey(category, issueId, audit.url)) ?? null;
         const inputs = auditFindingInputs(scope.projectId, audit, (issueId) => {

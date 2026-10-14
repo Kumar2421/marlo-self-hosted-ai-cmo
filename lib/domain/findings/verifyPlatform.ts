@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SEOAgent } from "../seo/SEOAgent.ts";
 import { checkReadiness } from "../geo/geoService.ts";
-import { resolvePlatformApiKey } from "../shared/resolvePlatformApiKey.ts";
 import { listProjectFindings, mapFinding, updateFindingStatus, upsertFinding, type FindingRow } from "./findingStoreSupabase.ts";
 import { AUTO_VERIFY_MARKER_PREFIX, autoVerifyDocType, runAutoVerify, type AutoVerifyMarker, type AutoVerifyPorts, type FixedFinding, type ProjectScope } from "./autoVerifyJob.ts";
 import { MONITOR_MANY_PROJECTS_MIN_MS, runMonitorAudit, type MonitorPorts, type MonitorScope } from "./monitorAudit.ts";
@@ -20,17 +19,19 @@ const ID_CHUNK = 200;
 
 type ServiceDb = SupabaseClient;
 
-async function pagespeedKey(db: ServiceDb, userId: string): Promise<string | undefined> {
-  return (await resolvePlatformApiKey(db, userId, "pagespeed_api_key")) || process.env.PAGESPEED_API_KEY || undefined;
+/**
+ * Background audits never use a PageSpeed key: a PSI call takes 15-40 s and
+ * cannot be aborted, which would overrun the cron. A crawl-only audit is used
+ * instead, and PageSpeed-only findings are skipped (see needsPageSpeed).
+ */
+function backgroundSeoAgent(): SEOAgent {
+  return new SEOAgent();
 }
 
 /** Fresh-check ports for one finding: the real SEO audit and GEO readiness checks. */
-export function platformCheckPorts(db: ServiceDb, userId: string): VerifyCheckPorts {
+export function platformCheckPorts(): VerifyCheckPorts {
   return {
-    runSeoAudit: async (url) => {
-      const audit = await new SEOAgent(await pagespeedKey(db, userId)).audit(url);
-      return audit.findings;
-    },
+    runSeoAudit: async (url) => (await backgroundSeoAgent().audit(url)).findings,
     runGeoReadiness: async (url) => (await checkReadiness(new URL(url).hostname)).checks,
   };
 }
@@ -98,7 +99,7 @@ export function autoVerifyPortsPlatform(db: ServiceDb, now: Date): AutoVerifyPor
     listFixedFindings: () => listFixedFindings(db),
     readMarkers: (scope) => readMarkers(db, scope),
     writeMarker: (scope, findingId, marker) => writeDocument(db, scope, autoVerifyDocType(findingId), JSON.stringify(marker), now),
-    checkPorts: (item) => platformCheckPorts(db, item.userId),
+    checkPorts: () => platformCheckPorts(),
     transition: async (item, status) => {
       await updateFindingStatus(db, item.userId, item.projectId, item.finding.id, status);
     },
@@ -129,7 +130,7 @@ export function monitorPortsPlatform(db: ServiceDb, now: Date): MonitorPorts {
     listTargets: () => monitorTargetsPlatform(db),
     knownFindings: (scope) => listProjectFindings(db, scope.userId, scope.projectId),
     audit: async (scope, url) => {
-      const audit = await new SEOAgent(await pagespeedKey(db, scope.userId)).audit(url);
+      const audit = await backgroundSeoAgent().audit(url);
       return { url: audit.url, findings: audit.findings };
     },
     upsert: (scope, input: AuditFindingInput) => upsertFinding(db, scope.userId, input),
@@ -140,14 +141,16 @@ export function monitorPortsPlatform(db: ServiceDb, now: Date): MonitorPorts {
 export type VerifyPhaseSummary = { verified: number; failed: number; skipped: number; monitored: number };
 
 /**
- * Phase 4 of the cron: auto-verify fixes, then the weekly regression watch.
- * Verify gets 60% of the phase budget; counts only leave this function.
+ * Phase 4 of the cron: auto-verify fixes first, then the weekly regression
+ * watch with whatever budget is left. Each background audit has a hard
+ * timeout and only starts with enough budget for it (timedAudit.ts). Counts
+ * only leave this function.
  */
 export async function runVerifyAndMonitorPlatform(db: ServiceDb, now: Date, budgetMs: number): Promise<VerifyPhaseSummary> {
-  const verifyBudget = Math.round(budgetMs * 0.6);
-  const verify = await runAutoVerify(autoVerifyPortsPlatform(db, now), now, { budgetMs: verifyBudget, maxItems: 10 });
+  const started = Date.now();
+  const verify = await runAutoVerify(autoVerifyPortsPlatform(db, now), now, { budgetMs, maxItems: 10 });
   const monitor = await runMonitorAudit(monitorPortsPlatform(db, now), now, {
-    budgetMs: budgetMs - verifyBudget,
+    budgetMs: Math.max(0, budgetMs - (Date.now() - started)),
     maxAudits: budgetMs >= MONITOR_MANY_PROJECTS_MIN_MS ? 6 : 3,
   });
   return { verified: verify.verified, failed: verify.failed, skipped: verify.skipped, monitored: monitor.monitored };
