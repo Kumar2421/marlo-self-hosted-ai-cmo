@@ -50,6 +50,7 @@ function fake(items: FixedFinding[], opts: {
   audit?: (id: string) => FreshAuditFinding[] | Error;
   failReadProject?: string;
   failTransitionFor?: string;
+  failFinalizeFor?: string;
   /** The audit never settles (a hung background call). */
   hang?: boolean;
 } = {}): Fake {
@@ -79,6 +80,11 @@ function fake(items: FixedFinding[], opts: {
       },
       runGeoReadiness: async () => [],
     }),
+    finalize: async (item, status, next) => {
+      if (opts.failFinalizeFor === item.finding.id) throw new Error("atomic write failed");
+      transitions.push([item.finding.id, status]);
+      evidence.push({ id: item.finding.id, evidence: next });
+    },
     transition: async (item, status) => {
       if (opts.failTransitionFor === item.finding.id) throw new Error("write failed");
       transitions.push([item.finding.id, status]);
@@ -198,10 +204,11 @@ test("failure isolation: a project whose markers cannot be read does not stop th
   assert.equal(summary.verified, 1);
 });
 
-test("failure isolation: one storage write that throws is counted and the rest of the run continues", async () => {
-  const f = fake([fixedItem("a"), fixedItem("b")], { audit: () => [], failTransitionFor: "a" });
+test("atomic finalize failure is isolated and the rest of the run continues", async () => {
+  const f = fake([fixedItem("a"), fixedItem("b")], { audit: () => [], failFinalizeFor: "a" });
   const summary = await runAutoVerify(f.ports, NOW, budget);
   assert.deepEqual(f.transitions, [["b", "verified"]]);
+  assert.deepEqual(f.evidence.map((entry) => entry.id), ["b"]);
   assert.equal(summary.errored, 1);
 });
 
