@@ -7,7 +7,7 @@ import type { Finding } from "@/lib/domain/findings/findingTypes";
 import { classifyFinding } from "@/lib/domain/codefix/fixCatalog";
 import { CMS_LABEL, classifyForCms } from "@/lib/domain/cms/cmsFixCatalog";
 import type { FixChange } from "@/lib/domain/codefix/catalogFix";
-import { pullRequestUrlOf } from "@/lib/domain/fixes/linkPullRequest";
+import { closedPullRequestOf, pullRequestUrlOf } from "@/lib/domain/fixes/linkPullRequest";
 import { implementationOf } from "@/lib/domain/search/actionOutcome";
 import type { ActionWithOutcome } from "@/lib/domain/search/outcomeService";
 import SidePanel from "@/components/shared/SidePanel";
@@ -177,6 +177,24 @@ export default function FindingCodeFix({ finding, actions }: { finding: Finding;
     );
   }
 
+  // A PR that was closed without merging: say so once, above the prepare controls, so a new fix can be made.
+  const closedPr = !prUrl && !fix ? actions.map((a) => closedPullRequestOf(a.result)).find((c) => c !== null) ?? null : null;
+  const closedNode = closedPr ? (
+    <div className={`${box} flex items-center justify-between gap-3`} data-testid="codefix-pr-closed">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 text-[12px] font-semibold text-gray-900">
+          <GitPullRequest size={13} />
+          Pull request closed without merging
+          <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[9px] font-semibold uppercase text-red-700">Closed</span>
+        </div>
+        <p className="mt-1 text-[11px] text-gray-500">Nothing was merged. Prepare a new fix when you are ready.</p>
+      </div>
+      <a href={closedPr.url} target="_blank" rel="noreferrer" className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-blue-600 hover:underline">
+        View <ExternalLink size={11} />
+      </a>
+    </div>
+  ) : null;
+
   if (status.isPending || cmsStatus.isPending) return <div className="h-12 animate-pulse rounded-xl bg-gray-100" aria-busy="true" />;
   const gh = status.data;
   const ghUsable = !(status.isError || !gh || (gh.mode === "app" && !gh.configured));
@@ -278,12 +296,20 @@ export default function FindingCodeFix({ finding, actions }: { finding: Finding;
     </div>
   );
 
-  return cmsNode ? (
+  const main = cmsNode ? (
     <div className="space-y-2">
       {cmsNode}
       {githubNode}
     </div>
   ) : (
     githubNode
+  );
+  return closedNode ? (
+    <div className="space-y-2">
+      {closedNode}
+      {main}
+    </div>
+  ) : (
+    main
   );
 }

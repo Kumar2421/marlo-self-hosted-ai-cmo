@@ -27,6 +27,18 @@ export function getLatestSnapshot(db: Database.Database, projectId: string): Sto
   return { snapshotDate: row.snapshot_date, capturedAt: row.captured_at, payload: JSON.parse(row.payload) };
 }
 
+/**
+ * The newest snapshot captured at or before `at` (ISO timestamp): the state at a past moment, e.g. a merge.
+ * Compared by capture time, not day, so a snapshot taken later the same day is never the "before" state.
+ */
+export function getSnapshotOnOrBefore(db: Database.Database, projectId: string, at: string): StoredSnapshot | null {
+  const row = db
+    .prepare("SELECT snapshot_date, captured_at, payload FROM search_snapshots WHERE project_id = ? AND captured_at <= ? ORDER BY captured_at DESC LIMIT 1")
+    .get(projectId, at) as { snapshot_date: string; captured_at: string; payload: string } | undefined;
+  if (!row) return null;
+  return { snapshotDate: row.snapshot_date, capturedAt: row.captured_at, payload: JSON.parse(row.payload) };
+}
+
 export function countSnapshots(db: Database.Database, projectId: string): number {
   const row = db.prepare("SELECT COUNT(*) AS n FROM search_snapshots WHERE project_id = ?").get(projectId) as { n: number };
   return row.n;
