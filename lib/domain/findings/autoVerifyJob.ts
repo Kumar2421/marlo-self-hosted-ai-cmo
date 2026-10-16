@@ -45,6 +45,8 @@ export type AutoVerifyPorts = {
   readMarkers(scope: ProjectScope): Promise<Map<string, AutoVerifyMarker>>;
   writeMarker(scope: ProjectScope, findingId: string, marker: AutoVerifyMarker): Promise<void>;
   checkPorts(item: FixedFinding): VerifyCheckPorts;
+  /** Atomically persist the terminal status and its verification evidence when supported. */
+  finalize?(item: FixedFinding, status: "verified" | "failed", evidence: Record<string, unknown>): Promise<void>;
   transition(item: FixedFinding, status: "verified" | "failed"): Promise<void>;
   saveEvidence(item: FixedFinding, evidence: Record<string, unknown>): Promise<void>;
 };
@@ -154,8 +156,14 @@ export async function runAutoVerify(ports: AutoVerifyPorts, now: Date, budget: J
       if (decided === null) {
         summary.skipped += 1;
       } else {
-        await ports.transition(item, decided);
-        await ports.saveEvidence(item, autoVerifyEvidence(item.finding.evidence, result));
+        const evidence = autoVerifyEvidence(item.finding.evidence, result);
+        if (ports.finalize) {
+          await ports.finalize(item, decided, evidence);
+        } else {
+          // Compatibility for non-platform adapters; production uses atomic finalize.
+          await ports.transition(item, decided);
+          await ports.saveEvidence(item, evidence);
+        }
         summary[decided] += 1;
       }
       await ports.writeMarker(item, item.finding.id, { attempts: attempts + 1, lastCheckedAt: now.toISOString() });
