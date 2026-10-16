@@ -3,7 +3,7 @@ import type { OutcomePorts } from "../search/outcomeService.ts";
 import type { FixDeliveryPort } from "./FixDelivery.ts";
 import { pullRequestUrlOf } from "./linkPullRequest.ts";
 import { reconcileFixPullRequests } from "./reconcileFixPullRequests.ts";
-import { withDeadline } from "./withDeadline.ts";
+import { DeadlineExceededError, withDeadline } from "./withDeadline.ts";
 
 /**
  * Daily sweep over every project with a GitHub App link, so a merged PR is noticed even when nobody
@@ -106,8 +106,17 @@ export async function reconcileAllProjects(
       summary.implemented += outcome.implemented;
       summary.closed += outcome.closed;
       summary.failedActions += outcome.failed.length;
-    } catch {
+    } catch (error) {
       summary.failedProjects.push({ projectId: project.projectId, error: "Could not reconcile this project's pull requests." });
+
+      // A timed-out operation consumes the sweep's remaining budget. Do not
+      // walk the remaining projects and report each immediate deadline reject
+      // as an independent failure; leave them for the next scheduled run.
+      if (error instanceof DeadlineExceededError || remaining() <= 0) {
+        summary.interrupted = index < ordered.length - 1;
+        summary.skipped += ordered.length - index - 1;
+        break;
+      }
     }
   }
 
