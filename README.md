@@ -1,70 +1,58 @@
 <div align="center">
 
-# 🚀 Okara Alternative
+# Marlo
 
-**An open-source, self-hostable AI CMO — bring your own LLM, your own data, your own rules.**
+**An open-source AI CMO: audit a site, watch search, fix what matters, measure the result.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](./LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)](https://www.typescriptlang.org)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [Contributing](#-contributing) • [License](#-license)
+Hosted app: https://app.marlo.mlforge.in | Website: https://marlo.mlforge.in/marlo
 
 </div>
 
----
+## What it is
 
-> **What this is.** An independent, open-source clone of [okara.ai](https://okara.ai) — a real, working
-> implementation of the same "AI CMO" concept, built from scratch with its own codebase. It is **not**
-> affiliated with, endorsed by, or derived from Okara's proprietary source. Every feature here is grounded
-> in real crawled data and real API calls — no mock data pretending to be real, no invented content
-> dressed up as AI output.
+Marlo is a Next.js app (App Router, one deploy) that audits your website, monitors Google Search Console, proposes fixes, and tracks whether they worked. It runs self-hosted on SQLite or as the hosted build on Supabase.
 
-## ✨ Features
+Marlo is inspired by [Okara (okara.ai)](https://okara.ai). It is an independent project, not affiliated with or endorsed by Okara, and not derived from Okara's source code.
 
-### 🌐 Bring your own everything
-Connect **any** LLM provider — Anthropic, OpenAI, Google Gemini, or a fully local setup via **LM Studio**,
-**Ollama**, or any OpenAI-compatible endpoint. No provider is hardcoded as primary; you pick, per project,
-what does the work.
+Every feature is meant to rest on real data or an honest "not available". Missing keys show a clear state instead of placeholder numbers.
 
-### 📄 Real strategy documents, not filler text
-Five AI-generated documents per project — **Product Information, Marketing Strategy, Competitor Analysis,
-Content Strategy, Design Guide** — every one grounded in an actual crawl of your site (with a real
-headless-render fallback via Jina AI Reader for JS-heavy SPAs), never inventing a pricing tier, a
-customer segment, or a hex code it wasn't given. When the page doesn't say it, the document says so.
+## The loop
 
-### 🔍 Automatic competitor discovery
-Point it at your site and it finds real competitors — web-search-grounded (via Tavily) when connected,
-falling back to the model's own knowledge otherwise — but every single candidate is verified with a real
-fetch before it's saved. A wrong guess just gets dropped, never presented as fact.
+- **Audit.** Crawl a site for SEO, technical, link, and multi-page issues.
+- **Monitor.** Take daily Search Console snapshots and track trends and query opportunities.
+- **Fix, with a preview.** Propose changes, review a preview, then open a draft pull request on GitHub or publish through WordPress or Webflow after approval.
+- **Measure.** Compare search data before and after each implemented change.
 
-### 📈 Analytics that don't fake it
-- **SEO** — real crawl-based audit, real Google PageSpeed Insights + Core Web Vitals when you connect a
-  key, and an honest crawl-derived substitute (not a placeholder score) when you don't.
-- **Technical** — real server timing (TTFB, TLS handshake, connection), render-blocking resource counts,
-  deterministic content-relevance scoring, on-page checks — all computed from the actual response, not simulated.
-- **Links** — real link extraction plus a bounded, explicit reachability check.
-- **Site Pages** — a real multi-page crawl beyond the homepage, with the same JS-render fallback, plus
-  opt-in real PageSpeed scoring per page.
-- **GEO** — a real "AI citation gap" check: does your site actually show up when the live web is searched
-  for queries around your product?
+## What works today
 
-### 🤖 Content agents grounded in your real context
-**Articles** and **LinkedIn** agents write from your full project context — product info, positioning,
-competitor landscape — not generic prompts. **Reddit, X, GitHub, and Hacker News** agents draft real
-content too; where a draft can't yet be posted through a live platform API, that's disclosed in the UI
-rather than silently pretended.
+Self-host = `NEXT_PUBLIC_SELF_HOST=true`, local SQLite. Hosted = Supabase build. "Yes" means the code path exists in that mode; see [environment.md](docs/environment.md) for the variables behind each "Needs" entry.
 
-### 🖥️ A terminal that tells the truth
-Every agent action — crawling, generating, discovering, checking — streams real status lines to a live
-terminal log. If something fails, you see the real error, not a spinner that quietly gives up.
+| Feature | Self-host | Hosted | Needs |
+|---|---|---|---|
+| Audit: SEO, technical, links, site crawl | Yes | Yes | Nothing required; PageSpeed key optional |
+| Search Console monitoring: snapshots, trends, opportunities | Manual refresh | Daily snapshots (cron) | Google OAuth with Search Console access |
+| Findings and tracked actions with before/after outcomes | Yes | Yes | Snapshots to measure outcomes |
+| GEO visibility history | Yes | Yes | Gemini key for grounded answers; otherwise "simulated" (Tavily + Groq keys). No ChatGPT or Perplexity API |
+| Fix PRs (GitHub) | Yes, via a stored GitHub token | Yes, via the GitHub App; drafts only | GitHub token or GitHub App |
+| CMS publish: WordPress, Webflow | Yes | Yes | Site credentials; preview and approval before writing |
+| Leads: people search | Yes | Yes | Tavily key (Google CSE optional) |
+| Leads: local businesses | Yes | Yes | Google Cloud key with Places API (New) enabled, saved in Settings |
+| Gmail outreach and reply checks | Yes | Yes | Gmail OAuth, using your own Gmail account |
+| Social drafts: X, LinkedIn, Reddit | Manual drafts | Manual drafts + daily draft job | LLM key. Post opens the network's compose page; nothing posts automatically |
+| Notifications: in-app bell, email | In-app; email if Resend is set | In-app + email | Resend key and sender for email |
+| Chat over your project data | Yes | Yes | LLM key. Read-only tools: summary, opportunities, findings, actions and outcomes, leads, GEO |
+| Plans and credits | Unlimited | Free, Lite, Pro tiers and credits | Supabase (hosted). No payment provider is wired in this repo |
 
----
-
-## 🚀 Quick Start
+## Quick start
 
 ### Self-host
+
+Requires Node.js 24.12 or newer (`engines` in `package.json`).
 
 ```bash
 git clone https://github.com/Kumar2421/okara-alternative.git
@@ -73,63 +61,62 @@ npm install
 npm run dev
 ```
 
-Self-host mode stores project data and provider configuration in local SQLite at `data/okara.db`.
+Self-host stores projects and provider settings in SQLite at `data/okara.db`. For a production-style self-host build, set `NEXT_PUBLIC_SELF_HOST=true` and run `npm run build` then `npm start`.
 
-### Hosted platform
+### Hosted
 
-The hosted build uses Supabase for authenticated, project-scoped persistence. Configure:
+Follow [docs/hosted-setup.md](docs/hosted-setup.md) for the ordered checklist, and [docs/environment.md](docs/environment.md) for variable names. Google setup is in [docs/google-cloud-setup.md](docs/google-cloud-setup.md). The runtime contract and acceptance gate are in [docs/production-readiness.md](docs/production-readiness.md).
 
-| Variable | Purpose |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser/server Supabase client |
-| `SUPABASE_SECRET_KEY` | Server-only trusted database access |
+## Security
 
-Do not expose `SUPABASE_SECRET_KEY` to client code.
+- Row-level security on user tables. Server-trusted tables are read-only to end users ([migration](supabase/migrations/20261019000000_lock_trusted_tables.sql)).
+- Outbound fetches for user-influenced URLs go through a guarded fetcher that pins DNS and checks every redirect hop. Some older fetch paths are still being hardened (see the review).
+- Hosted public, anonymous endpoints share rate limits in Postgres; self-host uses a per-process limiter.
+- External writes (fix PRs, CMS publishes) require a signed, expiring approval ticket.
+- No automatic posting and no automatic merging. Fix PRs are drafts; no code path merges them.
 
-See [docs/production-readiness.md](docs/production-readiness.md) for the production runtime contract and acceptance gate.
+Full review notes: [security-review.md](security-review.md).
 
----
+**Reporting a vulnerability:** use GitHub private vulnerability reporting (Security tab) if it is enabled on the repository. If it is not, open an issue that asks for a private channel, without including details.
 
-## 🏗️ Architecture
+## Project layout
 
 ```
-Next.js 16 (App Router) — one app, frontend + API routes, one deploy target
-├── app/api/**                 real backend logic
-├── lib/llm/*                  provider drivers behind a shared interface
-├── lib/domain/**               agents & generators
-├── self-host: lib/db.ts        local SQLite persistence
-├── platform: Supabase          authenticated Postgres persistence
-└── components/**               hand-built UI
+app/           Next.js routes: api/ (backend), dashboard/, audit/, settings/, login/
+components/    UI: dashboard panels, settings, shared components
+lib/           domain logic (lib/domain/*), LLM drivers (lib/llm/), jobs, security helpers
+utils/         Supabase clients (utils/supabase/)
+supabase/      SQL migrations
+docs/          environment, hosted setup, product and runtime docs
+scripts/       one-off scripts (outcome seeding)
+tests/         node:test suites (npm test)
+public/        static assets
 ```
 
-The self-host and platform persistence paths are intentionally separate. A hosted platform deployment
-must not silently fall back to local SQLite.
+## Limits
 
----
+Not built, or built with caveats:
 
-## 🤝 Contributing
+- No direct posting to X, LinkedIn, or Reddit. The X client has a posting method, but no route calls it.
+- No real ChatGPT, Perplexity, or Claude visibility measurement. GEO uses Gemini-grounded answers or a labelled simulation.
+- WordPress SEO fields only save when the site exposes Yoast or Rank Math meta through the REST API.
+- Webflow field names are not verified on live sites.
+- Local business search needs a Google Cloud key with Places API (New) enabled. Google bills that API.
+- The Content-Security-Policy header is report-only, so violations are logged, not blocked.
+- Hosted plans are stored as tiers; there is no billing integration in this repository.
 
-Issues and PRs are genuinely welcome — this is early, opinionated, and built in the open. If you add a
-feature, hold the same bar the rest of the codebase does: **real data or an honest "not available," never
-a plausible-looking fake.**
+## Contributing
 
-<a href="https://github.com/Kumar2421/okara-alternative/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Kumar2421/okara-alternative" alt="Contributors" />
-</a>
+Issues and pull requests are welcome. The bar is the same as the code's: **real data or an honest "not available", never a plausible-looking fake.** If you add a feature, show the empty and error states too.
 
----
+## License
 
-## 📜 License
-
-Licensed under the **[GNU Affero General Public License v3.0](./LICENSE)**. In short: you're free to use,
-modify, and self-host this — but if you run a modified version as a network service, you must make your
-source available to its users too. See [LICENSE](./LICENSE) for the full text.
+Licensed under the [GNU Affero General Public License v3.0](./LICENSE). If you run a modified version as a network service, you must make its source available to its users.
 
 ---
 
 <div align="center">
 
-Not affiliated with Okara.ai. Built independently as an open alternative.
+Marlo is independent and not affiliated with Okara.ai.
 
 </div>

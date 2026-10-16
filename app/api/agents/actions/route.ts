@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { createAction, getProjectAction, listProjectActions, transitionAction } from "@/lib/domain/actions/actionStore";
 import { createAction as createActionSupabase, getProjectAction as getProjectActionSupabase, listProjectActions as listProjectActionsSupabase, transitionAction as transitionActionSupabase } from "@/lib/domain/actions/actionStoreSupabase";
 import { isActionStatus, isActionType } from "@/lib/domain/actions/actionTypes";
@@ -13,6 +13,7 @@ import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 import { reconcileFixPullRequests } from "@/lib/domain/fixes/reconcileFixPullRequests";
+import { tokenForPendingPullRequests } from "@/lib/domain/fixes/reconcileAllProjects";
 import { fixDeliveryGithub } from "@/lib/domain/fixes/fixDeliveryGithub";
 import { hostedGithubToken } from "@/lib/githubAppServer";
 
@@ -48,14 +49,19 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ action: (await readOutcomes(ports, [action]))[0] });
     }
     const actions = await listProjectActionsSupabase(db, user.id, projectId, findingId);
-    // Reconcile merged PRs lazily (best effort, non-blocking)
+    // Reconcile merged PRs after the response is sent (after() keeps the work alive on serverless). The daily
+    // cron also sweeps every linked project, so this only makes the page fresher.
     try {
-      // GitHub App installation token when connected (short-lived, never stored), else the legacy token.
-      const githubToken = await hostedGithubToken(db, user.id, projectId);
+      // GitHub App installation token (short-lived, never stored), minted only when a linked PR is pending.
+      const githubToken = await tokenForPendingPullRequests(actions, () => hostedGithubToken(db, user.id, projectId));
       if (githubToken) {
         const fixDelivery = fixDeliveryGithub(githubToken);
-        reconcileFixPullRequests(ports, fixDelivery, actions).catch(() => {
-          // Silently ignore reconciliation errors to not block GET
+        after(async () => {
+          try {
+            await reconcileFixPullRequests(ports, fixDelivery, actions);
+          } catch {
+            // Ignore reconciliation errors: they must not affect the response, and nothing is logged with secrets.
+          }
         });
       }
     } catch {
