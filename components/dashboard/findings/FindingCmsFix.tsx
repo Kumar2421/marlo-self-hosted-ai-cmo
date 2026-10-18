@@ -41,7 +41,7 @@ function ChangeEditor({ change, onChange }: { change: CmsChange; onChange: (next
           </pre>
         </div>
         <label className="block">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Marlo will change it to (you can edit this)</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">New text (you can edit)</span>
           <textarea
             value={change.after}
             onChange={(e) => onChange({ ...change, after: e.target.value })}

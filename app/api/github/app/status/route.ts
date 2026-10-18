@@ -17,6 +17,12 @@ export type GithubStatus = {
   needsRepo?: boolean;
   repos?: { fullName: string; private: boolean }[];
   slug?: string;
+  /**
+   * Set when the answer is not a plain "connected" or "not connected":
+   * "access_removed": GitHub no longer shares anything with Marlo, so the link was cleared (connected is false).
+   * "repos_unavailable": GitHub could not be asked for the repository list; `connected` still reflects Marlo's own link.
+   */
+  error?: "access_removed" | "repos_unavailable";
 };
 
 /** What the UI needs to decide between "Connect GitHub" and "Prepare fix". Pass ?repos=1 for the picker list. */
@@ -46,9 +52,9 @@ export async function GET(req: NextRequest) {
   if (!link || req.nextUrl.searchParams.get("repos") !== "1") return NextResponse.json(base);
   try {
     const listed = await listSelectableRepos(ctx.deps, ctx.projectId);
-    if (!listed.ok) return NextResponse.json({ ...base, connected: false, needsRepo: false, repoFullName: null });
+    if (!listed.ok) return NextResponse.json({ ...base, connected: false, needsRepo: false, repoFullName: null, error: "access_removed" } satisfies GithubStatus);
     return NextResponse.json({ ...base, repos: listed.repos.map((r) => ({ fullName: r.fullName, private: r.private })) });
   } catch {
-    return NextResponse.json({ ...base, repos: [] });
+    return NextResponse.json({ ...base, repos: [], error: "repos_unavailable" } satisfies GithubStatus);
   }
 }
