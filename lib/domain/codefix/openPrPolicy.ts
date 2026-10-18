@@ -1,7 +1,7 @@
 import type { Action } from "../actions/actionTypes.ts";
 import type { PRInfo } from "../fixes/FixDelivery.ts";
 import { pullRequestUrlOf } from "../fixes/linkPullRequest.ts";
-import { branchSlugFor } from "./catalogFix.ts";
+import { branchSlugFor, findingTagFor } from "./catalogFix.ts";
 
 /**
  * Pure rules that stop a finding's fix from opening a second pull request, and that keep the
@@ -21,21 +21,23 @@ export function linkedPrCandidates(codeFixPrUrl: string | null | undefined, acti
   return urls;
 }
 
-/** The first candidate GitHub reports as open. A candidate that can't be checked is skipped, not trusted. */
+/**
+ * The first candidate GitHub reports as open. Only a definite "closed" or "merged" lets a candidate be passed
+ * over; a status that can't be read ("unknown", or a thrown error) throws so the caller fails closed instead of
+ * opening a second PR next to one that may still be open.
+ */
 export async function firstOpenPr(candidates: readonly string[], status: (url: string) => Promise<PRInfo>): Promise<string | null> {
   for (const url of candidates) {
-    try {
-      if ((await status(url)).state === "open") return url;
-    } catch {
-      continue;
-    }
+    const { state } = await status(url);
+    if (state === "open") return url;
+    if (state !== "closed" && state !== "merged") throw new Error(`Couldn't tell whether ${url} is still open (status: ${state}).`);
   }
   return null;
 }
 
-/** Branch prefix Marlo gives every fix for this label; the timestamp suffix follows it (see branchNameFor). */
-export function branchPrefixFor(label: string): string {
-  return `marlo/${branchSlugFor(label)}-`;
+/** Branch prefix Marlo gives fixes for this label (and finding, when given); the timestamp suffix follows it (see branchNameFor). */
+export function branchPrefixFor(label: string, findingId?: string): string {
+  return `marlo/${branchSlugFor(label)}-${findingId ? `${findingTagFor(findingId)}-` : ""}`;
 }
 
 /** True when `headRef` is the prefix plus exactly one base36 timestamp, so "marlo/missing-json-" never matches "marlo/missing-json-ld-…". */

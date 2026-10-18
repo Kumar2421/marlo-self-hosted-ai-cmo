@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ContentsApiFixProvider } from "../lib/domain/codefix/ContentsApiFixProvider.ts";
+import { listOpenPullRequests } from "../lib/domain/codefix/githubApi.ts";
+import { branchPrefixFor } from "../lib/domain/codefix/openPrPolicy.ts";
 import type { CodeFixContext, FixChange } from "../lib/domain/codefix/types.ts";
 
 const PAGE = `export default function Home() {\n  return (<html><head>\n<title>Hi</title>\n</head><body>Hello</body></html>);\n}\n`;
@@ -18,7 +20,7 @@ type Opts = {
   /** Status returned by POST /pulls. 201 means success. */
   prStatus?: number;
   /** Open PRs returned by GET /pulls, or "fail" to make the listing error. */
-  openPulls?: Array<{ html_url: string; head: { ref: string } }> | "fail";
+  openPulls?: Array<{ html_url: string; head: { ref: string; repo?: { full_name: string } | null } }> | "fail";
   /** Status returned by DELETE on a branch. */
   deleteStatus?: number;
 };
@@ -108,7 +110,7 @@ test("a createPullRequest failure after GitHub accepted the PR returns that PR a
       const url = new URL(String(input));
       if (url.pathname.endsWith("/pulls") && (init?.method ?? "GET") === "GET") {
         branch = [...gh.branches][0];
-        return new Response(JSON.stringify([{ html_url: PR_URL, head: { ref: branch } }]), { status: 200 });
+        return new Response(JSON.stringify([{ html_url: PR_URL, head: { ref: branch, repo: { full_name: "acme/site" } } }]), { status: 200 });
       }
       return original(input, init);
     }) as typeof fetch;
@@ -144,4 +146,54 @@ test("a successful apply deletes nothing", async () => {
     assert.deepEqual(gh.deletes(), []);
     assert.equal(gh.branches.size, 1);
   } finally { gh.restore(); }
+});
+
+test("a timeout-like createPullRequest failure (5xx) keeps the branch even when the exact-head lookup finds no PR", async () => {
+  const gh = fakeGithub({ prStatus: 500, openPulls: [] });
+  try {
+    await assert.rejects(provider().applyCatalogFix(CHANGES, ctx, META), /Couldn't open PR: HTTP 500/);
+    assert.deepEqual(gh.deletes(), [], "not a definite refusal, so the branch may still back a PR");
+  } finally { gh.restore(); }
+});
+
+test("rate limits (429) are not a definite refusal either", async () => {
+  const gh = fakeGithub({ prStatus: 429, openPulls: [] });
+  try {
+    await assert.rejects(provider().applyCatalogFix(CHANGES, ctx, META));
+    assert.deepEqual(gh.deletes(), []);
+  } finally { gh.restore(); }
+});
+
+test("the branch carries the finding tag, and cleanup looks the PR up by exact head", async () => {
+  const gh = fakeGithub({ prStatus: 422, openPulls: [] });
+  try {
+    await assert.rejects(provider().applyCatalogFix(CHANGES, ctx, META));
+    const branch = String(gh.requests.find((r) => r.path === "/git/refs" && r.method === "POST")!.body.ref).replace("refs/heads/", "");
+    assert.ok(branch.startsWith(branchPrefixFor(META.label, META.findingId)), branch);
+    const lookup = gh.requests.find((r) => r.path === "/pulls" && r.method === "GET")!;
+    assert.equal(new URL("https://x/" + lookup.search).searchParams.get("head"), "acme:" + branch);
+    assert.equal(gh.deletes().length, 1, "422 is a definite refusal");
+  } finally { gh.restore(); }
+});
+
+test("listOpenPullRequests pages through results and ignores fork PRs", async () => {
+  const original = globalThis.fetch;
+  const pages: string[] = [];
+  const mk = (n: number, repo: string) => ({ html_url: "https://github.com/acme/site/pull/" + n, head: { ref: "b" + n, repo: { full_name: repo } } });
+  globalThis.fetch = (async (input: string | URL) => {
+    const u = new URL(String(input));
+    const page = Number(u.searchParams.get("page"));
+    pages.push(String(page));
+    const rows = page === 1
+      ? Array.from({ length: 100 }, (_, i) => mk(i + 1, i === 0 ? "evil/site" : "acme/site"))
+      : [mk(500, "ACME/site"), { html_url: "https://github.com/acme/site/pull/501", head: { ref: "gone", repo: null } }];
+    return new Response(JSON.stringify(rows), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const prs = await listOpenPullRequests("t", "acme/site");
+    assert.deepEqual(pages, ["1", "2"]);
+    assert.equal(prs.length, 100, "99 same-repo from page 1 plus 1 from page 2; fork and deleted-fork rows dropped");
+    assert.equal(prs.some((p) => p.headRef === "b1"), false);
+    assert.equal(prs.some((p) => p.headRef === "b500"), true);
+  } finally { globalThis.fetch = original; }
 });

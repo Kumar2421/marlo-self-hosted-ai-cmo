@@ -70,16 +70,46 @@ export async function pathExists(token: string, repoFullName: string, path: stri
   return true;
 }
 
+/** An HTTP failure from GitHub, with the status so callers can tell a definite refusal (4xx) from an unknown outcome. */
+export class GitHubHttpError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "GitHubHttpError";
+    this.status = status;
+  }
+}
+
 export type OpenPullRequestSummary = { url: string; headRef: string };
 
-/** Open PRs in the repo, newest first (first page of 100). Used to find a PR a fix already opened. */
-export async function listOpenPullRequests(token: string, repoFullName: string): Promise<OpenPullRequestSummary[]> {
-  const res = await githubFetch(token, `/repos/${repoFullName}/pulls?state=open&per_page=100`);
-  if (!res.ok) throw new Error(`Couldn't list pull requests: HTTP ${res.status}`);
-  const data = await res.json();
-  return (Array.isArray(data) ? data : [])
-    .map((pr: { html_url?: unknown; head?: { ref?: unknown } }) => ({ url: String(pr.html_url ?? ""), headRef: String(pr.head?.ref ?? "") }))
-    .filter((pr: OpenPullRequestSummary) => pr.url !== "" && pr.headRef !== "");
+const PULLS_PAGE_SIZE = 100;
+const PULLS_MAX_PAGES = 10;
+
+/**
+ * Open PRs whose head branch lives in this repo (fork PRs are ignored, so a fork's branch of the same name can't
+ * pass for ours). Pages through the list, or with `head` asks GitHub for that exact branch only.
+ */
+export async function listOpenPullRequests(token: string, repoFullName: string, opts: { head?: string } = {}): Promise<OpenPullRequestSummary[]> {
+  const owner = repoFullName.split("/")[0] ?? "";
+  const headQuery = opts.head ? `&head=${encodeURIComponent(`${owner}:${opts.head}`)}` : "";
+  const out: OpenPullRequestSummary[] = [];
+  for (let page = 1; page <= PULLS_MAX_PAGES; page++) {
+    const res = await githubFetch(token, `/repos/${repoFullName}/pulls?state=open&per_page=${PULLS_PAGE_SIZE}&page=${page}${headQuery}`);
+    if (!res.ok) throw new GitHubHttpError(`Couldn't list pull requests: HTTP ${res.status}`, res.status);
+    const data = await res.json();
+    const rows = Array.isArray(data) ? data : [];
+    for (const pr of rows as { html_url?: unknown; head?: { ref?: unknown; repo?: { full_name?: unknown } | null } }[]) {
+      const url = String(pr.html_url ?? "");
+      const headRef = String(pr.head?.ref ?? "");
+      const headRepo = String(pr.head?.repo?.full_name ?? "");
+      if (url === "" || headRef === "" || headRepo.toLowerCase() !== repoFullName.toLowerCase()) continue;
+      if (opts.head && headRef !== opts.head) continue;
+      out.push({ url, headRef });
+    }
+    if (rows.length < PULLS_PAGE_SIZE) return out;
+  }
+  if (opts.head) return out;
+  throw new Error("Too many open pull requests to check for a duplicate.");
 }
 
 /** Deletes a branch. Deleting a branch that is already gone counts as deleted. */
@@ -146,7 +176,7 @@ export async function createPullRequest(
     }
   }
   if (!res.ok) {
-    throw new Error(`Couldn't open PR: HTTP ${res.status}`);
+    throw new GitHubHttpError(`Couldn't open PR: HTTP ${res.status}`, res.status);
   }
   const data = await res.json();
   return data.html_url;

@@ -10,7 +10,7 @@ import {
   openPrForHead,
 } from "../lib/domain/codefix/openPrPolicy.ts";
 import { openOrReuseFixPr, type OpenFixPorts } from "../lib/domain/codefix/openFixPr.ts";
-import { branchNameFor } from "../lib/domain/codefix/catalogFix.ts";
+import { branchNameFor, findingTagFor } from "../lib/domain/codefix/catalogFix.ts";
 import type { PRInfo } from "../lib/domain/fixes/FixDelivery.ts";
 
 const LABEL = "Missing JSON-LD and llms.txt";
@@ -61,10 +61,68 @@ test("linkedPrCandidates puts the code_fixes link first, keeps action links, and
   assert.deepEqual(linkedPrCandidates(null, []), []);
 });
 
-test("firstOpenPr returns the first candidate GitHub reports open, and skips one that cannot be checked", async () => {
-  const st = statusFake([NEW_PR], [OLD_PR]);
+test("firstOpenPr returns the first open candidate, skips closed ones, and returns null when all are closed", async () => {
+  const st = statusFake([NEW_PR]);
   assert.equal(await firstOpenPr([OLD_PR, NEW_PR], st.status), NEW_PR);
   assert.equal(await firstOpenPr(["https://github.com/acme/site/pull/1"], st.status), null);
+  assert.equal(await firstOpenPr(["u"], async () => ({ state: "merged" })), null);
+});
+
+test("firstOpenPr throws on an unreadable status instead of treating it as not open", async () => {
+  await assert.rejects(firstOpenPr([OLD_PR], statusFake([], [OLD_PR]).status), /network down/);
+  await assert.rejects(firstOpenPr([OLD_PR], async () => ({ state: "unknown" })), /Couldn't tell/);
+  // even when a later candidate would be open: the earlier unknown one might be too
+  await assert.rejects(firstOpenPr([OLD_PR, NEW_PR], async (u) => (u === OLD_PR ? { state: "unknown" } : { state: "open" })), /Couldn't tell/);
+});
+
+test("branch names carry the finding tag; without a finding id they keep the old shape", () => {
+  const now = Date.UTC(2026, 9, 14);
+  assert.equal(branchNameFor(LABEL, now), "marlo/missing-json-ld-and-llms-txt-" + now.toString(36));
+  const a = branchNameFor(LABEL, now, "finding-a");
+  const b = branchNameFor(LABEL, now, "finding-b");
+  assert.equal(a, "marlo/missing-json-ld-and-llms-txt-" + findingTagFor("finding-a") + "-" + now.toString(36));
+  assert.notEqual(findingTagFor("finding-a"), findingTagFor("finding-b"));
+  assert.equal(findingTagFor("finding-a").length, 6);
+  assert.equal(matchesBranchPrefix(a, branchPrefixFor(LABEL, "finding-a")), true);
+  assert.equal(matchesBranchPrefix(b, branchPrefixFor(LABEL, "finding-a")), false);
+  assert.equal(matchesBranchPrefix(a, PREFIX), false, "the label-only prefix no longer swallows per-finding branches");
+});
+
+test("an open PR of another finding with the same label is not reused", async () => {
+  const other = branchNameFor(LABEL, 1, "finding-b");
+  const { p, calls } = ports({ listOpenPullRequests: async () => [{ url: OLD_PR, headRef: other }] });
+  const out = await openOrReuseFixPr(p, { branchPrefix: branchPrefixFor(LABEL, "finding-a") });
+  assert.equal(out.kind, "opened");
+  assert.equal(calls.openPr, 1);
+});
+
+test("an open PR on this finding's own branch is reused", async () => {
+  const own = branchNameFor(LABEL, 1, "finding-a");
+  const { p, calls } = ports({ listOpenPullRequests: async () => [{ url: OLD_PR, headRef: own }] });
+  const out = await openOrReuseFixPr(p, { branchPrefix: branchPrefixFor(LABEL, "finding-a") });
+  assert.deepEqual(out, { kind: "existing", prUrl: OLD_PR, branch: own });
+  assert.equal(calls.openPr, 0);
+});
+
+test("two concurrent applies for one (project, finding) open only one PR; the claim is released afterwards", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  let opens = 0;
+  const base = ports().p;
+  const slow: OpenFixPorts = { ...base, openPr: async () => { opens += 1; await gate; return { prUrl: NEW_PR, branch: "marlo/n", files: [] }; } };
+  const opts = { branchPrefix: PREFIX, claimKey: "proj:finding" };
+  const first = openOrReuseFixPr(slow, opts);
+  await new Promise((r) => setTimeout(r, 5));
+  await assert.rejects(openOrReuseFixPr(slow, opts), /already being opened/);
+  // a different finding is unaffected
+  const other = await openOrReuseFixPr(base, { ...opts, claimKey: "proj:other" });
+  assert.equal(other.kind, "opened");
+  release();
+  assert.equal((await first).kind, "opened");
+  assert.equal(opens, 1);
+  assert.equal((await openOrReuseFixPr(base, opts)).kind, "opened", "claim freed after success");
+  await assert.rejects(openOrReuseFixPr({ ...base, openPr: async () => { throw new Error("x"); } }, opts), /x/);
+  assert.equal((await openOrReuseFixPr(base, opts)).kind, "opened", "claim freed after failure");
 });
 
 test("branch prefix matches the timestamp suffix only, not a longer slug", () => {
@@ -113,13 +171,12 @@ test("a failed PR lookup throws instead of guessing that nothing is open", async
   assert.equal(calls.openPr, 0);
 });
 
-test("a linked PR whose status cannot be checked does not block opening a new one", async () => {
+test("a linked PR whose status cannot be checked fails closed: nothing is opened", async () => {
   const st = statusFake([], [OLD_PR]);
-  const out = await openOrReuseFixPr(
-    { ...ports().p, linkedPrUrls: async () => [OLD_PR], prStatus: st.status, openPr: async () => ({ prUrl: NEW_PR, branch: "marlo/n", files: [] }) },
-    { branchPrefix: PREFIX },
-  );
-  assert.equal(out.kind, "opened");
+  const { p, calls } = ports({ linkedPrUrls: async () => [OLD_PR] });
+  await assert.rejects(openOrReuseFixPr({ ...p, prStatus: st.status }, { branchPrefix: PREFIX }), /network down/);
+  await assert.rejects(openOrReuseFixPr({ ...p, prStatus: async () => ({ state: "unknown" }) }, { branchPrefix: PREFIX }), /Couldn't tell/);
+  assert.equal(calls.openPr, 0);
 });
 
 test("decideFixLink: same PR, or no earlier link, records the new PR", async () => {

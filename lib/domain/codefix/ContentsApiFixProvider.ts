@@ -1,7 +1,7 @@
 import type { LlmDriver } from "@/lib/llm";
 import type { Finding } from "@/lib/domain/seo/SEOAgent";
 import type { CatalogApplyMeta, CatalogFixInput, CatalogProposal, CodeFixContext, CodeFixProvider, FixChange, ProposedFix } from "./types.ts";
-import { getRepo, searchCode, getFileContent, createBranch, putFileContent, createPullRequest, pathExists, listOpenPullRequests, deleteBranch } from "./githubApi.ts";
+import { getRepo, searchCode, getFileContent, createBranch, putFileContent, createPullRequest, pathExists, listOpenPullRequests, deleteBranch, GitHubHttpError } from "./githubApi.ts";
 import { openPrForHead } from "./openPrPolicy.ts";
 import {
   applyEditsToContent,
@@ -67,6 +67,11 @@ function parsePatchResponse(raw: string): ParsedPatch {
     new: newMatch[1],
     explanation: explanationMatch?.[1]?.trim() ?? "Fixes the reported issue.",
   };
+}
+
+/** A 4xx from GitHub that says the request was rejected, as opposed to a timeout (408), a rate limit (429) or a 5xx. */
+export function isDefiniteRefusal(err: unknown): boolean {
+  return err instanceof GitHubHttpError && err.status >= 400 && err.status < 500 && err.status !== 408 && err.status !== 429;
 }
 
 /** Best-effort branch cleanup. Its own failure is swallowed so the caller still sees the error that caused the cleanup. */
@@ -246,7 +251,7 @@ The OLD block must exist character-for-character in the file above — copy it e
       writes.push({ path, content, sha: file.sha });
     }
 
-    const branch = branchNameFor(meta.label);
+    const branch = branchNameFor(meta.label, Date.now(), meta.findingId);
     await createBranch(ctx.githubToken, ctx.repoFullName, repo.defaultBranch, branch);
     // From here on the branch is ours: if anything fails, it is deleted so no orphan branch is left behind.
     try {
@@ -262,15 +267,16 @@ The OLD block must exist character-for-character in the file above — copy it e
       return { prUrl, branch, files: paths };
     } catch (err) {
       // GitHub may have accepted the PR before this call failed (a timeout, say). Then keep the branch and return that PR,
-      // since deleting the branch would close it. If the lookup itself fails, keep the branch too: it is not known to be unused.
+      // since deleting the branch would close it. If the exact-head lookup fails, keep the branch too: it is not known to be unused.
       let existing: string | null | undefined;
       try {
-        existing = openPrForHead(await listOpenPullRequests(ctx.githubToken, ctx.repoFullName), branch)?.url ?? null;
+        existing = openPrForHead(await listOpenPullRequests(ctx.githubToken, ctx.repoFullName, { head: branch }), branch)?.url ?? null;
       } catch {
         existing = undefined;
       }
       if (existing) return { prUrl: existing, branch, files: paths };
-      if (existing === null) await deleteBranchQuietly(ctx.githubToken, ctx.repoFullName, branch);
+      // Delete only when GitHub definitely refused the PR (a 4xx, not a timeout or rate limit) and no PR has this head.
+      if (existing === null && isDefiniteRefusal(err)) await deleteBranchQuietly(ctx.githubToken, ctx.repoFullName, branch);
       throw err;
     }
   }

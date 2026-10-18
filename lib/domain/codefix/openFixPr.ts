@@ -22,7 +22,22 @@ export type OpenFixPorts = {
  * still reports as open, then an open PR on this label's branch (which covers a retry after the PR was
  * created but never recorded). Only when neither exists is a new PR opened.
  */
-export async function openOrReuseFixPr(ports: OpenFixPorts, opts: { branchPrefix: string }): Promise<OpenFixOutcome> {
+export async function openOrReuseFixPr(ports: OpenFixPorts, opts: { branchPrefix: string; claimKey?: string }): Promise<OpenFixOutcome> {
+  if (!opts.claimKey) return openOrReuseUnclaimed(ports, opts);
+  // Two applies for one (project, finding) must not both reach openPr: the second one fails instead of racing the first.
+  if (inFlight.has(opts.claimKey)) throw new Error("A pull request for this finding is already being opened. Try again in a moment.");
+  inFlight.add(opts.claimKey);
+  try {
+    return await openOrReuseUnclaimed(ports, opts);
+  } finally {
+    inFlight.delete(opts.claimKey);
+  }
+}
+
+/** Claims held by applies running in this server instance (a cheap guard; it does not span instances). */
+const inFlight = new Set<string>();
+
+async function openOrReuseUnclaimed(ports: OpenFixPorts, opts: { branchPrefix: string }): Promise<OpenFixOutcome> {
   const linked = await firstOpenPr(await ports.linkedPrUrls(), ports.prStatus);
   if (linked) return { kind: "existing", prUrl: linked, branch: "" };
 

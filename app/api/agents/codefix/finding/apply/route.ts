@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
             kinds: redeemed.kinds,
           }),
       },
-      { branchPrefix: branchPrefixFor(label) },
+      { branchPrefix: branchPrefixFor(label, resolved.finding.id), claimKey: `${resolved.projectId}:${resolved.finding.id}` },
     );
   } catch (err) {
     // Nothing was opened: let the user retry the same preview.
