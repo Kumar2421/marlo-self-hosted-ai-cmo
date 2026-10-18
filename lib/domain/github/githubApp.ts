@@ -1,5 +1,8 @@
 import crypto from "node:crypto";
 import { signPayload, verifyPayload } from "./signedPayload.ts";
+import { safeReturnPath } from "./returnPath.ts";
+
+export { safeReturnPath };
 
 /**
  * GitHub App plumbing for the hosted "connect GitHub" flow. Marlo stores only the installation id
@@ -157,13 +160,6 @@ export function stateSecret(cfg: Pick<GithubAppConfig, "privateKey">): string {
 }
 
 export type InstallState = { userId: string; projectId: string; returnTo: string | null };
-
-/** Only same-site paths may be used as a post-install destination. */
-export function safeReturnPath(value: unknown): string | null {
-  if (typeof value !== "string" || value.length > 300) return null;
-  if (!value.startsWith("/") || value.startsWith("//") || value.includes("\\") || /[\r\n]/.test(value)) return null;
-  return value;
-}
 
 export function createInstallState(cfg: Pick<GithubAppConfig, "privateKey">, input: InstallState, now = Date.now()): string {
   return signPayload(stateSecret(cfg), STATE_PURPOSE, { ...input, returnTo: safeReturnPath(input.returnTo) }, STATE_TTL_MS, now);

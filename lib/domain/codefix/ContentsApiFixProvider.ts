@@ -1,7 +1,8 @@
 import type { LlmDriver } from "@/lib/llm";
 import type { Finding } from "@/lib/domain/seo/SEOAgent";
 import type { CatalogApplyMeta, CatalogFixInput, CatalogProposal, CodeFixContext, CodeFixProvider, FixChange, ProposedFix } from "./types.ts";
-import { getRepo, searchCode, getFileContent, createBranch, putFileContent, createPullRequest, pathExists } from "./githubApi.ts";
+import { getRepo, searchCode, getFileContent, createBranch, putFileContent, createPullRequest, pathExists, listOpenPullRequests, deleteBranch, GitHubHttpError } from "./githubApi.ts";
+import { openPrForHead } from "./openPrPolicy.ts";
 import {
   applyEditsToContent,
   branchNameFor,
@@ -15,6 +16,18 @@ import {
   validateProposal,
 } from "./catalogFix.ts";
 import { MAX_FIX_FILES, MAX_NEW_FILE_BYTES, MAX_SOURCE_FILE_BYTES, isSafeRepoPath, plannedTargets } from "./fixCatalog.ts";
+
+const EXCLUDED_DIRS = /(^|\/)(tests?|__tests__|lib|docs?|node_modules|e2e|spec|fixtures|scripts)\//i;
+const ENTRY_FILE = /(^|\/)(page\.(tsx|jsx|ts|js|mdx)|index\.(tsx|jsx|ts|js|html|mdx)|route\.(ts|js)|layout\.(tsx|jsx))$/i;
+const ROUTER_DIR = /(^|\/)(app|pages)\//;
+
+/** Picks the page-entry file for a path segment from search hits: it must name the segment, live outside tests/lib/docs/node_modules, and be safe to edit; entry files (page, index, route, layout under app/ or pages/) win over other matches. */
+export function pickPageFile(paths: string[], segment: string): string | null {
+  const named = paths.filter(
+    (p) => isSafeRepoPath(p) && !EXCLUDED_DIRS.test(p) && (p.includes(`/${segment}/`) || p.includes(`/${segment}.`) || p.startsWith(`${segment}/`) || p.startsWith(`${segment}.`)),
+  );
+  return named.find((p) => ENTRY_FILE.test(p) && ROUTER_DIR.test(p)) ?? named.find((p) => ENTRY_FILE.test(p)) ?? named[0] ?? null;
+}
 
 /** Finds the real source file most likely to render `projectUrl`'s path —
  * grounded in GitHub's real Code Search, never guessed. Homepage is tried
@@ -42,10 +55,10 @@ async function locateFile(token: string, repoFullName: string, defaultBranch: st
   if (results.length === 0) {
     throw new Error(`Couldn't find a file matching "${pathname}" in ${repoFullName} — search didn't return anything. Fix it manually.`);
   }
-  const safe = results.filter((r) => isSafeRepoPath(r.path));
-  const best = safe.find((r) => r.path.includes(`/${segment}/`) || r.path.includes(`/${segment}.`)) ?? safe[0];
+  // Only a file whose path names the page segment counts: an unrelated hit is never edited just because it came first.
+  const best = pickPageFile(results.map((r) => r.path), segment);
   if (!best) throw new Error(`Couldn't find a file Marlo may edit for "${pathname}". Fix it manually.`);
-  return best.path;
+  return best;
 }
 
 type ParsedPatch = { old: string; new: string; explanation: string };
@@ -66,6 +79,20 @@ function parsePatchResponse(raw: string): ParsedPatch {
     new: newMatch[1],
     explanation: explanationMatch?.[1]?.trim() ?? "Fixes the reported issue.",
   };
+}
+
+/** A 4xx from GitHub that says the request was rejected, as opposed to a timeout (408), a rate limit (429) or a 5xx. */
+export function isDefiniteRefusal(err: unknown): boolean {
+  return err instanceof GitHubHttpError && err.status >= 400 && err.status < 500 && err.status !== 408 && err.status !== 429;
+}
+
+/** Best-effort branch cleanup. Its own failure is swallowed so the caller still sees the error that caused the cleanup. */
+async function deleteBranchQuietly(token: string, repoFullName: string, branch: string): Promise<void> {
+  try {
+    await deleteBranch(token, repoFullName, branch);
+  } catch {
+    // Left for a human to remove; the original error is what matters.
+  }
 }
 
 /**
@@ -236,12 +263,33 @@ The OLD block must exist character-for-character in the file above — copy it e
       writes.push({ path, content, sha: file.sha });
     }
 
-    const branch = branchNameFor(meta.label);
+    const branch = branchNameFor(meta.label, Date.now(), meta.findingId);
     await createBranch(ctx.githubToken, ctx.repoFullName, repo.defaultBranch, branch);
-    for (const w of writes) {
-      await putFileContent(ctx.githubToken, ctx.repoFullName, w.path, w.content, buildPrTitle(meta.label), branch, w.sha);
+    // From here on the branch is ours: if anything fails, it is deleted so no orphan branch is left behind.
+    try {
+      for (const w of writes) {
+        await putFileContent(ctx.githubToken, ctx.repoFullName, w.path, w.content, buildPrTitle(meta.label), branch, w.sha);
+      }
+    } catch (err) {
+      await deleteBranchQuietly(ctx.githubToken, ctx.repoFullName, branch);
+      throw err;
     }
-    const prUrl = await createPullRequest(ctx.githubToken, ctx.repoFullName, buildPrTitle(meta.label), buildPrBody(meta, changes), branch, repo.defaultBranch);
-    return { prUrl, branch, files: paths };
+    try {
+      const prUrl = await createPullRequest(ctx.githubToken, ctx.repoFullName, buildPrTitle(meta.label), buildPrBody(meta, changes), branch, repo.defaultBranch);
+      return { prUrl, branch, files: paths };
+    } catch (err) {
+      // GitHub may have accepted the PR before this call failed (a timeout, say). Then keep the branch and return that PR,
+      // since deleting the branch would close it. If the exact-head lookup fails, keep the branch too: it is not known to be unused.
+      let existing: string | null | undefined;
+      try {
+        existing = openPrForHead(await listOpenPullRequests(ctx.githubToken, ctx.repoFullName, { head: branch }), branch)?.url ?? null;
+      } catch {
+        existing = undefined;
+      }
+      if (existing) return { prUrl: existing, branch, files: paths };
+      // Delete only when GitHub definitely refused the PR (a 4xx, not a timeout or rate limit) and no PR has this head.
+      if (existing === null && isDefiniteRefusal(err)) await deleteBranchQuietly(ctx.githubToken, ctx.repoFullName, branch);
+      throw err;
+    }
   }
 }
