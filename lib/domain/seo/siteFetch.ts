@@ -22,6 +22,8 @@ export type SitePageFetch = {
   timing: FetchTiming;
   /** Real hops followed to reach the final page. */
   redirectCount: number;
+  /** The URL of the page that answered, after any redirects. */
+  finalUrl?: string;
 };
 
 export type SiteFetchOptions = {
@@ -42,7 +44,7 @@ export async function fetchSitePage(url: URL, timeoutMs: number, opts: SiteFetch
     lookup: opts.lookup,
     transport: opts.transport,
   });
-  return { html: res.bodyText, status: res.status, headers: res.headers, timing: res.timing, redirectCount: res.redirectCount };
+  return { html: res.bodyText, status: res.status, headers: res.headers, timing: res.timing, redirectCount: res.redirectCount, finalUrl: res.finalUrl };
 }
 
 /**

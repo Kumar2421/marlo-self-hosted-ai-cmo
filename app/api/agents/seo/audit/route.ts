@@ -9,7 +9,7 @@ import { upsertFinding as upsertFindingSupabase } from "@/lib/domain/findings/fi
 import { upsertFinding } from "@/lib/domain/findings/findingStore";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import { takeCachedPublicAudit } from "@/lib/domain/seo/publicAuditCache";
-import { explainFinding } from "@/lib/domain/seo/findingExplanations";
+import { auditFindingInputs, saveAuditFindings } from "@/lib/domain/findings/auditFindings";
 import { resolvePlatformApiKey } from "@/lib/domain/shared/resolvePlatformApiKey";
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
@@ -76,20 +76,7 @@ export async function POST(req: NextRequest) {
       );
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-      for (const finding of auditResult.findings) {
-        const { whyItMatters, recommendation } = explainFinding(finding);
-        await upsertFindingSupabase(db, user.id, {
-          projectId,
-          source: "seo-audit",
-          category: finding.category,
-          severity: finding.severity === "Error" ? "critical" : "warning",
-          entityType: "page-issue",
-          entityId: finding.issueId,
-          url: auditResult.url,
-          evidence: { label: finding.label, whyItMatters, ...finding.evidence },
-          recommendation,
-        });
-      }
+      await saveAuditFindings((input) => upsertFindingSupabase(db, user.id, input), auditFindingInputs(projectId, auditResult));
 
       return NextResponse.json(auditResult);
     } catch (err) {
@@ -116,20 +103,7 @@ export async function POST(req: NextRequest) {
 
     const createdAt = new Date().toISOString();
 
-    for (const finding of auditResult.findings) {
-      const { whyItMatters, recommendation } = explainFinding(finding);
-      upsertFinding({
-        projectId: getActiveProjectId()!,
-        source: "seo-audit",
-        category: finding.category,
-        severity: finding.severity === "Error" ? "critical" : "warning",
-        entityType: "page-issue",
-        entityId: finding.issueId,
-        url: auditResult.url,
-        evidence: { label: finding.label, whyItMatters, ...finding.evidence },
-        recommendation,
-      });
-    }
+    await saveAuditFindings(async (input) => upsertFinding(input), auditFindingInputs(getActiveProjectId()!, auditResult));
 
     db.prepare(`
       INSERT INTO seo_audits (url, payload, created_at)
