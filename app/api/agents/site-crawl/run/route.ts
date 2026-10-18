@@ -103,7 +103,7 @@ export async function POST() {
     }
 
     try {
-      const pages = await crawlSitePages(seedLinks);
+      const { pages, summary } = await crawlSitePages(seedLinks);
       const now = new Date().toISOString();
       const { error } = await db.from("site_crawls").upsert(
         { user_id: user.id, project_id: projectId, payload: pages, checked_at: now },
@@ -111,7 +111,7 @@ export async function POST() {
       );
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-      return NextResponse.json({ result: { pages, checkedAt: now } });
+      return NextResponse.json({ result: { pages, checkedAt: now, summary } });
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
       return NextResponse.json({ error: raw }, { status: 502 });
@@ -154,14 +154,14 @@ export async function POST() {
   }
 
   try {
-    const pages = await crawlSitePages(seedLinks);
+    const { pages, summary } = await crawlSitePages(seedLinks);
     const now = new Date().toISOString();
     db.prepare(
       `INSERT INTO site_crawls (project_id, payload, checked_at) VALUES (?, ?, ?)
        ON CONFLICT(project_id) DO UPDATE SET payload = excluded.payload, checked_at = excluded.checked_at`
     ).run(activeId, JSON.stringify(pages), now);
 
-    return NextResponse.json({ result: { pages, checkedAt: now } });
+    return NextResponse.json({ result: { pages, checkedAt: now, summary } });
   } catch (err) {
     const raw = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: raw }, { status: 502 });
