@@ -528,6 +528,33 @@ function migrate(db: Database.Database) {
     if (!leadsCols.some((c) => c.name === "last_reply_snippet")) {
       db.exec(`ALTER TABLE leads ADD COLUMN last_reply_snippet TEXT`);
     }
+    // Local business mode (Places + website enrichment). Mirrors the Supabase migration 20261017000000.
+    const localLeadColumns: [string, string][] = [
+      ["address", "TEXT"],
+      ["website", "TEXT"],
+      ["rating", "REAL"],
+      ["review_count", "INTEGER"],
+      ["whatsapp", "TEXT"],
+      ["contact_url", "TEXT"],
+      ["description", "TEXT"],
+      ["maps_url", "TEXT"],
+      ["fit_reason", "TEXT"],
+      ["fit_score", "REAL"],
+      ["enrichment_status", "TEXT"],
+      ["email_quality", "TEXT"],
+    ];
+    for (const [column, type] of localLeadColumns) {
+      if (!leadsCols.some((c) => c.name === column)) {
+        db.exec(`ALTER TABLE leads ADD COLUMN ${column} ${type}`);
+      }
+    }
+    // One saved row per Google place per project. If an older install already has duplicate
+    // place rows the index cannot be built; the places-search route still pre-filters known ids.
+    try {
+      db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS leads_project_place_uidx ON leads (project_id, place_id) WHERE place_id IS NOT NULL`);
+    } catch {
+      // existing duplicate place rows: leave the index out rather than fail startup
+    }
   }
 
   const articlesCols = db.prepare("PRAGMA table_info(articles)").all() as { name: string }[];

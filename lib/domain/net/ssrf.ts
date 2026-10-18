@@ -107,18 +107,42 @@ export function assertPublicHostLiteral(host: string): void {
 
 const defaultLookup: LookupFn = (host) => dns.lookup(host, { all: true, verbatim: true });
 
+/** A DNS answer that takes longer than this is treated as blocked, so a stalled resolver cannot hold a request. */
+export const LOOKUP_TIMEOUT_MS = 3_000;
+
+async function lookupWithin(lookup: LookupFn, host: string, ms: number): Promise<{ address: string }[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("dns lookup timed out")), ms);
+  });
+  try {
+    return await Promise.race([lookup(host), deadline]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /**
  * Resolves the host and rejects when ANY address is non-public (a name with one public and one
- * private record is rejected). IP literals are checked directly. A failed lookup is rejected with
- * the same generic message.
+ * private record is rejected). IP literals are checked directly. A failed or slow lookup (over
+ * timeoutMs) is rejected with the same generic message.
+ *
+ * Residual window: the caller's fetch() resolves the name again on its own. An answer that changes
+ * between this check and that connect (DNS rebinding) is not caught here. Closing it needs a
+ * dispatcher that connects to the address validated here; that is not wired because undici is not
+ * a direct dependency and mixing its Agent with the global fetch is version-sensitive.
  */
-export async function assertResolvesPublic(rawHost: string, lookup: LookupFn = defaultLookup): Promise<void> {
+export async function assertResolvesPublic(
+  rawHost: string,
+  lookup: LookupFn = defaultLookup,
+  timeoutMs: number = LOOKUP_TIMEOUT_MS
+): Promise<void> {
   const host = normalizeHost(rawHost);
   assertPublicHostLiteral(host);
   if (net.isIP(host)) return;
   let addrs: { address: string }[];
   try {
-    addrs = await lookup(host);
+    addrs = await lookupWithin(lookup, host, timeoutMs);
   } catch {
     throw new Error(BLOCKED_MESSAGE);
   }
