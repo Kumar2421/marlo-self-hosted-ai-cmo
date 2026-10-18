@@ -25,6 +25,7 @@ import { deriveActionType } from "@/lib/domain/actions/deriveActionType";
 import { linkPullRequest } from "@/lib/domain/fixes/linkPullRequest";
 import { fixDeliveryGithub } from "@/lib/domain/fixes/fixDeliveryGithub";
 import { decideFixLink, linkedPrCandidates } from "@/lib/domain/codefix/openPrPolicy";
+import { fetchPageFingerprint } from "@/lib/domain/search/pageFingerprint";
 
 /**
  * Shared server steps for the finding-based code fix routes (prepare, then apply): who is asking,
@@ -100,6 +101,8 @@ export async function resolveFixRequest(opts: { findingId: string; providerId?: 
         return linkedPrCandidates(row?.pr_url, listProjectActions(ctx.projectId, finding.id));
       },
       recordApplied: async (prUrl, files) => {
+        // The page as it is now, before the PR is merged: the baseline for the change check later.
+        const pageBefore = finding.url ? await fetchPageFingerprint(finding.url) : null;
         const now = new Date().toISOString();
         const row = getDb().prepare("SELECT pr_url, file_path FROM code_fixes WHERE project_id = ? AND issue_id = ?").get(ctx.projectId, finding.id) as
           | { pr_url: string | null; file_path: string | null }
@@ -117,13 +120,13 @@ export async function resolveFixRequest(opts: { findingId: string; providerId?: 
               filePath: files.length > 0 ? files.join(", ") : (row?.file_path ?? ""), now,
             });
         }
-        for (const link of linkPullRequest(listProjectActions(ctx.projectId, finding.id), storePrUrl)) setActionResult(ctx.projectId, link.id, link.result);
+        for (const link of linkPullRequest(listProjectActions(ctx.projectId, finding.id), storePrUrl, storePrUrl === prUrl ? pageBefore : null)) setActionResult(ctx.projectId, link.id, link.result);
         if (!listProjectActions(ctx.projectId, finding.id).some((a) => (a.result as { pullRequest?: { url?: string } } | null)?.pullRequest?.url === storePrUrl)) {
           const created = createAction({
             projectId: ctx.projectId, findingId: finding.id, type: deriveActionType(finding), title: `Fix in code: ${finding.recommendation.slice(0, 80)}`,
             target: { url: finding.url ?? undefined, repository: ctx.repoFullName }, parameters: { via: "github_pr" },
           });
-          setActionResult(ctx.projectId, created.id, { pullRequest: { url: storePrUrl } });
+          setActionResult(ctx.projectId, created.id, { pullRequest: { url: storePrUrl, pageBefore: storePrUrl === prUrl ? pageBefore : null } });
         }
         return storePrUrl;
       },
@@ -213,6 +216,8 @@ export async function resolveFixRequest(opts: { findingId: string; providerId?: 
       return linkedPrCandidates(row?.pr_url, actions);
     },
     recordApplied: async (prUrl, files) => {
+      // The page as it is now, before the PR is merged: the baseline for the change check later.
+      const pageBefore = finding.url ? await fetchPageFingerprint(finding.url) : null;
       const now = new Date().toISOString();
       const { data: existing } = await db.from("code_fixes").select("created_at, pr_url, file_path").eq("project_id", project.id).eq("issue_id", finding.id).maybeSingle();
       const { storePrUrl } = await decideFixLink({ existingPrUrl: existing?.pr_url, newPrUrl: prUrl, isOpen: (url) => isPrOpenOnGithub(githubToken, url) });
@@ -226,14 +231,14 @@ export async function resolveFixRequest(opts: { findingId: string; providerId?: 
         );
       }
       const actions = await listProjectActionsSupabase(db, user.id, project.id, finding.id);
-      for (const link of linkPullRequest(actions, storePrUrl)) await setActionResultSupabase(db, user.id, project.id, link.id, link.result);
+      for (const link of linkPullRequest(actions, storePrUrl, storePrUrl === prUrl ? pageBefore : null)) await setActionResultSupabase(db, user.id, project.id, link.id, link.result);
       const linked = await listProjectActionsSupabase(db, user.id, project.id, finding.id);
       if (!linked.some((a) => (a.result as { pullRequest?: { url?: string } } | null)?.pullRequest?.url === storePrUrl)) {
         const created = await createActionSupabase(db, user.id, {
           projectId: project.id, findingId: finding.id, type: deriveActionType(finding), title: `Fix in code: ${finding.recommendation.slice(0, 80)}`,
           target: { url: finding.url ?? undefined, repository: repoFullName }, parameters: { via: "github_pr" },
         });
-        await setActionResultSupabase(db, user.id, project.id, created.id, { pullRequest: { url: storePrUrl } });
+        await setActionResultSupabase(db, user.id, project.id, created.id, { pullRequest: { url: storePrUrl, pageBefore: storePrUrl === prUrl ? pageBefore : null } });
       }
       return storePrUrl;
     },
