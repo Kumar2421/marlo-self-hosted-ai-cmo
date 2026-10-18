@@ -9,6 +9,13 @@ import { FEATURES } from "@/lib/features";
 import { GOOGLE_ANALYTICS_SCOPES } from "@/lib/googleOAuthScopes";
 import type { AuditFunnelPayload } from "@/lib/analytics/auditFunnel";
 import {
+  friendlyAuthError,
+  friendlyEmailSendError,
+  isRepeatedSignup,
+  resetCodeNotice,
+  REPEATED_SIGNUP_MESSAGE,
+} from "@/lib/domain/auth/authMessages";
+import {
   GoogleSearchConsoleIcon,
   GoogleAnalyticsIcon,
   GmailIcon,
@@ -116,6 +123,7 @@ export default function LoginPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMode(searchParams.get("mode") === "signup" ? "signup" : "signin");
   }, [searchParams]);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otpCode, setOtpCode] = useState("");
@@ -123,6 +131,25 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Google/OAuth failures come back as ?error=auth (our callback) or as a
+  // #error=...&error_code=... hash (Supabase). Show a plain message, keep the
+  // raw Supabase text out of the page, and drop the params so a refresh does
+  // not show the same error again.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const friendly = friendlyAuthError(url.searchParams.get("error"), hashParams);
+    if (!friendly) return;
+    if (friendly.raw) console.warn("[login] auth error:", friendly.raw);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setError(friendly.message);
+    url.searchParams.delete("error");
+    url.searchParams.delete("error_code");
+    url.searchParams.delete("error_description");
+    url.hash = "";
+    window.history.replaceState(window.history.state, "", url.pathname + url.search);
+  }, []);
 
   const getPendingAuditUrl = () => {
     if (typeof window === "undefined") return null;
@@ -155,11 +182,15 @@ export default function LoginPage() {
       const supabase = createClient();
       const { data, error: authError } = await supabase.auth.signUp({ email, password });
       if (authError) {
-        setError(authError.message);
+        setError(friendlyEmailSendError(authError));
+      } else if (!data.session && isRepeatedSignup(data.user)) {
+        // Supabase sends no email for an existing address, so do not show the
+        // code screen. Send the user to sign-in with the email kept.
+        setMode("signin");
+        setError(REPEATED_SIGNUP_MESSAGE);
       } else if (!data.session) {
         setOtpCode("");
         setMode("verify-signup");
-        setNotice(`Enter the 6-digit code we sent to ${email}.`);
       } else {
         trackSignupCompleted();
         router.push("/dashboard");
@@ -206,7 +237,7 @@ export default function LoginPage() {
     setNotice(null);
     const supabase = createClient();
     const { error: resendError } = await supabase.auth.resend({ type: "signup", email });
-    if (resendError) setError(resendError.message);
+    if (resendError) setError(friendlyEmailSendError(resendError));
     else setNotice("Code resent — check your inbox.");
   };
 
@@ -222,14 +253,13 @@ export default function LoginPage() {
     const supabase = createClient();
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(email);
     if (resetError) {
-      setError(resetError.message);
+      setError(friendlyEmailSendError(resetError));
       setIsLoading(false);
       return;
     }
     setOtpCode("");
     setNewPassword("");
     setMode("verify-reset");
-    setNotice(`Enter the 6-digit code we sent to ${email}.`);
     setIsLoading(false);
   };
 
@@ -303,7 +333,7 @@ export default function LoginPage() {
                   {mode === "verify-signup" ? "Verify your email" : "Reset your password"}
                 </h1>
                 <p className="mt-1.5 text-sm leading-snug text-black/60">
-                  Enter the 6-digit code we sent to {email}.
+                  {mode === "verify-signup" ? `Enter the 6-digit code we sent to ${email}.` : resetCodeNotice(email)}
                 </p>
 
                 <form
@@ -352,6 +382,7 @@ export default function LoginPage() {
                   )}
 
                   {error && <div className="text-sm text-red-600">{error}</div>}
+                  {notice && <div className="text-sm text-green-600">{notice}</div>}
 
                   <button
                     type="submit"
