@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { searchLocalBusinesses } from "@/lib/domain/leads/PlacesAgent";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
-import { FEATURES } from "@/lib/features";
+import { FEATURES, isLocalBusinessSearchBlocked, LOCAL_BUSINESS_COMING_SOON_MESSAGE } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 import { chargeCredits, InsufficientCreditsError } from "@/lib/credits";
@@ -12,6 +12,10 @@ import { chargeCredits, InsufficientCreditsError } from "@/lib/credits";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  // Hosted mode: blocked before auth, key reads, or credit charges.
+  if (isLocalBusinessSearchBlocked(FEATURES.PLATFORM_MODE)) {
+    return NextResponse.json({ error: LOCAL_BUSINESS_COMING_SOON_MESSAGE }, { status: 403 });
+  }
   const body = await req.json().catch(() => null);
   const category: string = typeof body?.category === "string" ? body.category.trim() : "";
   const location: string = typeof body?.location === "string" ? body.location.trim() : "";

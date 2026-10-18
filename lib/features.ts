@@ -66,6 +66,17 @@ export const FEATURES = {
   PLATFORM_MODE: resolvePlatformMode(platformModeEnv),
 };
 
+export const LOCAL_BUSINESS_COMING_SOON_MESSAGE = "Local business search is coming soon.";
+
+/**
+ * Local business (Google Places) search is not offered on the hosted platform
+ * yet. Same flag the Leads UI uses to show "Coming soon". Pure so the route
+ * guard can be tested without touching process.env.
+ */
+export function isLocalBusinessSearchBlocked(platformMode: boolean): boolean {
+  return platformMode;
+}
+
 /** Log active features at startup */
 export function logFeatures() {
   if (typeof window === "undefined") return; // Server-side only
