@@ -1,0 +1,48 @@
+name: E2E (manual)
+
+# Manual only. Not wired into CI (ci.yml is untouched). Runs the Playwright auth suite.
+# Every Supabase auth call is mocked in the tests, so this never creates users or sends email.
+# Leave base_url empty to start the dev server in the runner. Set it to a deployed URL to run
+# against that app; tests that would reach real Supabase from the server are skipped there.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Optional deployed URL to test instead of a local dev server (e.g. https://example.com)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run E2E suite
+        env:
+          E2E_BASE_URL: ${{ inputs.base_url }}
+        run: npm run e2e
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
