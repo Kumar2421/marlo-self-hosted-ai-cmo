@@ -2,7 +2,7 @@
 
 import { AlertTriangle, Check, ChevronRight } from "lucide-react";
 import type { Finding, FindingStatus } from "@/lib/domain/findings/findingTypes";
-import { evidenceRowsForFinding, whyItMattersForFinding } from "@/lib/domain/findings/evidenceDisplay";
+import { autoVerificationLine, evidenceRowsForFinding, whyItMattersForFinding } from "@/lib/domain/findings/evidenceDisplay";
 import { SkeletonLines } from "@/components/shared/Skeleton";
 import FindingActionsSection from "../FindingActionsSection";
 import FindingCodeFix from "./FindingCodeFix";
@@ -68,12 +68,27 @@ export default function FindingDetail({
   const why = whyItMattersForFinding(finding);
   const currentIndex = STATUS_ORDER.indexOf(finding.status);
   const lastCheckReason = (finding.evidence.lastCheck as { reason?: string } | undefined)?.reason;
+  const autoLine = autoVerificationLine(finding.evidence);
   const loadError = work.recommendations.isError ? "Couldn't generate recommendations for this finding." : null;
 
   return (
     <div className="space-y-5">
       {(error || work.error) && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-[12px] text-red-700">{error ?? work.error}</div>
+      )}
+
+      {autoLine && (
+        <div
+          className={`rounded-xl border p-3 text-[12px] ${
+            autoLine.tone === "verified"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : autoLine.tone === "failed"
+                ? "border-red-200 bg-red-50 text-red-800"
+                : "border-amber-200 bg-amber-50 text-amber-800"
+          }`}
+        >
+          {autoLine.text}
+        </div>
       )}
 
       {verification && (
@@ -113,12 +128,12 @@ export default function FindingDetail({
       </section>
 
       <section>
-        <SectionTitle hint="Marlo can open a pull request for simple copy and markup fixes. You review and merge it.">Fix in code</SectionTitle>
+        <SectionTitle hint="Marlo suggests a change and sends it to GitHub for you to approve.">Fix in code</SectionTitle>
         <FindingCodeFix finding={finding} actions={work.actions.data ?? []} />
       </section>
 
       <section>
-        <SectionTitle hint="Prioritized from the evidence collected in this audit.">Recommended next steps</SectionTitle>
+        <SectionTitle hint="Or do it yourself">Recommended next steps</SectionTitle>
         {work.recommendations.isPending ? (
           <SkeletonLines rows={3} />
         ) : loadError ? (

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
-import { FEATURES } from "@/lib/features";
+import { FEATURES, isLocalBusinessSearchBlocked, LOCAL_BUSINESS_COMING_SOON_MESSAGE } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 import { chargeCredits, getCreditState, InsufficientCreditsError } from "@/lib/credits";
@@ -364,6 +364,10 @@ async function selfHostSearch(input: SearchInput): Promise<NextResponse> {
 }
 
 export async function POST(req: NextRequest) {
+  // Hosted mode: blocked before auth, key reads, or credit charges (local business search is coming soon).
+  if (isLocalBusinessSearchBlocked(FEATURES.PLATFORM_MODE)) {
+    return NextResponse.json({ error: LOCAL_BUSINESS_COMING_SOON_MESSAGE }, { status: 403 });
+  }
   const parsed = readInput(await req.json().catch(() => null));
   if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
 

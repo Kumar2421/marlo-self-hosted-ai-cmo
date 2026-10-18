@@ -219,7 +219,23 @@ export function buildPrBody(meta: CatalogApplyMeta, changes: FixChange[]): strin
   ].join("\n");
 }
 
-export function branchNameFor(label: string, now = Date.now()): string {
-  const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "fix";
-  return `marlo/${slug}-${now.toString(36)}`;
+/** The slug in a fix branch name: lowercase words joined by "-", at most 40 characters. */
+export function branchSlugFor(label: string): string {
+  return label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "fix";
+}
+
+/** Short stable tag (6 base36 chars, FNV-1a) of a finding id, so a branch name says which finding it fixes. */
+export function findingTagFor(findingId: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < findingId.length; i++) {
+    h ^= findingId.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36).padStart(6, "0").slice(-6);
+}
+
+/** With a findingId: marlo/<slug>-<findingTag>-<timestamp>. Without: the older marlo/<slug>-<timestamp>. */
+export function branchNameFor(label: string, now = Date.now(), findingId?: string): string {
+  const tag = findingId ? `${findingTagFor(findingId)}-` : "";
+  return `marlo/${branchSlugFor(label)}-${tag}${now.toString(36)}`;
 }
