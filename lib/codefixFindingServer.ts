@@ -23,6 +23,7 @@ import {
 } from "@/lib/domain/actions/actionStoreSupabase";
 import { deriveActionType } from "@/lib/domain/actions/deriveActionType";
 import { linkPullRequest } from "@/lib/domain/fixes/linkPullRequest";
+import { fetchPageFingerprint } from "@/lib/domain/search/pageFingerprint";
 
 /**
  * Shared server steps for the finding-based code fix routes (prepare, then apply): who is asking,
@@ -84,6 +85,8 @@ export async function resolveFixRequest(opts: { findingId: string; providerId?: 
       charge: async () => null,
       creditState: async () => ({ billingEnabled: false, balance: 0, cost: 0 }),
       recordApplied: async (prUrl, files) => {
+        // The page as it is now, before the PR is merged: the baseline for the change check later.
+        const pageBefore = finding.url ? await fetchPageFingerprint(finding.url) : null;
         const now = new Date().toISOString();
         getDb()
           .prepare(
@@ -92,13 +95,13 @@ export async function resolveFixRequest(opts: { findingId: string; providerId?: 
              ON CONFLICT(project_id, issue_id) DO UPDATE SET status = 'pr_open', pr_url = excluded.pr_url, file_path = excluded.file_path, updated_at = excluded.updated_at`,
           )
           .run({ id: `fix_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, projectId: ctx.projectId, issueId: finding.id, prUrl, filePath: files.join(", "), now });
-        for (const link of linkPullRequest(listProjectActions(ctx.projectId, finding.id), prUrl)) setActionResult(ctx.projectId, link.id, link.result);
+        for (const link of linkPullRequest(listProjectActions(ctx.projectId, finding.id), prUrl, pageBefore)) setActionResult(ctx.projectId, link.id, link.result);
         if (!listProjectActions(ctx.projectId, finding.id).some((a) => (a.result as { pullRequest?: { url?: string } } | null)?.pullRequest?.url === prUrl)) {
           const created = createAction({
             projectId: ctx.projectId, findingId: finding.id, type: deriveActionType(finding), title: `Fix in code: ${finding.recommendation.slice(0, 80)}`,
             target: { url: finding.url ?? undefined, repository: ctx.repoFullName }, parameters: { via: "github_pr" },
           });
-          setActionResult(ctx.projectId, created.id, { pullRequest: { url: prUrl } });
+          setActionResult(ctx.projectId, created.id, { pullRequest: { url: prUrl, pageBefore } });
         }
       },
     };
@@ -182,6 +185,8 @@ export async function resolveFixRequest(opts: { findingId: string; providerId?: 
     },
     creditState: () => getCreditState(user.id, "code_fix"),
     recordApplied: async (prUrl, files) => {
+      // The page as it is now, before the PR is merged: the baseline for the change check later.
+      const pageBefore = finding.url ? await fetchPageFingerprint(finding.url) : null;
       const now = new Date().toISOString();
       const { data: existing } = await db.from("code_fixes").select("created_at").eq("project_id", project.id).eq("issue_id", finding.id).maybeSingle();
       await db.from("code_fixes").upsert(
@@ -189,14 +194,14 @@ export async function resolveFixRequest(opts: { findingId: string; providerId?: 
         { onConflict: "project_id,issue_id" },
       );
       const actions = await listProjectActionsSupabase(db, user.id, project.id, finding.id);
-      for (const link of linkPullRequest(actions, prUrl)) await setActionResultSupabase(db, user.id, project.id, link.id, link.result);
+      for (const link of linkPullRequest(actions, prUrl, pageBefore)) await setActionResultSupabase(db, user.id, project.id, link.id, link.result);
       const linked = await listProjectActionsSupabase(db, user.id, project.id, finding.id);
       if (!linked.some((a) => (a.result as { pullRequest?: { url?: string } } | null)?.pullRequest?.url === prUrl)) {
         const created = await createActionSupabase(db, user.id, {
           projectId: project.id, findingId: finding.id, type: deriveActionType(finding), title: `Fix in code: ${finding.recommendation.slice(0, 80)}`,
           target: { url: finding.url ?? undefined, repository: repoFullName }, parameters: { via: "github_pr" },
         });
-        await setActionResultSupabase(db, user.id, project.id, created.id, { pullRequest: { url: prUrl } });
+        await setActionResultSupabase(db, user.id, project.id, created.id, { pullRequest: { url: prUrl, pageBefore } });
       }
     },
   };

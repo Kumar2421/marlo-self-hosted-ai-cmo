@@ -6,6 +6,30 @@ import type { Action } from "@/lib/domain/actions/actionTypes";
 import type { Recommendation } from "@/lib/domain/recommendations/recommendationTypes";
 import { implementationOf, type Outcome, type OutcomeStatus } from "@/lib/domain/search/actionOutcome";
 import type { ActionWithOutcome } from "@/lib/domain/search/outcomeService";
+import { closedPullRequestOf, pullRequestUrlOf } from "@/lib/domain/fixes/linkPullRequest";
+
+/** The linked fix PR while the action is still open: Open, or Closed without merging (shown once, until a new PR is linked). */
+function PullRequestState({ action }: { action: Action }) {
+  const openUrl = pullRequestUrlOf(action.result);
+  const closed = openUrl ? null : closedPullRequestOf(action.result);
+  const url = openUrl ?? closed?.url;
+  if (!url) return null;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2" data-testid="pr-state">
+      <span
+        className={
+          "rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase " +
+          (openUrl ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700")
+        }
+      >
+        {openUrl ? "Pull request open" : "Closed without merging"}
+      </span>
+      <a href={url} target="_blank" rel="noreferrer" className="text-[11px] text-blue-600 hover:underline">
+        View the pull request
+      </a>
+    </div>
+  );
+}
 
 const STATUS_LABEL: Record<Action["status"], string> = {
   proposed: "Proposed",
@@ -226,6 +250,7 @@ export default function FindingActionsSection({
 
             {action && (action.status === "proposed" || action.status === "approved") && (
               <>
+                <PullRequestState action={action} />
                 <ImplementControl key={action.id} action={action} busy={busy} onImplement={onImplement} />
                 <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-2">
                   <span className="text-[10px] text-gray-400">Saved as a tracked action. Nothing is changed on your site for you.</span>
