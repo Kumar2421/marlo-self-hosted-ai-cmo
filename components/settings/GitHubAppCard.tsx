@@ -6,7 +6,7 @@ import { Check, Loader2 } from "lucide-react";
 import { useToast } from "@/components/dashboard/Toast";
 import BrandIcon from "@/components/settings/BrandIcon";
 import { useGithubStatus, useSaveGithubRepo } from "@/components/dashboard/findings/useCodeFix";
-import { friendlyGithubError } from "@/lib/domain/github/friendlyGithubError";
+import { friendlyGithubError, friendlyGithubUrlError } from "@/lib/domain/github/friendlyGithubError";
 import { safeReturnPath } from "@/lib/domain/github/returnPath";
 import { fetchJson } from "@/lib/query/fetchJson";
 import { qk } from "@/lib/query/keys";
@@ -36,7 +36,7 @@ export default function GitHubAppCard() {
     const connected = params.get("github") === "connected";
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setReturnTo(safeReturnPath(params.get("returnTo")));
-    if (error) show(`GitHub: ${friendlyGithubError(error).message}`);
+    if (error) show(`GitHub: ${friendlyGithubUrlError(error).message}`);
     else if (connected) show("GitHub connected. Choose the repository for this project.");
     if (error || connected) {
       params.delete("github_error");

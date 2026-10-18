@@ -181,3 +181,21 @@ test("PR body links the finding and lists files", () => {
   assert.match(body, /`f1`/);
   assert.match(body, /`app\/page.tsx`/);
 });
+
+test("pickPageFile prefers the page entry and skips tests, lib, docs and node_modules", async () => {
+  const { pickPageFile } = await import("../lib/domain/codefix/ContentsApiFixProvider.ts");
+  const hits = ["tests/pricing/page.test.tsx", "lib/pricing/helpers.ts", "docs/pricing/page.md", "node_modules/x/pricing/index.js", "components/pricing/Table.tsx", "app/pricing/page.tsx"];
+  assert.equal(pickPageFile(hits, "pricing"), "app/pricing/page.tsx");
+  assert.equal(pickPageFile(["pages/pricing.tsx", "components/pricing/Table.tsx"], "pricing"), "pages/pricing.tsx");
+  assert.equal(pickPageFile(["tests/pricing/page.tsx", "lib/pricing.ts", "docs/pricing/index.md"], "pricing"), null);
+  assert.equal(pickPageFile(["components/pricing/Table.tsx"], "pricing"), "components/pricing/Table.tsx");
+});
+
+test("a test file that names the segment is not edited when the real page is also a hit", async () => {
+  const gh = fakeGithub({ "app/pricing/page.tsx": PAGE, "tests/pricing/page.tsx": "x" }, ["tests/pricing/page.tsx", "app/pricing/page.tsx"]);
+  try {
+    const provider = new ContentsApiFixProvider(llm(PRICING_REPLY), "k", "m");
+    const proposal = await provider.proposeCatalogFix(pricingInput, ctx);
+    assert.deepEqual(proposal.changes.map((c) => c.path), ["app/pricing/page.tsx"]);
+  } finally { gh.restore(); }
+});

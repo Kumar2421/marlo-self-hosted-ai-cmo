@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronRight, CircleDot, Loader2, RefreshCw } from "lucide-react";
 import type { Finding, FindingStatus } from "@/lib/domain/findings/findingTypes";
 import { countFindings, findingTitle, pagePath } from "@/lib/domain/findings/findingDisplay";
-import { friendlyGithubError } from "@/lib/domain/github/friendlyGithubError";
+import { friendlyGithubUrlError } from "@/lib/domain/github/friendlyGithubError";
 import { useToast } from "@/components/dashboard/Toast";
 import SidePanel from "@/components/shared/SidePanel";
 import { SkeletonCard, SkeletonStats } from "@/components/shared/Skeleton";
@@ -56,7 +56,7 @@ export default function FindingsWorkspace() {
     const githubError = params.get("github_error");
     const connected = params.get("github") === "connected";
     if (!wanted && !githubError && !connected) return;
-    if (githubError) show(`GitHub: ${friendlyGithubError(githubError).message}`);
+    if (githubError) show(`GitHub: ${friendlyGithubUrlError(githubError).message}`);
     else if (connected) show("GitHub connected. Now pick the repository.");
     if (wanted) {
       // eslint-disable-next-line react-hooks/set-state-in-effect

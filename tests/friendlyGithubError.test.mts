@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { friendlyGithubError } from "../lib/domain/github/friendlyGithubError.ts";
+import { friendlyGithubError, friendlyGithubUrlError } from "../lib/domain/github/friendlyGithubError.ts";
 
 test("an owner who has not approved the app is told who has to act", () => {
   const out = friendlyGithubError("The GitHub organization owner still has to approve the installation.");
@@ -38,4 +38,19 @@ test("unknown messages pass through, and empty ones get a generic line", () => {
   assert.deepEqual(friendlyGithubError("Something odd happened"), { message: "Something odd happened", action: null });
   assert.deepEqual(friendlyGithubError(""), { message: "Something went wrong with GitHub. Try again.", action: "retry" });
   assert.equal(friendlyGithubError(undefined).action, "retry");
+});
+
+test("a bare mention of reconnect no longer triggers the lost-access rule", () => {
+  assert.equal(friendlyGithubError("Please reconnect your printer").action, null);
+  assert.equal(friendlyGithubError("GitHub access was removed. Connect GitHub again.").action, "reconnect");
+});
+
+test("URL errors: only our own messages are shown, anything else is generic", () => {
+  assert.equal(friendlyGithubUrlError("Not authenticated").message, "Not authenticated");
+  assert.equal(friendlyGithubUrlError("The GitHub organization owner still has to approve the installation.").action, null);
+  assert.match(friendlyGithubUrlError("The GitHub organization owner still has to approve the installation.").message, /organization owner has to approve/);
+  for (const hostile of ["Your account is locked, call 555-0100", "<img src=x onerror=alert(1)>", "", "not authenticated ", "Reconnect", null, undefined]) {
+    const out = friendlyGithubUrlError(hostile);
+    assert.equal(out.message, "GitHub connection didn't finish. Try again.", String(hostile));
+  }
 });

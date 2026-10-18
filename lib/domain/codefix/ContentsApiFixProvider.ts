@@ -16,6 +16,18 @@ import {
 } from "./catalogFix.ts";
 import { MAX_FIX_FILES, MAX_NEW_FILE_BYTES, MAX_SOURCE_FILE_BYTES, isSafeRepoPath, plannedTargets } from "./fixCatalog.ts";
 
+const EXCLUDED_DIRS = /(^|\/)(tests?|__tests__|lib|docs?|node_modules|e2e|spec|fixtures|scripts)\//i;
+const ENTRY_FILE = /(^|\/)(page\.(tsx|jsx|ts|js|mdx)|index\.(tsx|jsx|ts|js|html|mdx)|route\.(ts|js)|layout\.(tsx|jsx))$/i;
+const ROUTER_DIR = /(^|\/)(app|pages)\//;
+
+/** Picks the page-entry file for a path segment from search hits: it must name the segment, live outside tests/lib/docs/node_modules, and be safe to edit; entry files (page, index, route, layout under app/ or pages/) win over other matches. */
+export function pickPageFile(paths: string[], segment: string): string | null {
+  const named = paths.filter(
+    (p) => isSafeRepoPath(p) && !EXCLUDED_DIRS.test(p) && (p.includes(`/${segment}/`) || p.includes(`/${segment}.`) || p.startsWith(`${segment}/`) || p.startsWith(`${segment}.`)),
+  );
+  return named.find((p) => ENTRY_FILE.test(p) && ROUTER_DIR.test(p)) ?? named.find((p) => ENTRY_FILE.test(p)) ?? named[0] ?? null;
+}
+
 /** Finds the real source file most likely to render `projectUrl`'s path —
  * grounded in GitHub's real Code Search, never guessed. Homepage is tried
  * against common framework conventions directly (no search term to anchor
@@ -43,10 +55,9 @@ async function locateFile(token: string, repoFullName: string, defaultBranch: st
     throw new Error(`Couldn't find a file matching "${pathname}" in ${repoFullName} — search didn't return anything. Fix it manually.`);
   }
   // Only a file whose path names the page segment counts: an unrelated hit is never edited just because it came first.
-  const safe = results.filter((r) => isSafeRepoPath(r.path));
-  const best = safe.find((r) => r.path.includes(`/${segment}/`) || r.path.includes(`/${segment}.`));
+  const best = pickPageFile(results.map((r) => r.path), segment);
   if (!best) throw new Error(`Couldn't find a file Marlo may edit for "${pathname}". Fix it manually.`);
-  return best.path;
+  return best;
 }
 
 type ParsedPatch = { old: string; new: string; explanation: string };

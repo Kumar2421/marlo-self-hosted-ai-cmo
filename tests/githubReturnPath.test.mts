@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { returnUrl, safeReturnPath } from "../lib/domain/github/returnPath.ts";
+import { friendlyGithubUrlError } from "../lib/domain/github/friendlyGithubError.ts";
 import { safeReturnPath as fromGithubApp } from "../lib/domain/github/githubApp.ts";
 
 test("same-site paths are accepted, including their query strings", () => {
@@ -34,4 +35,20 @@ test("returnUrl falls back to settings when the path would leave the origin", ()
   assert.equal(url.pathname, "/settings/integrations");
   assert.equal(url.searchParams.get("github"), "connected");
   assert.equal(returnUrl("https://app.marlo.test", null, {}).pathname, "/settings/integrations");
+});
+
+test("an off-origin path can never become a redirect target", () => {
+  for (const path of ["//evil.example/x", "https://evil.example", "/\evil.example"]) {
+    const url = returnUrl("https://app.marlo.test", path, { github_error: "x" });
+    assert.equal(url.origin, "https://app.marlo.test", path);
+  }
+  assert.equal(returnUrl("https://app.marlo.test", null, { github: "connected" }).pathname, "/settings/integrations");
+});
+
+test("a failure message round-trips through the redirect URL and is only shown if known", () => {
+  const url = returnUrl("https://app.marlo.test", "/dashboard?finding=abc", { github_error: "Not authenticated" });
+  assert.equal(url.searchParams.get("finding"), "abc");
+  assert.equal(friendlyGithubUrlError(url.searchParams.get("github_error")).message, "Not authenticated");
+  const forged = new URL("https://app.marlo.test/dashboard?github_error=" + encodeURIComponent("Send money to X"));
+  assert.equal(friendlyGithubUrlError(forged.searchParams.get("github_error")).message, "GitHub connection didn't finish. Try again.");
 });
