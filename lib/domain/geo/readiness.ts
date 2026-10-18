@@ -1,3 +1,5 @@
+import { parseRobots, patternMatches, rulesFor, type RobotsRule } from "../net/robotsPolicy.ts";
+
 export const AI_CRAWLERS = ["GPTBot", "ClaudeBot", "PerplexityBot", "Google-Extended"] as const;
 
 /**
@@ -34,21 +36,12 @@ export type ReadinessResult = {
   checks: ReadinessCheck[];
 };
 
-type Rule = { allow: boolean; path: string };
-type Group = { agents: string[]; rules: Rule[] };
-
 /** Disallow values that block everything, even though only "/" literally says so. */
 const BLOCK_ALL = new Set(["/", "/*", "/*?"]);
 
-function patternRegex(path: string): RegExp {
-  const anchored = path.endsWith("$");
-  const body = (anchored ? path.slice(0, -1) : path).replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-  return new RegExp(`^${body}${anchored ? "$" : ""}`);
-}
-
-function ruleMatchesRoot(rule: Rule): boolean {
-  if (!rule.allow && BLOCK_ALL.has(rule.path)) return true;
-  return patternRegex(rule.path).test("/");
+function ruleMatchesRoot(rule: RobotsRule): boolean {
+  if (!rule.allow && BLOCK_ALL.has(rule.pattern)) return true;
+  return patternMatches(rule.pattern, "/");
 }
 
 /**
@@ -57,37 +50,11 @@ function ruleMatchesRoot(rule: Rule): boolean {
  * matching pattern wins; on a tie Allow wins (the robots.txt standard).
  */
 export function crawlerBlocked(robotsTxt: string, agent: string): boolean {
-  const groups: Group[] = [];
-  let current: Group | null = null;
-  let lastWasAgent = false;
-  for (const raw of robotsTxt.split(/\r?\n/)) {
-    const line = raw.replace(/#.*$/, "").trim();
-    if (!line) continue;
-    const idx = line.indexOf(":");
-    if (idx < 0) continue;
-    const field = line.slice(0, idx).trim().toLowerCase();
-    const value = line.slice(idx + 1).trim();
-    if (field === "user-agent") {
-      if (!current || !lastWasAgent) {
-        current = { agents: [], rules: [] };
-        groups.push(current);
-      }
-      current.agents.push(value.toLowerCase());
-      lastWasAgent = true;
-      continue;
-    }
-    lastWasAgent = false;
-    if (!current || !value) continue;
-    if (field === "disallow") current.rules.push({ allow: false, path: value });
-    if (field === "allow") current.rules.push({ allow: true, path: value });
-  }
-  const named = groups.filter((g) => g.agents.includes(agent.toLowerCase()));
-  const pool = named.length > 0 ? named : groups.filter((g) => g.agents.includes("*"));
   let bestLen = -1;
   let blocked = false;
-  for (const rule of pool.flatMap((g) => g.rules)) {
+  for (const rule of rulesFor(parseRobots(robotsTxt), agent)) {
     if (!ruleMatchesRoot(rule)) continue;
-    const len = rule.path.length;
+    const len = rule.pattern.length;
     if (len > bestLen || (len === bestLen && rule.allow)) {
       bestLen = len;
       blocked = !rule.allow;

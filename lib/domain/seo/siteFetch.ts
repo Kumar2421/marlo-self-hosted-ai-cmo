@@ -1,5 +1,6 @@
 import type { IncomingHttpHeaders } from "node:http";
 import { safeFetch, type SafeFetchTiming, type TransportRequest } from "../net/safeFetch.ts";
+import { getCrawlDelay, isAllowed, parseRobots, ROBOTS_MAX_BYTES } from "../net/robotsPolicy.ts";
 import type { LookupFn } from "../net/ssrf.ts";
 
 /**
@@ -10,7 +11,6 @@ import type { LookupFn } from "../net/ssrf.ts";
 /** Redirects the page crawl follows before reporting a redirect loop. */
 export const SITE_MAX_REDIRECTS = 5;
 export const ROBOTS_TIMEOUT_MS = 5_000;
-export const ROBOTS_MAX_BYTES = 100_000;
 const SITE_USER_AGENT = "OkaraAlternative/1.0";
 
 export type FetchTiming = SafeFetchTiming;
@@ -47,44 +47,60 @@ export async function fetchSitePage(url: URL, timeoutMs: number, opts: SiteFetch
   return { html: res.bodyText, status: res.status, headers: res.headers, timing: res.timing, redirectCount: res.redirectCount, finalUrl: res.finalUrl };
 }
 
+export type RobotsStatus = "allowed" | "blocked" | "unreachable" | "missing";
+export type RobotsDecision = {
+  status: RobotsStatus;
+  /** Crawl-delay for this crawler in seconds, as written (cap it with capCrawlDelay). Set when a file was read. */
+  crawlDelaySec?: number;
+};
+
+export type RobotsOptions = SiteFetchOptions & { userAgent?: string };
+
 /**
- * Real fetch+parse of /robots.txt, only the "User-agent: *" group. Same host only: a redirect to
- * another host is refused and reported as "no robots.txt". Never blocks the crawl itself.
+ * Real fetch of /robots.txt and a verdict for one path (query string included), by RFC 9309.
+ * Same host only: a redirect to another host is refused. Only the first 500 KiB is read; a cut
+ * mid-line is dropped so a half-written rule can never block more than the file says.
+ *
+ * Failure policy: 2xx is parsed ("allowed" or "blocked"); a 4xx other than 429 means there is no
+ * file ("missing", everything allowed). 429, 5xx, network errors, timeouts, off-host redirects and
+ * anything else are "unreachable": a crawler should skip the host, the audit reports "not found".
+ */
+export async function robotsDecision(origin: string, path: string, opts: RobotsOptions = {}): Promise<RobotsDecision> {
+  const userAgent = opts.userAgent ?? SITE_USER_AGENT;
+  try {
+    const res = await safeFetch(`${origin}/robots.txt`, {
+      timeoutMs: ROBOTS_TIMEOUT_MS,
+      maxBytes: ROBOTS_MAX_BYTES,
+      sameHostOnly: true,
+      headers: { "User-Agent": userAgent },
+      lookup: opts.lookup,
+      transport: opts.transport,
+    });
+    if (res.status >= 400 && res.status < 500 && res.status !== 429) return { status: "missing" };
+    if (res.status < 200 || res.status >= 300) return { status: "unreachable" };
+
+    const text = res.truncated ? res.bodyText.slice(0, res.bodyText.lastIndexOf("\n") + 1) : res.bodyText;
+    const parsed = parseRobots(text);
+    const crawlDelaySec = getCrawlDelay(parsed, userAgent);
+    return {
+      status: isAllowed(parsed, userAgent, path) ? "allowed" : "blocked",
+      ...(crawlDelaySec !== null ? { crawlDelaySec } : {}),
+    };
+  } catch {
+    return { status: "unreachable" };
+  }
+}
+
+/**
+ * The audit's view of robots.txt. Never blocks the crawl itself; a file we cannot read counts as
+ * "no robots.txt".
  */
 export async function checkRobotsTxt(
   origin: string,
   pagePath: string,
   opts: SiteFetchOptions = {}
 ): Promise<{ exists: boolean; disallowsThisPage: boolean }> {
-  try {
-    const res = await safeFetch(`${origin}/robots.txt`, {
-      timeoutMs: ROBOTS_TIMEOUT_MS,
-      maxBytes: ROBOTS_MAX_BYTES,
-      sameHostOnly: true,
-      headers: { "User-Agent": SITE_USER_AGENT },
-      lookup: opts.lookup,
-      transport: opts.transport,
-    });
-    if (res.status < 200 || res.status >= 300) return { exists: false, disallowsThisPage: false };
-
-    let inWildcardGroup = false;
-    const disallowPaths: string[] = [];
-    for (const rawLine of res.bodyText.split("\n")) {
-      const line = rawLine.split("#")[0].trim();
-      if (!line) continue;
-      const [rawKey, ...rest] = line.split(":");
-      const key = rawKey.trim().toLowerCase();
-      const value = rest.join(":").trim();
-      if (key === "user-agent") {
-        inWildcardGroup = value === "*";
-      } else if (key === "disallow" && inWildcardGroup && value) {
-        disallowPaths.push(value);
-      }
-    }
-
-    const disallowsThisPage = disallowPaths.some((p) => pagePath.startsWith(p));
-    return { exists: true, disallowsThisPage };
-  } catch {
-    return { exists: false, disallowsThisPage: false };
-  }
+  const { status } = await robotsDecision(origin, pagePath, opts);
+  if (status === "missing" || status === "unreachable") return { exists: false, disallowsThisPage: false };
+  return { exists: true, disallowsThisPage: status === "blocked" };
 }
