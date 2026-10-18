@@ -108,6 +108,18 @@ export function autoVerifyPortsPlatform(db: ServiceDb, now: Date): AutoVerifyPor
     readMarkers: (scope) => readMarkers(db, scope),
     writeMarker: (scope, findingId, marker) => writeDocument(db, scope, autoVerifyDocType(findingId), JSON.stringify(marker), now),
     checkPorts: () => platformCheckPorts(),
+    finalize: async (item, status, evidence) => {
+      // One guarded update prevents status/evidence drift if a write is interrupted.
+      const stamp = new Date().toISOString();
+      const { data, error } = await db.from("findings").update({
+        status,
+        evidence,
+        last_seen: stamp,
+        resolved_at: status === "verified" ? stamp : null,
+      }).eq("user_id", item.userId).eq("project_id", item.projectId).eq("id", item.finding.id).eq("status", "fixed").select("id").maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) throw new Error("Finding was not in fixed status; auto-verification result was not saved.");
+    },
     transition: async (item, status) => {
       await updateFindingStatus(db, item.userId, item.projectId, item.finding.id, status);
     },
