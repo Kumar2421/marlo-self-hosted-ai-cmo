@@ -79,11 +79,11 @@ test.describe("sign in", () => {
 });
 
 test.describe("sign up", () => {
-  test("(c) new email moves to the 6-digit code step", async ({ page }) => {
+  test("(c) new email moves to the verification code step", async ({ page }) => {
     const calls = await mockSupabaseAuth(page, { signUp: "new" });
     await startSignUp(page);
-    await expect(page.getByLabel("6-digit code", { exact: true })).toBeVisible();
-    await expect(page.getByText(`Enter the 6-digit code we sent to ${TEST_EMAIL}.`)).toBeVisible();
+    await expect(page.getByLabel("Verification code", { exact: true })).toBeVisible();
+    await expect(page.getByText(`Enter the code we sent to ${TEST_EMAIL}.`)).toBeVisible();
     expect(hasCall(calls, "POST", "/signup")).toBe(true);
   });
 
@@ -108,17 +108,30 @@ test.describe("sign up", () => {
   test("(c) wrong code shows the error and stays on the code step", async ({ page }) => {
     await mockSupabaseAuth(page, { signUp: "new", validCode: VALID_CODE });
     await startSignUp(page);
-    await page.getByLabel("6-digit code", { exact: true }).fill(WRONG_CODE);
+    await page.getByLabel("Verification code", { exact: true }).fill(WRONG_CODE);
     await page.getByRole("button", { name: "Verify & continue" }).click();
     await expect(page.getByText("Token has expired or is invalid")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Verify your email" })).toBeVisible();
+  });
+
+  // Supabase's email OTP length is a project setting; an 8-digit code used to be cut to 6 characters.
+  test("(c) an 8-digit code can be typed in full and submitted", async ({ page }) => {
+    const EIGHT = "12345678";
+    await mockSupabaseAuth(page, { signUp: "new", validCode: EIGHT });
+    await startSignUp(page);
+    const input = page.getByLabel("Verification code", { exact: true });
+    await input.fill(EIGHT);
+    await expect(input).toHaveValue(EIGHT);
+    await expect(page.getByRole("button", { name: "Verify & continue" })).toBeEnabled();
+    await input.fill("12345");
+    await expect(page.getByRole("button", { name: "Verify & continue" })).toBeDisabled();
   });
 
   test("(c) correct code proceeds to dashboard", async ({ page }) => {
     test.skip(dashboardNavSkip.skip, dashboardNavSkip.reason);
     await mockSupabaseAuth(page, { signUp: "new", validCode: VALID_CODE });
     await startSignUp(page);
-    await page.getByLabel("6-digit code", { exact: true }).fill(VALID_CODE);
+    await page.getByLabel("Verification code", { exact: true }).fill(VALID_CODE);
     const navigated = waitForDashboardNavigation(page);
     await page.getByRole("button", { name: "Verify & continue" }).click();
     await navigated;
@@ -134,7 +147,7 @@ test.describe("sign up", () => {
     await page.getByLabel("Email", { exact: true }).fill(TEST_EMAIL);
     await page.getByLabel("Password", { exact: true }).fill(TEST_PASSWORD);
     await page.getByRole("button", { name: "Create Account" }).click();
-    await expect(page.getByText(/we sent to|6-digit code we sent/i)).toHaveCount(0);
+    await expect(page.getByText(/we sent to|code we sent/i)).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Verify your email" })).toHaveCount(0);
   });
 });
@@ -149,10 +162,10 @@ test.describe("forgot password", () => {
 
     await page.getByLabel("Email", { exact: true }).fill(TEST_EMAIL);
     await page.getByRole("button", { name: "Send code" }).click();
-    await expect(page.getByText(`If an account exists for ${TEST_EMAIL}, we sent a 6-digit code.`)).toBeVisible();
+    await expect(page.getByText(`If an account exists for ${TEST_EMAIL}, we sent a code.`)).toBeVisible();
     expect(hasCall(calls, "POST", "/recover")).toBe(true);
 
-    await page.getByLabel("6-digit code", { exact: true }).fill(VALID_CODE);
+    await page.getByLabel("Verification code", { exact: true }).fill(VALID_CODE);
     await page.getByLabel("New password", { exact: true }).fill("new-e2e-password-456");
     const navigated = waitForDashboardNavigation(page);
     await page.getByRole("button", { name: "Reset password" }).click();
