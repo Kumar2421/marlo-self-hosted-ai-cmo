@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getDriver } from "@/lib/llm";
-import { PLATFORM_DEFAULT_MODELS, PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
 import { FEATURES } from "@/lib/features";
-import { getUserPlan } from "@/lib/entitlements";
-import { chargeCredits, getCreditState } from "@/lib/credits";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import { getActiveProjectContext } from "@/lib/domain/shared/getActiveProject";
 import { getActiveProjectContextSupabase } from "@/lib/domain/shared/getActiveProjectSupabase";
 import type { ProjectContext } from "@/lib/domain/shared/ProjectContext";
-import { buildDraftPrompt, clampVariants, isWithinLimit, parseDraftBatch } from "@/lib/domain/x/draftPost";
-import { dailyDraftBatchLimit, isXDraftStatus, type XDraftPatch, type XDraftView } from "@/lib/domain/x/xDraftTypes";
+import { buildDraftPrompt, clampVariants, isWithinLimit } from "@/lib/domain/x/draftPost";
+import { isXDraftStatus, type XDraftPatch, type XDraftView } from "@/lib/domain/x/xDraftTypes";
 import * as sqliteStore from "@/lib/domain/x/xDraftStore";
 import * as supabaseStore from "@/lib/domain/x/xDraftStoreSupabase";
-import { generateDraftBatch, type DraftGenerationPorts } from "@/lib/domain/social/draftGeneration.ts";
+import {
+  draftLimitFor, generateForPlatform, resolvePlatformModelAccess, selfHostModelAccess,
+  type DraftScope, type ModelAccess,
+} from "@/lib/domain/social/draftPorts";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 
@@ -25,18 +25,8 @@ function viewOf(req: NextRequest): XDraftView {
   return req.nextUrl.searchParams.get("view") === "archived" ? "archived" : "current";
 }
 
-function startOfUtcDay(): string {
-  const d = new Date();
-  d.setUTCHours(0, 0, 0, 0);
-  return d.toISOString();
-}
-
-type Scope =
-  | { mode: "platform"; db: ReturnType<typeof createServiceClient>; userId: string; projectId: string }
-  | { mode: "selfhost"; projectId: string };
-
 /** Resolve who is asking and which project; a NextResponse means "stop here". */
-async function resolveScope(): Promise<Scope | NextResponse> {
+async function resolveScope(): Promise<DraftScope | NextResponse> {
   if (FEATURES.PLATFORM_MODE) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -77,42 +67,23 @@ export async function POST(req: NextRequest) {
   const scope = await resolveScope();
   if (scope instanceof NextResponse) return scope;
 
-  const providerId = "groq";
-  const driver = getDriver(providerId);
-  if (!driver) return NextResponse.json({ error: "Groq isn't wired to a real model yet." }, { status: 501 });
+  if (!getDriver("groq")) return NextResponse.json({ error: "Groq isn't wired to a real model yet." }, { status: 501 });
 
-  let apiKey = "";
-  let baseUrl: string | undefined;
-  let usesPlatformKey = false;
+  let access: ModelAccess;
   let project: ProjectContext;
-
   try {
     if (scope.mode === "platform") {
-      const { data: conn } = await scope.db.from("provider_connections").select("api_key_secret_id, base_url")
-        .eq("user_id", scope.userId).eq("provider_id", providerId).maybeSingle();
-      if (conn?.api_key_secret_id) {
-        const { data: secret } = await scope.db.rpc("vault_get_secret", { p_id: conn.api_key_secret_id });
-        apiKey = (secret as string) ?? "";
-        baseUrl = conn.base_url ?? undefined;
-      } else if (PLATFORM_PROVIDER_KEYS[providerId]) {
-        apiKey = PLATFORM_PROVIDER_KEYS[providerId]!;
-        usesPlatformKey = true;
-      }
+      access = await resolvePlatformModelAccess(scope.db, scope.userId);
       project = await getActiveProjectContextSupabase(scope.db, scope.userId);
     } else {
-      const row = getDb().prepare("SELECT api_key, base_url FROM provider_connections WHERE provider_id = ?").get(providerId) as
-        | { api_key: string; base_url: string | null } | undefined;
-      if (row) {
-        apiKey = row.api_key;
-        baseUrl = row.base_url ?? undefined;
-      }
+      access = selfHostModelAccess();
       project = getActiveProjectContext();
     }
   } catch (err) {
     return fail(err);
   }
 
-  if (!apiKey) {
+  if (!access.apiKey) {
     return NextResponse.json({ error: "Connect a free Groq key in Settings, then try again." }, { status: 422 });
   }
 
@@ -124,60 +95,8 @@ export async function POST(req: NextRequest) {
     marketingStrategy: project.marketingStrategy,
     variants,
   });
-
-  const ports: DraftGenerationPorts = {
-    creditState: async () => scope.mode === "platform" ? getCreditState(scope.userId, "social_draft") : { billingEnabled: false, balance: 0, cost: 0 },
-    isByok: !usesPlatformKey,
-    limit: scope.mode === "platform" && usesPlatformKey ? dailyDraftBatchLimit(await getUserPlan(scope.userId)) : -1,
-    reserveSlot: async (limit) => {
-      if (scope.mode === "platform") {
-        return supabaseStore.reserveXBatch(scope.db, scope.userId, scope.projectId, limit, startOfUtcDay());
-      }
-      return { ok: true, batchId: "" };
-    },
-    releaseSlot: async (batchId) => {
-      if (scope.mode === "platform" && batchId) {
-        await supabaseStore.deleteXBatch(scope.db, scope.userId, scope.projectId, batchId).catch(() => {});
-      }
-    },
-    callModel: async () => {
-      const result = await driver({
-        apiKey,
-        baseUrl,
-        system,
-        model: PLATFORM_DEFAULT_MODELS[providerId],
-        stream: false,
-        messages: [{ role: "user", content: prompt }],
-      });
-      return result.text ?? "";
-    },
-    parse: (text) => parseDraftBatch(text, variants),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    filterUsable: (drafts) => (drafts as any[]).filter((d) => isWithinLimit(d.text)),
-    insertDrafts: async (batchId, drafts) => {
-      if (scope.mode === "platform") {
-        return batchId
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ? await supabaseStore.fulfilXBatch(scope.db, scope.userId, scope.projectId, batchId, drafts as any)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          : await supabaseStore.insertXDrafts(scope.db, scope.userId, scope.projectId, drafts as any);
-      }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return sqliteStore.insertXDrafts(getDb(), scope.projectId, drafts as any);
-    },
-    deleteBatch: async (batchId) => {
-      if (scope.mode === "platform") {
-        await supabaseStore.deleteXBatch(scope.db, scope.userId, scope.projectId, batchId).catch(() => {});
-      }
-    },
-    charge: async () => {
-      if (usesPlatformKey && scope.mode === "platform") {
-        await chargeCredits(scope.userId, "social_draft", { projectId: scope.projectId, model: PLATFORM_DEFAULT_MODELS[providerId] });
-      }
-    },
-  };
-
-  const result = await generateDraftBatch(ports, { variants });
+  const limit = await draftLimitFor(scope, access);
+  const result = await generateForPlatform("x", scope, { access, limit, variants, system, prompt });
   return NextResponse.json(result.body, { status: result.status });
 }
 

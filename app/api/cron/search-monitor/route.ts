@@ -11,6 +11,13 @@ import { runNotificationJob, type NotificationJobSummary } from "@/lib/domain/no
 import { supabaseNotificationStore } from "@/lib/domain/notifications/notificationStoreSupabase";
 import { platformNotificationSource } from "@/lib/domain/notifications/platformSource";
 import { emailLinksFor, notificationConfig } from "@/lib/domain/notifications/runtime";
+import { runSocialDailyJob, type SocialDailyJobSummary } from "@/lib/domain/social/dailyDraftJob";
+import { socialPhaseBudgetMs } from "@/lib/domain/social/dailyDrafts";
+import { listProjectActions as listProjectActionsSupabase } from "@/lib/domain/actions/actionStoreSupabase";
+import { platformOutcomePorts } from "@/lib/domain/search/outcomePorts";
+import { fixDeliveryGithub } from "@/lib/domain/fixes/fixDeliveryGithub";
+import { reconcileAllProjects, type LinkedProject, type ReconcileAllSummary } from "@/lib/domain/fixes/reconcileAllProjects";
+import { hostedGithubToken } from "@/lib/githubAppServer";
 
 // Hobby caps cron functions at 60s. Stop a little short of it and resume on
 // the next run rather than being killed mid-project.
@@ -26,6 +33,12 @@ const BUDGET_MS = 45_000;
 // budget delays people by a day instead of starving the same tail forever.
 const NOTIFY_DEADLINE_MS = 57_000;
 const NOTIFY_MIN_BUDGET_MS = 2_000;
+// Daily social drafts (one per network per project) run after the proposals and before the
+// notifications, so the in-app item they create is there for the notification pass. Capped.
+const SOCIAL_BUDGET_MS = 15_000;
+// Fix PR reconciliation (merged or closed-unmerged) for every project with a GitHub App link. Runs after
+// the proposals and before social, capped, so a merge is noticed even if nobody opens the finding.
+const RECONCILE_BUDGET_MS = 8_000;
 
 /**
  * Daily Search Console snapshot for every project with GSC connected -
@@ -100,6 +113,51 @@ export async function GET(req: NextRequest) {
       { budgetMs: Math.max(0, BUDGET_MS - (Date.now() - startedAt)) },
     );
 
+    // Phase 2b: fix PRs. Each project with a GitHub App link is checked for merged or closed-unmerged PRs.
+    // Failures are isolated per project; the summary carries counts and project ids only, never a token.
+    let reconcile: ReconcileAllSummary | { error: string };
+    const reconcileBudget = Math.min(RECONCILE_BUDGET_MS, NOTIFY_DEADLINE_MS - (Date.now() - startedAt));
+    if (reconcileBudget < NOTIFY_MIN_BUDGET_MS) {
+      reconcile = { error: "No time left; will run tomorrow." };
+    } else {
+      try {
+        reconcile = await reconcileAllProjects(
+          {
+            linkedProjects: () => linkedGithubProjects(db),
+            actionsFor: ({ projectId, userId }) => listProjectActionsSupabase(db, userId, projectId),
+            inputsFor: async ({ projectId, userId }) => {
+              // GitHub App installation token when connected (short-lived, never stored), else the legacy token.
+              const token = await hostedGithubToken(db, userId, projectId);
+              if (!token) return null;
+              const { data: project } = await db.from("projects").select("url").eq("id", projectId).eq("owner_id", userId).maybeSingle();
+              return { ports: platformOutcomePorts(db, userId, projectId, project?.url ?? null), fixDelivery: fixDeliveryGithub(token) };
+            },
+          },
+          { budgetMs: reconcileBudget },
+        );
+      } catch {
+        console.warn("[reconcile] pull request check failed.");
+        reconcile = { error: "Pull request check failed." };
+      }
+    }
+
+    // Phase 3: one draft per network per project for review (nothing is posted). Failures are
+    // isolated per project inside the job; this only guards the whole phase.
+    // The phase stops before the notification deadline, so the notification pass always keeps its reserved time.
+    let social: SocialDailyJobSummary | { error: string };
+    const socialBudget = socialPhaseBudgetMs(Date.now() - startedAt, NOTIFY_DEADLINE_MS, SOCIAL_BUDGET_MS);
+    if (socialBudget < NOTIFY_MIN_BUDGET_MS) {
+      social = { error: "No time left; will run tomorrow." };
+    } else {
+      try {
+        social = await runSocialDailyJob(db, supabaseNotificationStore(db), { now: new Date(), budgetMs: socialBudget });
+      } catch {
+        console.warn("[social] daily drafts job failed.");
+        social = { error: "Social drafts job failed." };
+      }
+    }
+
+
     // Failures here never fail the snapshot run, and never carry secrets into the response.
     let notifications: Pick<NotificationJobSummary, "users" | "skipped" | "created" | "emailed" | "emailFailed" | "interrupted"> & { failed: number } | { error: string };
     const notifyBudget = NOTIFY_DEADLINE_MS - (Date.now() - startedAt);
@@ -131,10 +189,22 @@ export async function GET(req: NextRequest) {
       skipped: summary.skipped,
       failed: summary.failed.map(({ item, error: message }) => ({ projectId: item.projectId, error: message })),
       proposals: { ...proposalSummary, processed: proposalRun.processed, skipped: proposalRun.skipped, failed: proposalFailures },
+      reconcile,
+      social,
     });
   } finally {
     await cleanupRateLimitCounters(db);
   }
+}
+
+/** Projects with a GitHub App link. The link is stored per project in user_settings as `github_app:<projectId>`. */
+async function linkedGithubProjects(db: ReturnType<typeof createServiceClient>): Promise<LinkedProject[]> {
+  const PREFIX = "github_app:";
+  const { data, error } = await db.from("user_settings").select("user_id, key").like("key", `${PREFIX}%`);
+  if (error) throw new Error(error.message);
+  return (data ?? [])
+    .map((row) => ({ userId: String(row.user_id), projectId: String(row.key).slice(PREFIX.length) }))
+    .filter((project) => project.projectId !== "");
 }
 
 /** Housekeeping for the public audit rate limiter. Never throws: a failure only logs and never changes the response. */

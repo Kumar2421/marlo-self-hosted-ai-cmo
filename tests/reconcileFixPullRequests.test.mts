@@ -265,3 +265,71 @@ test("apply -> merged -> implemented: a PR linked by codefix/apply is picked up 
   assert.equal(impl?.implementedAt, mergedAt);
   assert.equal(impl?.change?.prUrl, url);
 });
+
+test("a closed PR is not written over an action that was re-linked while GitHub was being asked", async () => {
+  const PR1 = "https://github.com/o/r/pull/1";
+  const PR2 = "https://github.com/o/r/pull/2";
+  const listed = { ...makeAction(null), result: { pullRequest: { url: PR1 } } };
+  const h = harness({ actions: [listed] });
+  h.fixDelivery.setState(PR1, "closed");
+  // Between listing the actions and writing, a new PR was linked to the same action.
+  h.ports.getAction = async () => ({ ...listed, result: { pullRequest: { url: PR2 } } });
+  const writes: Array<Record<string, unknown>> = [];
+  h.ports.saveResult = async (_id, result) => { writes.push(result); };
+
+  const result = await reconcileFixPullRequests(h.ports, h.fixDelivery, h.actions, T0);
+
+  assert.deepEqual(writes, [], "the new link is left alone");
+  assert.equal(result.closed, 0);
+  assert.equal(result.skipped, 1);
+});
+
+test("a closed PR clears its link using the freshly read action, keeping anything written since it was listed", async () => {
+  const PR1 = "https://github.com/o/r/pull/1";
+  const listed = { ...makeAction(null), result: { pullRequest: { url: PR1 }, note: "stale" } };
+  const h = harness({ actions: [listed] });
+  h.fixDelivery.setState(PR1, "closed");
+  h.ports.getAction = async () => ({ ...listed, result: { pullRequest: { url: PR1 }, note: "fresh" } });
+  const writes: Array<Record<string, unknown>> = [];
+  h.ports.saveResult = async (_id, result) => { writes.push(result); };
+
+  const result = await reconcileFixPullRequests(h.ports, h.fixDelivery, h.actions, T0);
+
+  assert.equal(result.closed, 1);
+  assert.deepEqual(writes, [{ note: "fresh", closedPullRequest: { url: PR1, closedAt: T0.toISOString() } }]);
+});
+
+test("a GitHub call that never answers is given up at the time budget: that action fails and the others still run", async () => {
+  const PR1 = "https://github.com/o/r/pull/1";
+  const PR2 = "https://github.com/o/r/pull/2";
+  const h = harness();
+  const hung = makeAction(PR1);
+  const fine = makeAction(PR2);
+  h.actions.push(hung, fine);
+  h.fixDelivery.setState(PR2, "merged", "2026-10-05T12:00:00.000Z");
+  const answer = h.fixDelivery.status;
+  h.fixDelivery.status = (url) => (url === PR1 ? new Promise(() => {}) : answer(url));
+
+  const started = Date.now();
+  const result = await reconcileFixPullRequests(h.ports, h.fixDelivery, h.actions, T0, { remainingMs: () => 30 });
+
+  assert.ok(Date.now() - started < 2000, "returns when the budget runs out, not when GitHub would answer");
+  assert.equal(result.implemented, 1);
+  assert.equal(result.failed.length, 1);
+  assert.equal(result.failed[0].actionId, hung.id);
+  assert.match(result.failed[0].error, /Ran out of time/);
+  assert.equal(hung.status, "proposed", "nothing is changed for an action we could not check");
+});
+
+test("with no time left, GitHub is not asked at all and every linked PR is reported failed, not changed", async () => {
+  const h = harness();
+  h.actions.push(makeAction("https://github.com/o/r/pull/1"), makeAction("https://github.com/o/r/pull/2"));
+  let asked = 0;
+  h.fixDelivery.status = async () => { asked += 1; return { state: "open" as const }; };
+
+  const result = await reconcileFixPullRequests(h.ports, h.fixDelivery, h.actions, T0, { remainingMs: () => 0 });
+
+  assert.equal(asked, 0);
+  assert.equal(result.failed.length, 2);
+  assert.ok(h.actions.every((a) => a.status === "proposed"));
+});

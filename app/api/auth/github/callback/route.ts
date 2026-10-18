@@ -4,6 +4,8 @@ import { consumeOAuthState as consumeOAuthStateSupabase } from "@/lib/domain/int
 import { exchangeCodeForToken, getGitHubUser } from "@/lib/domain/shared/githubOAuth";
 import { FEATURES } from "@/lib/features";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
+import { createClient } from "@/utils/supabase/server";
+import { checkOAuthCallbackOwner, OAUTH_OWNER_MISMATCH_MESSAGE } from "@/lib/domain/integrations/oauthCallbackGuard";
 
 export async function GET(req: NextRequest) {
   const settingsUrl = `${req.nextUrl.origin}${CREDENTIALS_PATH}`;
@@ -16,6 +18,13 @@ export async function GET(req: NextRequest) {
     const db = createServiceClient();
     const oauthState = await consumeOAuthStateSupabase(db, state);
     if (!oauthState) return NextResponse.redirect(`${settingsUrl}?github_error=${encodeURIComponent("GitHub authorization expired or was already used. Please reconnect.")}`);
+
+    // The state is already consumed (single use). Only the signed-in user it was issued to may store tokens for it.
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!checkOAuthCallbackOwner(user?.id, oauthState.userId).ok) {
+      return NextResponse.redirect(`${settingsUrl}?github_error=${encodeURIComponent(OAUTH_OWNER_MISMATCH_MESSAGE)}`);
+    }
 
     const tokens = await exchangeCodeForToken(code, `${req.nextUrl.origin}/api/auth/github/callback`);
     const profile = await getGitHubUser(tokens.accessToken);

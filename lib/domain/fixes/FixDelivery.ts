@@ -3,7 +3,12 @@
  * and reconciled. Different implementations handle GitHub PRs, future integrations, etc.
  */
 
-export type PRStatus = "open" | "merged" | "closed";
+/**
+ * "open" and "merged" and "closed" are what the host said. "closed" means really closed without
+ * a merge. "unknown" means we could not ask (token problem, GitHub outage, bad response): it must
+ * never be treated as closed, or a transient failure would drop a live pull request.
+ */
+export type PRStatus = "open" | "merged" | "closed" | "unknown";
 
 export type PRInfo = {
   state: PRStatus;
@@ -11,6 +16,6 @@ export type PRInfo = {
 };
 
 export type FixDeliveryPort = {
-  /** Check the status of a PR by its URL, returning state and optional merge time. */
+  /** Check the status of a PR by its URL, returning state and optional merge time. Never throws. */
   status(prUrl: string): Promise<PRInfo>;
 };

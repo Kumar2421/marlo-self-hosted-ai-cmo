@@ -21,8 +21,11 @@ export type OutcomeBaseline = {
   clicks: number;
   ctr: number;
   position: number;
-  /** Where the numbers came from: the saved snapshot at that moment, or the evidence the finding was created with. */
-  source: "snapshot" | "finding";
+  /** Where the numbers came from: the saved snapshot at that moment, or the evidence the finding was created with.
+   *  "latest_snapshot": the merge was noticed late and no snapshot from before it existed, so the newest one was used. */
+  source: "snapshot" | "finding" | "latest_snapshot";
+  /** True when the baseline may already include post-change data (see "latest_snapshot"). Verdicts on it are never saved as final. */
+  approximate?: boolean;
 };
 
 export type ImplementationRecord = {
@@ -57,9 +60,14 @@ export function baselineFor(
   evidence: OpportunityEvidence,
   snapshot: { snapshotDate: string; payload: SearchSnapshotPayload } | null,
   now: Date,
+  /** The snapshot used is newer than the change (the change was noticed late): flag the baseline as approximate. */
+  approximate = false,
 ): OutcomeBaseline {
   const row = currentRowFor(evidence.query, snapshot?.payload);
   if (row) {
+    if (approximate) {
+      return { capturedAt: now.toISOString(), snapshotDate: snapshot?.snapshotDate ?? null, query: evidence.query, ...metricsOf(row), source: "latest_snapshot", approximate: true };
+    }
     return { capturedAt: now.toISOString(), snapshotDate: snapshot?.snapshotDate ?? null, query: evidence.query, ...metricsOf(row), source: "snapshot" };
   }
   return {
@@ -83,13 +91,15 @@ export function buildImplementation(args: {
   change?: ImplementationRecord["change"];
   pageUrl?: string | null;
   pageBefore?: PageFingerprint | null;
+  /** The snapshot may be newer than the change (see baselineFor). */
+  approximateBaseline?: boolean;
 }): ImplementationRecord {
   const now = args.now ?? new Date();
   const evidence = opportunityEvidenceOf(args.finding.evidence);
   return {
     via: args.via ?? "manual",
     implementedAt: now.toISOString(),
-    baseline: evidence ? baselineFor(evidence, args.snapshot, now) : null,
+    baseline: evidence ? baselineFor(evidence, args.snapshot, now, args.approximateBaseline === true) : null,
     ...(args.change ? { change: args.change } : {}),
     ...(args.pageUrl ? { pageUrl: args.pageUrl } : {}),
     ...(args.pageBefore ? { pageBefore: args.pageBefore } : {}),
@@ -195,10 +205,11 @@ export function evaluateOutcome(args: {
     via: implementation.via,
     pageNote: pageNoteFor(args.pageChange, args.actionType),
   };
+  const approximateNote = implementation.baseline?.approximate ? " The baseline is approximate because the merge was noticed late." : "";
   const done = (status: OutcomeStatus, headline: string, confidence: Outcome["confidence"] = null): Outcome => ({
     status,
     confidence,
-    headline,
+    headline: `${headline}${approximateNote}`,
     ...base,
   });
 
@@ -282,5 +293,7 @@ export function savedOutcomeOf(result: Record<string, unknown> | null | undefine
 
 /** Whether this verdict is worth saving permanently: judged, and with enough time behind it. */
 export function shouldSaveOutcome(outcome: Outcome): boolean {
+  // An approximate baseline may already contain post-change numbers, so its verdict is not final.
+  if (outcome.baseline?.approximate) return false;
   return outcome.confidence === "solid" && outcome.status !== "waiting" && outcome.status !== "no_data";
 }

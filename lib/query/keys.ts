@@ -34,6 +34,7 @@ export const qk = {
     [...scope(projectId), "findings", findingId, "actions"] as const,
   leadProfile: (projectId: string | undefined) => [...scope(projectId), "lead-profile"] as const,
   redditSettings: (projectId: string | undefined) => [...scope(projectId), "reddit-settings"] as const,
+  socialDailySettings: (projectId: string | undefined) => [...scope(projectId), "social-daily-settings"] as const,
   automation: (projectId: string | undefined) => [...scope(projectId), "automation"] as const,
   searchOpportunities: (projectId: string | undefined) => [...scope(projectId), "search-opportunities"] as const,
   cmsStatus: () => [...account, "cms-status"] as const,

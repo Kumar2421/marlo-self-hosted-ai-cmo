@@ -26,6 +26,12 @@ export type CompletionRequest = {
    * answer. Only implemented in the OpenAI-compatible driver so far — other
    * drivers ignore this and behave as before. */
   tools?: ToolDef[];
+  /** Per-request timeout in ms for the provider call. Unset keeps the SDK default. Used by background jobs. */
+  timeoutMs?: number;
+  /** SDK retries for this call. Unset keeps the SDK default (2). Background jobs pass 0. */
+  maxRetries?: number;
+  /** Aborts the in-flight provider request when it fires. */
+  signal?: AbortSignal;
 };
 
 export type CompletionResult = { 
