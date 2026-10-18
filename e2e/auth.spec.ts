@@ -98,7 +98,7 @@ test.describe("sign up", () => {
 
   // The resend handler sets a "Code resent" notice, but the verify-code step only renders
   // `error`, not `notice`, so the confirmation never appears. Remove test.fixme when fixed.
-  test.fixme("(c) resend shows a confirmation on the code step", async ({ page }) => {
+  test("(c) resend shows a confirmation on the code step", async ({ page }) => {
     await mockSupabaseAuth(page, { signUp: "new" });
     await startSignUp(page);
     await page.getByRole("button", { name: "Resend code" }).click();
@@ -128,7 +128,7 @@ test.describe("sign up", () => {
   // identities array for an already-registered address, but login/page.tsx only checks for
   // a missing session, so it still switches to the code step and says a code was sent.
   // Remove test.fixme when the fix lands.
-  test.fixme("(d) already registered email does not claim a code was sent", async ({ page }) => {
+  test("(d) already registered email does not claim a code was sent", async ({ page }) => {
     await mockSupabaseAuth(page, { signUp: "existing" });
     await page.goto("/login?mode=signup");
     await page.getByLabel("Email", { exact: true }).fill(TEST_EMAIL);
@@ -149,7 +149,7 @@ test.describe("forgot password", () => {
 
     await page.getByLabel("Email", { exact: true }).fill(TEST_EMAIL);
     await page.getByRole("button", { name: "Send code" }).click();
-    await expect(page.getByText(`Enter the 6-digit code we sent to ${TEST_EMAIL}.`)).toBeVisible();
+    await expect(page.getByText(`If an account exists for ${TEST_EMAIL}, we sent a 6-digit code.`)).toBeVisible();
     expect(hasCall(calls, "POST", "/recover")).toBe(true);
 
     await page.getByLabel("6-digit code", { exact: true }).fill(VALID_CODE);
@@ -183,9 +183,9 @@ test.describe("google sign-in", () => {
 
   // The login page does not read window.location.hash, so the provider error is never shown.
   // Remove test.fixme when the other branch that surfaces OAuth errors on /login lands.
-  test.fixme("(f) provider error in the URL hash is shown", async ({ page }) => {
+  test("(f) provider error in the URL hash is shown", async ({ page }) => {
     await page.goto("/login#error=server_error&error_code=unexpected_failure&error_description=x");
-    await expect(page.getByText(/unexpected|something went wrong|sign.?in (failed|error)/i)).toBeVisible();
+    await expect(page.getByText(/Google sign-in didn.t finish/i)).toBeVisible();
   });
 });
 

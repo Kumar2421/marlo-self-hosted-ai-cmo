@@ -191,7 +191,6 @@ export default function LoginPage() {
       } else if (!data.session) {
         setOtpCode("");
         setMode("verify-signup");
-        setNotice(`Enter the 6-digit code we sent to ${email}.`);
       } else {
         trackSignupCompleted();
         router.push("/dashboard");
@@ -261,7 +260,6 @@ export default function LoginPage() {
     setOtpCode("");
     setNewPassword("");
     setMode("verify-reset");
-    setNotice(resetCodeNotice(email));
     setIsLoading(false);
   };
 
@@ -384,6 +382,7 @@ export default function LoginPage() {
                   )}
 
                   {error && <div className="text-sm text-red-600">{error}</div>}
+                  {notice && <div className="text-sm text-green-600">{notice}</div>}
 
                   <button
                     type="submit"
