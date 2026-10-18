@@ -13,6 +13,7 @@ import {
   MANAGED_DAILY_CAP,
   reserveManagedSlot,
   shouldChargeSearch,
+  shouldReleaseSlot,
   type SlotStore,
 } from "@/lib/domain/leads/local/managedSearchPolicy";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -20,8 +21,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // Vercel: a search runs one Places call plus website enrichment (budgeted to 35s).
 export const maxDuration = 60;
 
-/** Stored as usage_events.model so managed-key searches can be counted for the daily cap. */
+/** usage_events.model of the credit charge row written by spend_credits. Not counted for the cap. */
 const PLACES_USAGE_MODEL = "places_api";
+/** usage_events.model of a reservation row: one per managed Google Places call, counted for the daily cap. */
+const PLACES_CALL_MODEL = "places_call";
 const SEARCH_AGENT_TYPE = "lead_search";
 const NOT_CONFIGURED = "Local search is not set up yet";
 const OWN_KEY_HINT = "Connect a Google Cloud API key in Settings → API Credentials (with Places API enabled) to search local businesses.";
@@ -54,9 +57,14 @@ async function runLocalSearch(args: {
   projectId: string;
   input: SearchInput;
   existingPlaceIds: (projectId: string) => Promise<Set<string>>;
+  /** Called immediately before the Google request is made. */
+  onGoogleCall?: () => void;
 }) {
   const ports: LocalSearchPorts = {
-    searchPage: (q) => searchPlacesPage(fetch, args.apiKey, q),
+    searchPage: (q) => {
+      args.onGoogleCall?.();
+      return searchPlacesPage(fetch, args.apiKey, q);
+    },
     existingPlaceIds: args.existingPlaceIds,
     enrich: (website) => enrichBusiness(website),
     emailCheck: hasMailServer,
@@ -138,8 +146,10 @@ async function hostedSearch(input: SearchInput): Promise<NextResponse> {
   }
 
   // Managed searches reserve a daily slot before the Google call. The reservation is a usage_events
-  // row, released in `finally` on every path, so a failed or empty search gives its slot back.
+  // row. It is kept once Google was called (success, empty or failed) because every call costs the
+  // operator; it is released only when the search never reached Google.
   let reservation: string | null = null;
+  let googleCalled = false;
   try {
     if (usingManaged) {
       const slot = await reserveManagedSlot(managedSlotStore(db, user.id, activeId));
@@ -160,6 +170,9 @@ async function hostedSearch(input: SearchInput): Promise<NextResponse> {
       apiKey: ownKey || managedKey,
       projectId: activeId,
       input,
+      onGoogleCall: () => {
+        googleCalled = true;
+      },
       existingPlaceIds: async (projectId) => {
         const { data } = await db
           .from("leads")
@@ -196,35 +209,42 @@ async function hostedSearch(input: SearchInput): Promise<NextResponse> {
           raced += 1;
           continue;
         }
+        console.error("[places-search] lead insert failed", error.code, error.message);
         saveFailed = true;
         break;
       }
       if (data) saved.push(data);
     }
-    if (saveFailed) {
-      // The user gets an error, so the search is not charged.
+    if (saveFailed && saved.length === 0) {
+      // Nothing was saved, so the user gets an error and the search is not charged.
       return NextResponse.json({ error: "Couldn't save the leads. Try again." }, { status: 500 });
     }
 
-    // Charged once, after the save, and only when at least one new lead was kept.
-    if (shouldChargeSearch({ usingManaged, savedCount: saved.length, failed: saveFailed })) {
-      await chargeCredits(user.id, SEARCH_AGENT_TYPE, { projectId: activeId, model: PLACES_USAGE_MODEL });
+    // Charged once, after the save, and only when at least one new lead was kept (partial saves too).
+    // A charge failure must never hide leads that are already saved: log it and return them.
+    if (shouldChargeSearch({ usingManaged, savedCount: saved.length, failed: false })) {
+      try {
+        await chargeCredits(user.id, SEARCH_AGENT_TYPE, { projectId: activeId, model: PLACES_USAGE_MODEL });
+      } catch (chargeErr) {
+        console.error("[places-search] charge failed after save", chargeErr);
+      }
     }
 
     return NextResponse.json({
       leads: saved,
-      nextPageToken: result.nextPageToken,
+      nextPageToken: saveFailed ? undefined : result.nextPageToken,
       duplicates: result.duplicates + raced,
       skipped: result.skipped,
+      ...(saveFailed ? { warning: "Some leads couldn't be saved. Search again to retry the rest." } : {}),
     });
   } catch (err) {
     return errorResponse(err);
   } finally {
-    if (reservation) await releaseReservation(db, reservation);
+    if (reservation && shouldReleaseSlot({ googleCalled })) await releaseReservation(db, reservation);
   }
 }
 
-/** usage_events rows for this user's managed searches today, used as the daily-cap slots. */
+/** usage_events rows (model places_call) for this user's managed Places calls today, used as the daily-cap slots. */
 function managedSlotStore(db: SupabaseClient, userId: string, projectId: string): SlotStore<string> {
   return {
     reserve: async () => {
@@ -234,12 +254,15 @@ function managedSlotStore(db: SupabaseClient, userId: string, projectId: string)
           user_id: userId,
           project_id: projectId,
           agent_type: SEARCH_AGENT_TYPE,
-          model: PLACES_USAGE_MODEL,
+          model: PLACES_CALL_MODEL,
           credits_charged: 0,
         })
         .select("id")
         .single();
-      if (error || !data) throw new Error("Could not reserve a local search slot");
+      if (error || !data) {
+        console.error("[places-search] could not reserve a managed slot", error);
+        throw new Error("Could not reserve a local search slot");
+      }
       return data.id as string;
     },
     count: async () => {
@@ -250,9 +273,12 @@ function managedSlotStore(db: SupabaseClient, userId: string, projectId: string)
         .select("id", { count: "exact", head: true })
         .eq("user_id", userId)
         .eq("agent_type", SEARCH_AGENT_TYPE)
-        .eq("model", PLACES_USAGE_MODEL)
+        .eq("model", PLACES_CALL_MODEL)
         .gte("created_at", startOfDay.toISOString());
-      if (error) throw new Error("Could not count local searches");
+      if (error) {
+        console.error("[places-search] could not count managed searches", error);
+        throw new Error("Could not count local searches");
+      }
       return count ?? 0;
     },
     release: (id) => releaseReservation(db, id),
@@ -262,8 +288,9 @@ function managedSlotStore(db: SupabaseClient, userId: string, projectId: string)
 async function releaseReservation(db: SupabaseClient, id: string): Promise<void> {
   try {
     await db.from("usage_events").delete().eq("id", id);
-  } catch {
+  } catch (err) {
     // A row left behind only counts against today's cap, which fails safe.
+    console.error("[places-search] could not release a managed slot", err);
   }
 }
 

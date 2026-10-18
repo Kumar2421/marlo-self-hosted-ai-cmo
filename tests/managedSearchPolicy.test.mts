@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { MANAGED_DAILY_CAP, reserveManagedSlot, shouldChargeSearch, type SlotStore } from "../lib/domain/leads/local/managedSearchPolicy.ts";
+import { MANAGED_DAILY_CAP, reserveManagedSlot, shouldChargeSearch, shouldReleaseSlot, type SlotStore } from "../lib/domain/leads/local/managedSearchPolicy.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, Math.random() * 3));
 
@@ -60,6 +60,28 @@ test("a rejected reservation releases its own row", async () => {
   const result = await reserveManagedSlot(store, 30);
   assert.equal(result.allowed, false);
   assert.equal(rows.size, 30);
+});
+
+test("zero-save searches that called Google still count toward the cap", async () => {
+  const { rows, store } = fakeRows(0);
+  let refused = 0;
+  for (let i = 0; i < 35; i += 1) {
+    const slot = await reserveManagedSlot(store, 30);
+    if (!slot.allowed) {
+      refused += 1;
+      continue;
+    }
+    // Google was called but nothing was saved (so nothing is charged): the slot is kept.
+    assert.equal(shouldChargeSearch({ usingManaged: true, savedCount: 0, failed: false }), false);
+    if (shouldReleaseSlot({ googleCalled: true })) await store.release(slot.handle);
+  }
+  assert.equal(refused, 5, "searches beyond the cap are refused (429 in the route)");
+  assert.equal(rows.size, 30);
+});
+
+test("a slot is released only when Google was never called", () => {
+  assert.equal(shouldReleaseSlot({ googleCalled: false }), true);
+  assert.equal(shouldReleaseSlot({ googleCalled: true }), false);
 });
 
 test("a charged search is not charged again and a free search is not charged at all", () => {
