@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { FIXED_FINDINGS_PAGE_SIZE, MAX_FIXED_FINDINGS, listFixedFindingRows } from "../lib/domain/findings/fixedFindingRows.ts";
+import { monitorTargetsPlatform } from "../lib/domain/findings/monitorTargets.ts";
 
 const NOW = "2026-10-14T12:00:00.000Z";
 type Row = Record<string, unknown>;
@@ -79,4 +80,39 @@ test("the overall cap bounds one run's read", async () => {
   const rows = await listFixedFindingRows(db as unknown as SupabaseClient);
   assert.equal(rows.length, MAX_FIXED_FINDINGS);
   assert.ok(db.ranges.every(([, to]) => to <= MAX_FIXED_FINDINGS - 1));
+});
+
+/** Fake PostgREST for the monitor targets: per-table rows, each range capped like the real server. */
+function monitorDb(tables: Record<string, Row[]>, cap = FIXED_FINDINGS_PAGE_SIZE) {
+  const ranges: Record<string, Array<[number, number]>> = {};
+  const db = {
+    from(table: string) {
+      const q = {
+        select: () => q,
+        not: () => q,
+        eq: () => q,
+        order: () => q,
+        async range(from: number, to: number) {
+          (ranges[table] ??= []).push([from, to]);
+          const rows = tables[table] ?? [];
+          const end = Math.min(to, from + cap - 1, rows.length - 1);
+          return { data: end >= from ? rows.slice(from, end + 1) : [], error: null };
+        },
+      };
+      return q;
+    },
+  };
+  return { db: db as unknown as SupabaseClient, ranges };
+}
+
+test("monitor targets: projects and markers beyond one 1000-row response are all read", async () => {
+  const projects = Array.from({ length: 1500 }, (_, i) => ({ id: `p${String(i).padStart(5, "0")}`, owner_id: "u1", url: "https://example.com" }));
+  const markers = Array.from({ length: 1200 }, (_, i) => ({ project_id: `p${String(i).padStart(5, "0")}`, updated_at: NOW }));
+  const { db, ranges } = monitorDb({ projects, project_documents: markers });
+  const targets = await monitorTargetsPlatform(db);
+  assert.equal(targets.length, 1500);
+  assert.equal(targets.filter((t) => t.lastRunAt === NOW).length, 1200);
+  assert.equal(targets[1499].lastRunAt, null);
+  assert.deepEqual(ranges.projects.slice(0, 2), [[0, 999], [1000, 1999]]);
+  assert.deepEqual(ranges.project_documents.slice(0, 2), [[0, 999], [1000, 1999]]);
 });

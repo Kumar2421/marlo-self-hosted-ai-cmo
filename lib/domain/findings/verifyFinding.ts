@@ -22,9 +22,15 @@ export type VerifyResult = {
 /** One finding of a fresh SEO audit, in the shape reconcileSeoAuditRecheck expects. */
 export type FreshAuditFinding = Parameters<typeof reconcileSeoAuditRecheck>[1][number];
 
+/** A fresh audit: its findings, and the URL the crawl ended on when it is known. */
+export type FreshAudit = { findings: FreshAuditFinding[]; finalUrl?: string };
+
 export type VerifyCheckPorts = {
-  /** Re-runs the SEO audit of one page and returns its findings. */
-  runSeoAudit(url: string): Promise<FreshAuditFinding[]>;
+  /**
+   * Re-runs the SEO audit of one page. May return the findings alone, or with the
+   * final URL after redirects so a redirected page is not mistaken for the finding's page.
+   */
+  runSeoAudit(url: string): Promise<FreshAuditFinding[] | FreshAudit>;
   /** Re-runs the GEO readiness checks for the site that owns this URL. */
   runGeoReadiness(url: string): Promise<ReadinessCheck[]>;
 };
@@ -53,6 +59,22 @@ export function isAutoVerifiable(finding: Pick<Finding, "source" | "category" | 
   return finding.source === "geo" && finding.category === "geo_readiness";
 }
 
+function pagePath(pathname: string): string {
+  return pathname.replace(/\/+$/, "") || "/";
+}
+
+/** True when the audit ended on a different origin or path than the finding's page (a redirect). */
+export function redirectedAway(findingUrl: string, finalUrl: string | undefined): boolean {
+  if (!finalUrl) return false;
+  try {
+    const a = new URL(findingUrl);
+    const b = new URL(finalUrl);
+    return a.origin.toLowerCase() !== b.origin.toLowerCase() || pagePath(a.pathname) !== pagePath(b.pathname);
+  } catch {
+    return false;
+  }
+}
+
 const SEVERITY_FOR_RECHECK: Record<Finding["severity"], "info" | "warning" | "critical"> = {
   info: "info",
   warning: "warning",
@@ -75,7 +97,11 @@ export async function verifyFinding(
 
   try {
     if (finding.source === "seo-audit") {
-      const fresh = await ports.runSeoAudit(finding.url);
+      const audit = await ports.runSeoAudit(finding.url);
+      const fresh = Array.isArray(audit) ? audit : audit.findings;
+      if (!Array.isArray(audit) && redirectedAway(finding.url, audit.finalUrl)) {
+        return skipped("The page now redirects elsewhere, so it cannot be checked. It will be retried.");
+      }
       const result = reconcileSeoAuditRecheck(finding.entityId, fresh, SEVERITY_FOR_RECHECK[finding.severity] ?? "warning");
       return result.issueDetected
         ? { outcome: "failed", reason: "The audit still flags this issue.", checkedAt }

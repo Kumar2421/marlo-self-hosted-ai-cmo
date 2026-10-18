@@ -61,6 +61,8 @@ function fake(targets: MonitorScope[], opts: {
   failProject?: string;
   /** Every page audit never settles. */
   hang?: boolean;
+  /** Every upsert throws. */
+  failUpsert?: boolean;
 } = {}): Fake {
   const store: Store = new Map();
   const audits: string[] = [];
@@ -80,6 +82,7 @@ function fake(targets: MonitorScope[], opts: {
       return page ?? { url, findings: [] };
     },
     upsert: async (s, input) => {
+      if (opts.failUpsert) throw new Error("db down");
       upserts.push(input);
       applyUpsert(store, s.projectId, input);
     },
@@ -221,7 +224,7 @@ test("a hung page audit is skipped at the timeout and the phase returns within b
 
 test("budget guard: a project gets no marker when no audit can start in the budget", async () => {
   const f = fake([scope("p1", null)]);
-  const summary = await runMonitorAudit(f.ports, NOW, { budgetMs: 5_000, maxAudits: 10, clock: () => 0 });
+  const summary = await runMonitorAudit(f.ports, NOW, { budgetMs: 4_000, maxAudits: 10, clock: () => 0 });
   assert.equal(summary.budgetSkipped, 1);
   assert.equal(summary.monitored, 0);
   assert.deepEqual(f.markers, []);
@@ -274,4 +277,18 @@ test("page audits that throw leave no marker either", async () => {
   const summary = await runMonitorAudit(f.ports, NOW, { budgetMs: 60_000, maxAudits: 10, clock: () => 0 });
   assert.equal(summary.skippedPages, 1);
   assert.deepEqual(f.markers, []);
+});
+
+test("the marker is not written when saving the findings fails, so the project is retried", async () => {
+  const f = fake([scope("p1")], { pages: { [SITE]: { url: SITE, findings: [titleIssue] } }, failUpsert: true });
+  const summary = await runMonitorAudit(f.ports, NOW, { budgetMs: 60_000, maxAudits: 10, clock: () => 0 });
+  assert.deepEqual(f.markers, []);
+  assert.equal(summary.errored, 1);
+});
+
+test("the marker is written once the first page's findings are saved", async () => {
+  const f = fake([scope("p1")], { pages: { [SITE]: { url: SITE, findings: [titleIssue] } } });
+  await runMonitorAudit(f.ports, NOW, { budgetMs: 60_000, maxAudits: 10, clock: () => 0 });
+  assert.deepEqual(f.markers, ["p1"]);
+  assert.equal(f.upserts.length, 1);
 });

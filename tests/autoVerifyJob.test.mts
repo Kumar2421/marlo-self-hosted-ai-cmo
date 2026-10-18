@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  AUTO_VERIFY_DELAY_MS, AUTO_VERIFY_MAX_ATTEMPTS, STILL_DETECTED_NOTE, autoVerifyDocType, latestImplementedAt, runAutoVerify,
+  AUTO_VERIFY_DELAY_MS, AUTO_VERIFY_MAX_ATTEMPTS, AUTO_VERIFY_MAX_SKIPS, STILL_DETECTED_NOTE, autoVerifyDocType, latestImplementedAt, runAutoVerify,
   type AutoVerifyMarker, type AutoVerifyPorts, type FixedFinding,
 } from "../lib/domain/findings/autoVerifyJob.ts";
 import type { Finding } from "../lib/domain/findings/findingTypes.ts";
@@ -133,7 +133,34 @@ test("a check that cannot run is skipped and leaves the finding fixed", async ()
   const summary = await runAutoVerify(f.ports, NOW, budget);
   assert.deepEqual(f.transitions, []);
   assert.equal(summary.skipped, 1);
-  assert.equal(f.markers.get("p1")?.get("a")?.attempts, 1);
+  // A skip does not use one of the decided attempts; it stamps the check time and counts a skip.
+  assert.equal(f.markers.get("p1")?.get("a")?.attempts, 0);
+  assert.equal(f.markers.get("p1")?.get("a")?.skips, 1);
+  assert.equal(f.markers.get("p1")?.get("a")?.lastCheckedAt, NOW.toISOString());
+});
+
+test("three skipped checks do not exhaust the attempts: a later decided check still happens", async () => {
+  const f = fake([fixedItem("a")], { audit: () => new Error("network") });
+  f.markers.set("p1", new Map([["a", { attempts: 0, skips: AUTO_VERIFY_MAX_ATTEMPTS + 1, lastCheckedAt: iso(DAY) }]]));
+  const summary = await runAutoVerify(f.ports, NOW, budget);
+  assert.deepEqual(f.checked, ["a"]);
+  assert.equal(summary.skipped, 1);
+  assert.equal(f.markers.get("p1")?.get("a")?.attempts, 0);
+  assert.equal(f.markers.get("p1")?.get("a")?.skips, AUTO_VERIFY_MAX_ATTEMPTS + 2);
+});
+
+test("a decided outcome uses an attempt and keeps the skip count", async () => {
+  const f = fake([fixedItem("a")], { audit: () => [stillThere] });
+  f.markers.set("p1", new Map([["a", { attempts: 1, skips: 2, lastCheckedAt: iso(DAY) }]]));
+  await runAutoVerify(f.ports, NOW, budget);
+  assert.deepEqual(f.markers.get("p1")?.get("a"), { attempts: 2, skips: 2, lastCheckedAt: NOW.toISOString() });
+});
+
+test("skip cap: a finding that is skipped over and over is eventually left alone", async () => {
+  const f = fake([fixedItem("a")], { audit: () => new Error("network") });
+  f.markers.set("p1", new Map([["a", { attempts: 0, skips: AUTO_VERIFY_MAX_SKIPS, lastCheckedAt: iso(3 * DAY) }]]));
+  await runAutoVerify(f.ports, NOW, budget);
+  assert.deepEqual(f.checked, []);
 });
 
 test("attempt cap: a finding is not checked after three attempts", async () => {
@@ -150,7 +177,7 @@ test("idempotent marker: a rerun inside the recheck gap does not check again", a
   const again = await runAutoVerify(f.ports, NOW, budget);
   assert.equal(f.checked.length, 1);
   assert.equal(again.skipped, 0);
-  assert.equal(f.markers.get("p1")?.get("a")?.attempts, 1);
+  assert.equal(f.markers.get("p1")?.get("a")?.skips, 1);
 });
 
 test("a finding that was verified is not picked up again (status is the source of truth)", async () => {
@@ -217,8 +244,9 @@ test("a hung audit is cut off at the timeout: the phase returns within budget an
   assert.ok(elapsed < 400 + 1000, `returned in ${elapsed} ms`);
   assert.equal(summary.skipped, 1);
   assert.deepEqual(f.transitions, []);
-  // A timeout counts as one attempt, so a permanently slow page stops after the attempt cap.
-  assert.equal(f.markers.get("p1")?.get("a")?.attempts, 1);
+  // A timeout is a skip: it does not use a decided attempt, but it counts against the skip cap.
+  assert.equal(f.markers.get("p1")?.get("a")?.attempts, 0);
+  assert.equal(f.markers.get("p1")?.get("a")?.skips, 1);
 });
 
 test("budget guard: no audit starts without the minimum budget, and no marker is written", async () => {

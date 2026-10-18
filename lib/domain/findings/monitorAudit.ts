@@ -131,12 +131,6 @@ export async function runMonitorAudit(ports: MonitorPorts, now: Date, budget: Mo
           continue;
         }
         summary.audited += 1;
-        // The marker is written only once a page audit has completed. A project whose
-        // audits all timed out or failed gets none, so it is retried on the next run.
-        if (!markerWritten) {
-          await ports.writeMarker(scope, now);
-          markerWritten = true;
-        }
         // PageSpeed-only issues never come from a crawl audit: never create or touch them here.
         const audit: AuditLike = { url: timed.value.url, findings: timed.value.findings.filter((f) => !needsPageSpeed({ category: f.category, entityId: f.issueId })) };
 
@@ -154,6 +148,12 @@ export async function runMonitorAudit(ports: MonitorPorts, now: Date, budget: Mo
           else if (previous.status === "verified") summary.regressions += 1;
         }
         await saveAuditFindings((input) => ports.upsert(scope, input), inputs);
+        // The marker is written only once a page's findings are saved. A project whose audits all
+        // timed out or failed, or whose saves threw, gets none, so it is retried on the next run.
+        if (!markerWritten) {
+          await ports.writeMarker(scope, now);
+          markerWritten = true;
+        }
       }
       summary.monitored += 1;
     },

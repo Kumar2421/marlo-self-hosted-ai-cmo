@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isAutoVerifiable, needsPageSpeed, verifyFinding, type FreshAuditFinding, type VerifyCheckPorts } from "../lib/domain/findings/verifyFinding.ts";
+import { isAutoVerifiable, needsPageSpeed, redirectedAway, verifyFinding, type FreshAuditFinding, type VerifyCheckPorts } from "../lib/domain/findings/verifyFinding.ts";
 import { autoVerificationLine } from "../lib/domain/findings/evidenceDisplay.ts";
 import type { ReadinessCheck } from "../lib/domain/geo/readiness.ts";
 
@@ -170,4 +170,27 @@ test("isAutoVerifiable agrees with verifyFinding: every finding it rejects is sk
   }
   assert.equal(isAutoVerifiable(samples[0]), true);
   assert.equal(isAutoVerifiable(samples[5]), true);
+});
+
+test("a page that redirects to another origin or path is skipped, never verified", async () => {
+  for (const finalUrl of ["https://other.example.org/", "https://example.com/login", "https://www.example.com/"]) {
+    const result = await verifyFinding({ ...ports(), runSeoAudit: async () => ({ findings: [], finalUrl }) }, seoFinding, NOW);
+    assert.equal(result.outcome, "skipped", finalUrl);
+  }
+});
+
+test("a final URL that matches the finding's page (trailing slash, query, hash, host case) is checked normally", async () => {
+  for (const finalUrl of ["https://example.com", "https://EXAMPLE.com/?a=1#x", "https://example.com/"]) {
+    const result = await verifyFinding({ ...ports(), runSeoAudit: async () => ({ findings: [], finalUrl }) }, seoFinding, NOW);
+    assert.equal(result.outcome, "verified", finalUrl);
+  }
+  const failed = await verifyFinding({ ...ports(), runSeoAudit: async () => ({ findings: [stillThere], finalUrl: "https://example.com/" }) }, seoFinding, NOW);
+  assert.equal(failed.outcome, "failed");
+});
+
+test("redirectedAway: no final URL or an unparseable one is not a redirect", () => {
+  assert.equal(redirectedAway("https://example.com/a", undefined), false);
+  assert.equal(redirectedAway("https://example.com/a", "not a url"), false);
+  assert.equal(redirectedAway("https://example.com/a/", "https://example.com/a"), false);
+  assert.equal(redirectedAway("https://example.com/a", "https://example.com/b"), true);
 });

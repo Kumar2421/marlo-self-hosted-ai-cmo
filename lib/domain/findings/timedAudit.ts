@@ -5,9 +5,9 @@
  */
 
 /** Longest a single background audit may take. */
-export const BACKGROUND_AUDIT_TIMEOUT_MS = 9_000;
+export const BACKGROUND_AUDIT_TIMEOUT_MS = 5_000;
 /** A background audit only starts when at least this much phase budget is left. */
-export const MIN_AUDIT_BUDGET_MS = 9_000;
+export const MIN_AUDIT_BUDGET_MS = 5_000;
 
 export type TimedResult<T> = { ok: true; value: T } | { ok: false; reason: "timeout" | "error" };
 

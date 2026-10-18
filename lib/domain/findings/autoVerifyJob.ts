@@ -12,13 +12,22 @@ import { BACKGROUND_AUDIT_TIMEOUT_MS, MIN_AUDIT_BUDGET_MS, timedCall } from "./t
  */
 
 export const AUTO_VERIFY_DELAY_MS = 24 * 60 * 60 * 1000;
+/** Decided checks (verified or failed) a finding gets. A skipped check does not count. */
 export const AUTO_VERIFY_MAX_ATTEMPTS = 3;
+/** Skipped checks (could not run, timed out, redirected) before a finding is left to a manual re-check. */
+export const AUTO_VERIFY_MAX_SKIPS = 10;
 /** A finding checked this recently is not checked again (keeps reruns idempotent). */
 export const AUTO_VERIFY_RECHECK_GAP_MS = 12 * 60 * 60 * 1000;
 export const AUTO_VERIFY_MARKER_PREFIX = "auto_verify:";
 export const STILL_DETECTED_NOTE = "Still detected after the change";
 
-export type AutoVerifyMarker = { attempts: number; lastCheckedAt: string };
+export type AutoVerifyMarker = {
+  /** Decided checks so far. */
+  attempts: number;
+  lastCheckedAt: string;
+  /** Skipped checks so far (absent in older markers). */
+  skips?: number;
+};
 
 export type ProjectScope = { userId: string; projectId: string };
 
@@ -81,7 +90,7 @@ export function autoVerifyEvidence(
   return { ...evidence, autoVerify };
 }
 
-type Eligible = { item: FixedFinding; attempts: number; lastCheckedAt: string | null };
+type Eligible = { item: FixedFinding; attempts: number; skips: number; lastCheckedAt: string | null };
 
 export async function runAutoVerify(ports: AutoVerifyPorts, now: Date, budget: JobBudget): Promise<AutoVerifySummary> {
   const summary: AutoVerifySummary = { verified: 0, failed: 0, skipped: 0, budgetSkipped: 0, errored: 0 };
@@ -115,10 +124,11 @@ export async function runAutoVerify(ports: AutoVerifyPorts, now: Date, budget: J
     }
     const marker = markers.get(item.finding.id);
     const attempts = marker?.attempts ?? 0;
-    if (attempts >= AUTO_VERIFY_MAX_ATTEMPTS) continue;
+    const skips = marker?.skips ?? 0;
+    if (attempts >= AUTO_VERIFY_MAX_ATTEMPTS || skips >= AUTO_VERIFY_MAX_SKIPS) continue;
     const lastCheckedAt = marker?.lastCheckedAt ?? null;
     if (lastCheckedAt !== null && nowMs - Date.parse(lastCheckedAt) < AUTO_VERIFY_RECHECK_GAP_MS) continue;
-    eligible.push({ item, attempts, lastCheckedAt });
+    eligible.push({ item, attempts, skips, lastCheckedAt });
   }
 
   // Fair rotation: never-checked first, then the oldest check.
@@ -138,27 +148,29 @@ export async function runAutoVerify(ports: AutoVerifyPorts, now: Date, budget: J
 
   const run = await runWithBudget(
     picked,
-    async ({ item, attempts }) => {
+    async ({ item, attempts, skips }) => {
       // Stop the phase before an audit that cannot finish inside the budget.
       const left = deadline - clock();
       if (left < minAuditMs) {
         summary.budgetSkipped += 1;
         return;
       }
-      // Hard timeout per audit: a timeout is a skip (retried later), and it uses one attempt.
+      // Hard timeout per audit: a timeout is a skip: retried later, and it does not use a decided attempt.
       const timed = await timedCall(() => verifyFinding(ports.checkPorts(item), item.finding, now), Math.min(auditTimeoutMs, left));
       const result: VerifyResult = timed.ok
         ? timed.value
         : { outcome: "skipped", reason: "The check ran out of time. It will be retried.", checkedAt: now.toISOString() };
       const decided = result.outcome === "verified" ? "verified" : result.outcome === "failed" ? "failed" : null;
+      // Only decided outcomes use an attempt; a skip stamps the check time and counts against the skip cap.
       if (decided === null) {
         summary.skipped += 1;
+        await ports.writeMarker(item, item.finding.id, { attempts, skips: skips + 1, lastCheckedAt: now.toISOString() });
       } else {
         await ports.transition(item, decided);
         await ports.saveEvidence(item, autoVerifyEvidence(item.finding.evidence, result));
         summary[decided] += 1;
+        await ports.writeMarker(item, item.finding.id, { attempts: attempts + 1, skips, lastCheckedAt: now.toISOString() });
       }
-      await ports.writeMarker(item, item.finding.id, { attempts: attempts + 1, lastCheckedAt: now.toISOString() });
     },
     { budgetMs: budget.budgetMs, now: clock },
   );

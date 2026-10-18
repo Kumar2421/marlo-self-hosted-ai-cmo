@@ -3,6 +3,9 @@ import { SEOAgent } from "../seo/SEOAgent.ts";
 import { checkReadiness } from "../geo/geoService.ts";
 import { listProjectFindings, mapFinding, updateFindingStatus, upsertFinding } from "./findingStoreSupabase.ts";
 import { listFixedFindingRows } from "./fixedFindingRows.ts";
+import { MONITOR_MARKER, monitorTargetsPlatform } from "./monitorTargets.ts";
+
+export { MONITOR_MARKER, monitorTargetsPlatform };
 import { AUTO_VERIFY_MARKER_PREFIX, autoVerifyDocType, runAutoVerify, type AutoVerifyMarker, type AutoVerifyPorts, type FixedFinding, type ProjectScope } from "./autoVerifyJob.ts";
 import { MONITOR_MANY_PROJECTS_MIN_MS, runMonitorAudit, type MonitorPorts, type MonitorScope } from "./monitorAudit.ts";
 import type { VerifyCheckPorts } from "./verifyFinding.ts";
@@ -15,7 +18,6 @@ import type { AuditFindingInput } from "./auditFindings.ts";
  * pattern as the social and proposal jobs. Every query is scoped explicitly.
  */
 
-export const MONITOR_MARKER = "monitor_audit";
 const ID_CHUNK = 200;
 
 type ServiceDb = SupabaseClient;
@@ -32,7 +34,10 @@ function backgroundSeoAgent(): SEOAgent {
 /** Fresh-check ports for one finding: the real SEO audit and GEO readiness checks. */
 export function platformCheckPorts(): VerifyCheckPorts {
   return {
-    runSeoAudit: async (url) => (await backgroundSeoAgent().audit(url)).findings,
+    runSeoAudit: async (url) => {
+      const audit = await backgroundSeoAgent().audit(url);
+      return { findings: audit.findings, finalUrl: audit.finalUrl };
+    },
     runGeoReadiness: async (url) => (await checkReadiness(new URL(url).hostname)).checks,
   };
 }
@@ -75,7 +80,11 @@ async function readMarkers(db: ServiceDb, scope: ProjectScope): Promise<Map<stri
     try {
       const parsed = JSON.parse(String(row.content ?? "{}")) as Partial<AutoVerifyMarker>;
       if (typeof parsed.attempts === "number" && typeof parsed.lastCheckedAt === "string") {
-        markers.set(String(row.doc_type).slice(AUTO_VERIFY_MARKER_PREFIX.length), { attempts: parsed.attempts, lastCheckedAt: parsed.lastCheckedAt });
+        markers.set(String(row.doc_type).slice(AUTO_VERIFY_MARKER_PREFIX.length), {
+          attempts: parsed.attempts,
+          lastCheckedAt: parsed.lastCheckedAt,
+          skips: typeof parsed.skips === "number" ? parsed.skips : 0,
+        });
       }
     } catch {
       // A malformed marker counts as no marker.
@@ -107,21 +116,6 @@ export function autoVerifyPortsPlatform(db: ServiceDb, now: Date): AutoVerifyPor
       if (error) throw new Error(error.message);
     },
   };
-}
-
-/** Projects with a site URL, with the time of their last monitor pass (the marker row's updated_at). */
-export async function monitorTargetsPlatform(db: ServiceDb): Promise<MonitorScope[]> {
-  const { data: projects, error } = await db.from("projects").select("id, owner_id, url").not("url", "is", null);
-  if (error) throw new Error(error.message);
-  const { data: markers, error: markerError } = await db.from("project_documents").select("project_id, updated_at").eq("doc_type", MONITOR_MARKER);
-  if (markerError) throw new Error(markerError.message);
-  const lastRun = new Map((markers ?? []).map((m) => [String(m.project_id), String(m.updated_at)]));
-  return (projects ?? []).map((p) => ({
-    userId: String(p.owner_id),
-    projectId: String(p.id),
-    siteUrl: String(p.url),
-    lastRunAt: lastRun.get(String(p.id)) ?? null,
-  }));
 }
 
 export function monitorPortsPlatform(db: ServiceDb, now: Date): MonitorPorts {

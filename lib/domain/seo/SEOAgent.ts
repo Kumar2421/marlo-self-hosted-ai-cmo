@@ -25,6 +25,8 @@ export type Finding = {
 
 export type SEOAuditPayload = {
   url: string;
+  /** Where the crawl ended up after redirects, when known. */
+  finalUrl?: string;
   meta: {
     title: string;
     description: string;
@@ -600,6 +602,7 @@ export class SEOAgent {
 
     return {
       url,
+      finalUrl: crawl.finalUrl,
       meta: { title, description, canonical, robots, indexable },
       headings,
       openGraph,
