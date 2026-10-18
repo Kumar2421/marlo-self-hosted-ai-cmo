@@ -25,6 +25,22 @@ export function useGithubStatus(enabled = true, withRepos = false) {
   });
 }
 
+/** Saves the one repository this project's fixes go to. Shared by the settings card and the finding's inline picker. */
+export function useSaveGithubRepo() {
+  const { project } = useProject();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (repo: string) =>
+      fetchJson<{ repoFullName: string }>("/api/github/app/repo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repo }),
+      }),
+    // Invalidates every github-status variant (basic and repo list) for this project.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.githubStatus(project?.id) }),
+  });
+}
+
 /** Prepare (preview only, nothing is written) and approve (opens the PR) for one finding. */
 export function useCodeFix(findingId: string) {
   const { project } = useProject();

@@ -7,7 +7,7 @@ import { compareFindingsByPriority } from "./findingPriority";
  * names/shapes, same table layout, just Postgres + an explicit userId for
  * RLS-equivalent scoping via the service-role client. */
 
-type FindingRow = {
+export type FindingRow = {
   id: string;
   project_id: string;
   source: string;
@@ -24,7 +24,7 @@ type FindingRow = {
   resolved_at: string | null;
 };
 
-function mapFinding(row: FindingRow): Finding {
+export function mapFinding(row: FindingRow): Finding {
   return {
     id: row.id,
     projectId: row.project_id,

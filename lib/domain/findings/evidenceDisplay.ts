@@ -13,6 +13,29 @@
 
 export type EvidenceRow = { key: string; label: string; value: unknown };
 
+/** Evidence keys shown elsewhere (the title, the callout, the auto-verification line), not as raw rows. */
+const HIDDEN_AUDIT_EVIDENCE_KEYS = new Set(["label", "whyItMatters", "autoVerify", "regression"]);
+
+/**
+ * The auto-verification line for the detail panel, from the evidence the
+ * verify and monitor jobs wrote. Null when the finding was never checked
+ * automatically. Dates are the UTC day, so the text does not shift by timezone.
+ */
+export function autoVerificationLine(evidence: Record<string, unknown>): { tone: "verified" | "failed" | "reappeared"; text: string } | null {
+  const regression = evidence.regression;
+  if (typeof regression === "string" && regression.trim()) return { tone: "reappeared", text: regression.trim() };
+
+  const auto = evidence.autoVerify as { outcome?: unknown; checkedAt?: unknown; reason?: unknown } | undefined;
+  if (!auto || typeof auto.checkedAt !== "string") return null;
+  const day = auto.checkedAt.slice(0, 10);
+  if (auto.outcome === "verified") return { tone: "verified", text: `Verified automatically on ${day}` };
+  if (auto.outcome === "failed") {
+    const reason = typeof auto.reason === "string" && auto.reason.trim() ? `: ${auto.reason.trim()}` : "";
+    return { tone: "failed", text: `Still detected on ${day}${reason}` };
+  }
+  return null;
+}
+
 const OPPORTUNITY_LABEL: Record<string, string> = {
   ranking: "Close to page one",
   ctr: "Ranks well, few click",
@@ -31,7 +54,7 @@ export function evidenceRowsForFinding(finding: { source: string; evidence: Reco
     // `label` duplicates the finding's own title shown elsewhere in the
     // panel -- both excluded here so this list is just the raw evidence.
     return Object.entries(finding.evidence)
-      .filter(([key]) => key !== "label" && key !== "whyItMatters")
+      .filter(([key]) => !HIDDEN_AUDIT_EVIDENCE_KEYS.has(key))
       .map(([key, value]) => ({ key, label: humanizeKey(key), value }));
   }
 
