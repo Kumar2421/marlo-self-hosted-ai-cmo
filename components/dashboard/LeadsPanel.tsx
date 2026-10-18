@@ -608,7 +608,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
       </div>
 
       <div className="flex shrink-0 items-center justify-between border-t border-gray-200 px-4 py-2.5 text-[11px] text-gray-400">
-        <span />
+        <span>Guessed emails are unverified guesses, not confirmed addresses.</span>
         <div className="flex items-center gap-3">
           {gmail.canRead && (
             <button
