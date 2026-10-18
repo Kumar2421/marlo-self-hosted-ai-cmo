@@ -10,6 +10,7 @@ import {
   type RateLimiter,
   type RpcClient,
 } from "./rateLimit.ts";
+import { memoryKeyedGate, supabaseKeyedGate, type KeyedGate } from "./authedGuard.ts";
 
 /**
  * Picks the limiter and gate for this deployment. Hosted (platform mode) always uses the
@@ -43,4 +44,15 @@ export function publicConcurrencyGate(): ConcurrencyGate {
     return memoryGate;
   }
   return supabaseConcurrencyGate(hostedClient());
+}
+
+let memoryKeyed: KeyedGate | null = null;
+
+/** Per-key gate for signed-in crawl guards (one running job per project). Hosted uses Supabase, self-host memory. */
+export function authedCrawlGate(): KeyedGate {
+  if (!FEATURES.PLATFORM_MODE) {
+    memoryKeyed ??= memoryKeyedGate();
+    return memoryKeyed;
+  }
+  return supabaseKeyedGate(hostedClient());
 }
