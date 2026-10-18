@@ -12,7 +12,20 @@ export const LINK_EXPIRED_MESSAGE = "That link has expired. Request a new code a
 // resetPasswordForEmail succeeds for unknown emails by design, so the notice
 // must not claim that a code was sent to this specific address.
 export function resetCodeNotice(email: string): string {
-  return `If an account exists for ${email}, we sent a 6-digit code.`;
+  return `If an account exists for ${email}, we sent a code.`;
+}
+
+// Supabase's email OTP length is a project setting (6 by default, up to 10). Accept any length in that
+// range instead of hard-coding one, so a dashboard change can't silently lock users out.
+export const OTP_MIN_LENGTH = 6;
+export const OTP_MAX_LENGTH = 10;
+
+export function cleanOtp(raw: string): string {
+  return raw.replace(/\D/g, "").slice(0, OTP_MAX_LENGTH);
+}
+
+export function isOtpComplete(code: string): boolean {
+  return /^\d+$/.test(code) && code.length >= OTP_MIN_LENGTH && code.length <= OTP_MAX_LENGTH;
 }
 
 export type AuthUserLike = { identities?: unknown[] | null } | null | undefined;

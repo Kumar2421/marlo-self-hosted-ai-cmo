@@ -9,6 +9,8 @@ import {
   friendlyEmailSendError,
   isRepeatedSignup,
   resetCodeNotice,
+  cleanOtp,
+  isOtpComplete,
 } from "../lib/domain/auth/authMessages.ts";
 
 test("signUp for an already-registered email has an empty identities array", () => {
@@ -88,6 +90,17 @@ test("other email errors pass through unchanged", () => {
 test("reset notice is generic and does not confirm the account exists", () => {
   assert.equal(
     resetCodeNotice("someone@example.com"),
-    "If an account exists for someone@example.com, we sent a 6-digit code.",
+    "If an account exists for someone@example.com, we sent a code.",
   );
+});
+
+test("otp: any 6-10 digit numeric code is accepted, anything else is not", () => {
+  for (const code of ["123456", "12345678", "1234567890"]) assert.equal(isOtpComplete(code), true, code);
+  for (const code of ["", "12345", "12345678901", "12ab5678", "123 456"]) assert.equal(isOtpComplete(code), false, code);
+});
+
+test("otp: input is stripped to digits and capped at 10", () => {
+  assert.equal(cleanOtp("48 29-16"), "482916");
+  assert.equal(cleanOtp("12345678"), "12345678");
+  assert.equal(cleanOtp("123456789012345"), "1234567890");
 });

@@ -13,6 +13,9 @@ import {
   friendlyEmailSendError,
   isRepeatedSignup,
   resetCodeNotice,
+  cleanOtp,
+  OTP_MAX_LENGTH,
+  isOtpComplete,
   REPEATED_SIGNUP_MESSAGE,
 } from "@/lib/domain/auth/authMessages";
 import {
@@ -211,7 +214,7 @@ export default function LoginPage() {
   };
 
   // Email OTP verification — the same confirmation token Supabase always
-  // generates on signUp(), just entered as a 6-digit code instead of
+  // generates on signUp(), just entered as a numeric code instead of
   // followed as a link. Requires the "Confirm signup" email template in
   // Supabase Dashboard -> Authentication -> Email Templates to include
   // {{ .Token }} -- otherwise the email still only shows the old link and
@@ -333,7 +336,7 @@ export default function LoginPage() {
                   {mode === "verify-signup" ? "Verify your email" : "Reset your password"}
                 </h1>
                 <p className="mt-1.5 text-sm leading-snug text-black/60">
-                  {mode === "verify-signup" ? `Enter the 6-digit code we sent to ${email}.` : resetCodeNotice(email)}
+                  {mode === "verify-signup" ? `Enter the code we sent to ${email}.` : resetCodeNotice(email)}
                 </p>
 
                 <form
@@ -342,7 +345,7 @@ export default function LoginPage() {
                 >
                   <div className="flex flex-col gap-1.5">
                     <label htmlFor="otp" className="text-[13px] font-medium text-gray-700">
-                      6-digit code
+                      Verification code
                     </label>
                     <div className="flex h-10 items-center gap-2 rounded-lg border border-gray-200 px-3 focus-within:border-gray-900">
                       <KeyRound className="h-4 w-4 shrink-0 text-gray-400" />
@@ -350,10 +353,10 @@ export default function LoginPage() {
                         id="otp"
                         inputMode="numeric"
                         autoComplete="one-time-code"
-                        maxLength={6}
+                        maxLength={OTP_MAX_LENGTH}
                         value={otpCode}
-                        onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
-                        placeholder="123456"
+                        onChange={(e) => setOtpCode(cleanOtp(e.target.value))}
+                        placeholder="Enter code"
                         required
                         className="h-full w-full text-sm tracking-[0.3em] outline-none"
                       />
@@ -386,7 +389,7 @@ export default function LoginPage() {
 
                   <button
                     type="submit"
-                    disabled={isLoading}
+                    disabled={isLoading || !isOtpComplete(otpCode)}
                     className="mt-1 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#111111] text-sm font-medium text-white hover:bg-black disabled:opacity-50"
                   >
                     {isLoading ? <DotLottieReact src="/ghost-loader.lottie" autoplay loop className="h-4 w-4" /> : null}
@@ -411,7 +414,7 @@ export default function LoginPage() {
               <>
                 <h1 className="text-2xl font-medium tracking-[-0.04em] sm:text-3xl">Reset your password</h1>
                 <p className="mt-1.5 text-sm leading-snug text-black/60">
-                  Enter your email and we&apos;ll send you a 6-digit code.
+                  Enter your email and we&apos;ll send you a code.
                 </p>
 
                 <form className="mt-5 flex flex-col gap-3.5" onSubmit={handleRequestPasswordReset}>
