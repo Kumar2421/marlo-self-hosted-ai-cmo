@@ -6,7 +6,7 @@ import { Mail, Lock, KeyRound, ArrowLeft } from "lucide-react";
 import GhostLoader from "@/components/shared/GhostLoader";
 import { createClient } from "@/utils/supabase/client";
 import { FEATURES } from "@/lib/features";
-import { GOOGLE_ANALYTICS_SCOPES } from "@/lib/googleOAuthScopes";
+import { scopesFor } from "@/lib/googleOAuthScopes";
 import type { AuditFunnelPayload } from "@/lib/analytics/auditFunnel";
 import {
   friendlyAuthError,
@@ -313,7 +313,7 @@ export default function LoginPage() {
       options: {
         redirectTo: `${window.location.origin}/api/auth/callback`,
         ...(provider === "google" && FEATURES.PLATFORM_MODE
-          ? { scopes: GOOGLE_ANALYTICS_SCOPES, queryParams: { access_type: "offline", prompt: "consent" } }
+          ? { scopes: scopesFor("login") }
           : {}),
       },
     });

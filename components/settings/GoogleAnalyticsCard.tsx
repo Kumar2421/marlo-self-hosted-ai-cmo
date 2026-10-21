@@ -11,7 +11,7 @@ import BrandIcon from "@/components/settings/BrandIcon";
 import { useProject } from "@/lib/project-store";
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/client";
-import { GOOGLE_ANALYTICS_SCOPES } from "@/lib/googleOAuthScopes";
+import { googleOAuthQueryParams, scopesFor } from "@/lib/googleOAuthScopes";
 
 type Resource = { resourceId: string; resourceName: string; selected: boolean };
 type IntegrationResources = {
@@ -68,8 +68,8 @@ export default function GoogleAnalyticsCard() {
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/api/auth/callback?next=${CREDENTIALS_PATH}`,
-        scopes: GOOGLE_ANALYTICS_SCOPES,
-        queryParams: { access_type: "offline", prompt: "consent" },
+        scopes: scopesFor("google-data"),
+        queryParams: googleOAuthQueryParams("google-data"),
       },
     });
     if (error) {
