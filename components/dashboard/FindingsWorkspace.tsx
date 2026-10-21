@@ -39,7 +39,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: "ba
  * detail (evidence, what to do, tracked actions, progress) opens in a
  * slide-over so it has room, with the main actions pinned at the bottom.
  */
-export default function FindingsWorkspace() {
+export default function FindingsWorkspace({ onRunAudit, auditRunning = false }: { onRunAudit?: () => void; auditRunning?: boolean }) {
   const { list, update } = useFindings();
   const { show } = useToast();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -48,6 +48,17 @@ export default function FindingsWorkspace() {
   const findings = useMemo(() => list.data ?? [], [list.data]);
   const counts = useMemo(() => countFindings(findings), [findings]);
   const selected = findings.find((f) => f.id === selectedId) ?? null;
+
+  // Skeletons alone say nothing; only add words once a load is clearly slow, so quick loads don't flash text.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!list.isPending) return;
+    const timer = setTimeout(() => setSlow(true), 1500);
+    return () => {
+      clearTimeout(timer);
+      setSlow(false);
+    };
+  }, [list.isPending]);
 
   // Coming back from GitHub (?finding=<id>, ?github=connected or ?github_error=...) reopens the finding and says what happened.
   useEffect(() => {
@@ -91,6 +102,7 @@ export default function FindingsWorkspace() {
   if (list.isPending) {
     return (
       <div className="space-y-4" aria-busy="true">
+        {slow && <p className="text-[12px] text-gray-500">Checking your site...</p>}
         <SkeletonStats count={4} />
         <SkeletonCard rows={3} />
         <SkeletonCard rows={3} />
@@ -100,10 +112,16 @@ export default function FindingsWorkspace() {
 
   if (list.isError) {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-        {list.error.message}
-        <button type="button" onClick={() => list.refetch()} className="ml-3 font-medium underline">
-          Retry
+      <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
+        <p className="text-[13px] font-medium">Couldn&apos;t load your findings</p>
+        <p className="mt-1 text-[12px]">{list.error.message}</p>
+        <button
+          type="button"
+          onClick={() => list.refetch()}
+          disabled={list.isFetching}
+          className="mt-3 rounded-lg bg-[#111111] px-3 py-2 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50"
+        >
+          {list.isFetching ? "Retrying..." : "Retry"}
         </button>
       </div>
     );
@@ -143,6 +161,17 @@ export default function FindingsWorkspace() {
           <p className="mt-1 text-[12px] text-gray-500">
             Run an SEO audit first. Detected on-page and Lighthouse issues appear here with evidence and recommendations.
           </p>
+          {onRunAudit && (
+            <button
+              type="button"
+              onClick={onRunAudit}
+              disabled={auditRunning}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-[#111111] px-3 py-2 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50"
+            >
+              {auditRunning && <Loader2 size={13} className="animate-spin" />}
+              {auditRunning ? "Running audit..." : "Run an SEO audit"}
+            </button>
+          )}
         </div>
       ) : (
         <ul className="overflow-hidden rounded-xl border border-gray-200 bg-white">
