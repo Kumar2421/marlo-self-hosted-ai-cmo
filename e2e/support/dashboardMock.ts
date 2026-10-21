@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { BrowserContext, Page, Route } from "@playwright/test";
 
 /** Same default as playwright.config.ts; the cookie name is derived from this host. */
@@ -97,6 +99,35 @@ const LEAD_PROFILE = {
   confirmedAt: NOW,
 };
 
+const GEO_READINESS = {
+  method: "readiness",
+  domain: "acme.example.test",
+  score: 70,
+  checks: [
+    { id: "llms-txt", label: "llms.txt file", weight: 10, status: "pass", detail: "Your site has an llms.txt file.", fix: "" },
+    { id: "robots-ai", label: "AI crawlers allowed", weight: 20, status: "fail", detail: "", fix: "Allow GPTBot and ClaudeBot in robots.txt." },
+  ],
+};
+
+const GEO_OVERVIEW = {
+  project: { name: PROJECT.name, domain: "acme.example.test" },
+  prompts: [],
+  capabilities: { geminiAvailable: false, simulatedAvailable: false, geminiDailyCap: 0, geminiUsedToday: 0, simulatedDailyCap: 0, simulatedUsedToday: 0 },
+  lastRunAt: null,
+};
+
+const NOTIFICATION_PREFS = {
+  prefs: {
+    categories: { digest: "weekly", outcomes: "instant", credits: "instant", approvals: "daily", integrations: "instant", content: "daily" },
+    paused: false,
+    timezone: null,
+    quietHours: null,
+  },
+  unsubscribedAll: false,
+  emailConfigured: false,
+  email: null,
+};
+
 function json(route: Route, body: unknown, status = 200) {
   return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 }
@@ -126,6 +157,8 @@ export async function mockDashboardApi(page: Page) {
   await page.route("**/api/**", (route) => {
     const req = route.request();
     const path = new URL(req.url()).pathname;
+    // The page saves its timezone with a PUT and writes the answer straight into its cache.
+    if (path === "/api/notifications/preferences") return json(route, NOTIFICATION_PREFS);
     if (req.method() !== "GET") return json(route, {});
     if (path === "/api/project") return json(route, { project: PROJECT, projects: [PROJECT] });
     if (path === "/api/project/data") {
@@ -140,7 +173,26 @@ export async function mockDashboardApi(page: Page) {
     if (path === "/api/agents/leads/profile") return json(route, { profile: LEAD_PROFILE, suggestion: null });
     if (path === "/api/agents/seo/audit") return json(route, { payload: SEO_AUDIT });
     if (path === "/api/agents/analytics/findings") return json(route, { findings: FINDINGS });
+    if (path === "/api/geo/readiness") return json(route, GEO_READINESS);
+    if (path === "/api/geo/referral") return json(route, { notConnected: true });
+    if (path === "/api/geo/overview") return json(route, GEO_OVERVIEW);
+    if (path === "/api/geo/history") return json(route, { runs: [] });
+    if (/^\/api\/agents\/(x|linkedin|reddit)\/drafts$/.test(path)) return json(route, { drafts: [] });
     if (path === "/api/credits") return json(route, { balance: null, billingEnabled: false });
     return json(route, {});
   });
+}
+
+/**
+ * The loading animation fetches its WebAssembly player from jsdelivr at runtime. Serve the
+ * copy from node_modules (same pinned version) so timing, vitals and screenshots do not
+ * depend on the network. Without the local file the request is left alone.
+ */
+export async function serveLottieWasmLocally(page: Page) {
+  const file = join(process.cwd(), "node_modules/@lottiefiles/dotlottie-web/dist/dotlottie-player.wasm");
+  if (!existsSync(file)) return;
+  const body = readFileSync(file);
+  await page.route("https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-web@*/dist/dotlottie-player.wasm", (route) =>
+    route.fulfill({ status: 200, contentType: "application/wasm", body, headers: { "access-control-allow-origin": "*" } }),
+  );
 }

@@ -24,6 +24,13 @@ const devServerEnv = {
 export default defineConfig({
   testDir: "./e2e",
   outputDir: "test-results",
+  // One baseline per snapshot, not per OS/browser: e2e/__screenshots__/<spec file>/<name>.png.
+  // The committed baselines come from Chromium on Windows; regenerate them on the CI OS
+  // (npx playwright test --update-snapshots) before turning E2E_VISUAL on there.
+  snapshotPathTemplate: "{testDir}/__screenshots__/{testFilePath}/{arg}{ext}",
+  expect: {
+    toHaveScreenshot: { maxDiffPixelRatio: 0.02, animations: "disabled", caret: "hide" },
+  },
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,

@@ -1,9 +1,16 @@
 name: E2E (manual)
 
-# Manual only. Not wired into CI (ci.yml is untouched). Runs the Playwright auth suite.
+# Manual only. Not wired into CI (ci.yml is untouched). Runs the Playwright suites in e2e/:
+# auth, dashboard layout, a11y (axe), vitals (CLS / long tasks / console) and visual snapshots.
 # Every Supabase auth call is mocked in the tests, so this never creates users or sends email.
 # Leave base_url empty to start the dev server in the runner. Set it to a deployed URL to run
 # against that app; tests that would reach real Supabase from the server are skipped there.
+#
+# Visual snapshots (e2e/visual.spec.ts) are OFF by default here: the committed baselines were
+# generated on Chromium/Windows and will not match ubuntu pixel for pixel. To get ubuntu
+# baselines, run this workflow once with visual=true and update_snapshots=true, download the
+# "visual-baselines" artifact, copy its e2e/__screenshots__ over the repo's, and commit. After
+# that, run with visual=true to compare against them.
 
 on:
   workflow_dispatch:
@@ -12,6 +19,16 @@ on:
         description: "Optional deployed URL to test instead of a local dev server (e.g. https://example.com)"
         required: false
         default: ""
+      visual:
+        description: "Run the visual snapshot suite (needs ubuntu baselines, see the comment above)"
+        type: boolean
+        required: false
+        default: false
+      update_snapshots:
+        description: "Regenerate visual baselines (npx playwright test --update-snapshots) and upload them as an artifact"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -35,7 +52,16 @@ jobs:
       - name: Run E2E suite
         env:
           E2E_BASE_URL: ${{ inputs.base_url }}
-        run: npm run e2e
+          E2E_VISUAL: ${{ (inputs.visual || inputs.update_snapshots) && '1' || '0' }}
+        run: npm run e2e -- ${{ inputs.update_snapshots && '--update-snapshots' || '' }}
+      - name: Upload regenerated visual baselines
+        if: ${{ inputs.update_snapshots }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines
+          path: e2e/__screenshots__/
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
