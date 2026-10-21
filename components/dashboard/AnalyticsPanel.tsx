@@ -147,6 +147,8 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
     },
   });
   const auditData = auditQuery.data ?? null;
+  const auditErrors = auditData?.findings?.filter((f) => f.severity === "Error").length ?? 0;
+  const auditWarnings = auditData?.findings?.filter((f) => f.severity === "Warning").length ?? 0;
   const auditLoading = auditQuery.isPending && open && Boolean(project?.url);
   const setAuditData = (value: SEOAuditPayload | null) => queryClient.setQueryData(auditKey, value);
 
@@ -377,6 +379,17 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
     }
   };
 
+  // Arrow/Home/End move between tabs (roving tabindex), per the WAI-ARIA tabs pattern.
+  const onTabKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(e.key)) return;
+    e.preventDefault();
+    const i = TABS.indexOf(tab);
+    const next =
+      e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + TABS.length) % TABS.length;
+    setTab(TABS[next]);
+    document.getElementById(`analytics-tab-${TABS[next]}`)?.focus();
+  };
+
   const handleRunAudit = async () => {
     if (!project?.url) {
       show("Add a website in the project switcher at the top first.");
@@ -453,9 +466,24 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
         </div>
       )}
 
-      <div className="okara-scroll flex shrink-0 gap-1 overflow-x-auto border-b border-gray-200 p-2">
+      {/* Equal-width tabs that fit the panel; below ~300px they scroll sideways with the scrollbar hidden. */}
+      <div
+        role="tablist"
+        aria-label="Analytics sections"
+        onKeyDown={onTabKeyDown}
+        className="flex shrink-0 gap-0.5 overflow-x-auto border-b border-gray-200 p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         {TABS.map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`shrink-0 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${tab === t ? "bg-gray-100 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}>
+          <button
+            key={t}
+            id={`analytics-tab-${t}`}
+            role="tab"
+            type="button"
+            aria-selected={tab === t}
+            tabIndex={tab === t ? 0 : -1}
+            onClick={() => setTab(t)}
+            className={`min-w-fit flex-1 truncate rounded-lg px-1.5 py-1.5 text-center text-[12px] font-medium transition-colors ${tab === t ? "bg-gray-100 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}
+          >
             {t}
           </button>
         ))}
@@ -463,7 +491,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
 
       <div className="okara-scroll flex-1 overflow-y-auto p-4">
         {tab === "Findings" ? (
-          <FindingsWorkspace />
+          <FindingsWorkspace onRunAudit={handleRunAudit} auditRunning={loading} />
         ) : tab === "Traffic" ? (
           <Section
             title="Traffic"
@@ -797,20 +825,27 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                   title="Audit overview"
                   subtitle="A simple view of what the audit found and where to start."
                 >
-                  <div className="grid grid-cols-3 gap-2">
-                    <button onClick={() => setTab("Findings")} className="rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
-                      <div className="text-[10px] uppercase tracking-wide text-gray-400">Findings</div>
-                      <div className="mt-1 text-lg font-semibold text-gray-900">{auditData.findings?.length ?? 0}</div>
+                  {(auditData.findings?.length ?? 0) > 0 && (
+                    <p className="mb-3 text-[12px] font-medium text-gray-800">
+                      {auditData.findings.length} {auditData.findings.length === 1 ? "finding needs" : "findings need"} review
+                      {auditErrors + auditWarnings > 0 &&
+                        `: ${[auditErrors > 0 && `${auditErrors} ${auditErrors === 1 ? "error" : "errors"}`, auditWarnings > 0 && `${auditWarnings} ${auditWarnings === 1 ? "warning" : "warnings"}`].filter(Boolean).join(", ")}`}
+                    </p>
+                  )}
+                  <div className="grid grid-cols-[repeat(auto-fit,minmax(88px,1fr))] gap-2">
+                    <button onClick={() => setTab("Findings")} className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
+                      <div className="truncate text-[10px] uppercase tracking-wide text-gray-400">Findings</div>
+                      <div className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{auditData.findings?.length ?? 0}</div>
                       <div className="mt-0.5 text-[11px] text-gray-500">Needs review</div>
                     </button>
-                    <button onClick={() => setTab("Findings")} className="rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
-                      <div className="text-[10px] uppercase tracking-wide text-gray-400">Lighthouse</div>
-                      <div className="mt-1 text-lg font-semibold text-gray-900">{auditData.lighthouseIssues ? auditData.lighthouseIssues.desktop.length + auditData.lighthouseIssues.mobile.length : 0}</div>
+                    <button onClick={() => setTab("Findings")} className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
+                      <div className="truncate text-[10px] uppercase tracking-wide text-gray-400">Lighthouse</div>
+                      <div className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{auditData.lighthouseIssues ? auditData.lighthouseIssues.desktop.length + auditData.lighthouseIssues.mobile.length : 0}</div>
                       <div className="mt-0.5 text-[11px] text-gray-500">Measured issues</div>
                     </button>
-                    <button onClick={() => setTab("Findings")} className="rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
-                      <div className="text-[10px] uppercase tracking-wide text-gray-400">Audit issues</div>
-                      <div className="mt-1 text-lg font-semibold text-gray-900">{auditData.issues.length}</div>
+                    <button onClick={() => setTab("Findings")} className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
+                      <div className="truncate text-[10px] uppercase tracking-wide text-gray-400">Audit issues</div>
+                      <div className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{auditData.issues.length}</div>
                       <div className="mt-0.5 text-[11px] text-gray-500">Detected on page</div>
                     </button>
                   </div>
