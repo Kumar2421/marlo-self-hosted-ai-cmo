@@ -130,3 +130,248 @@ body {
     opacity: 1;
   }
 }
+
+/*
+ * UI foundation tokens (components/ui). Light theme only; values match the
+ * grays already used by the .dash-* classes above so nothing shifts visually.
+ */
+:root {
+  /* surface */
+  --ui-surface: #ffffff;
+  --ui-surface-muted: #f9fafb;
+  --ui-surface-sunken: #f3f4f6;
+  --ui-overlay: rgb(17 24 39 / 0.2);
+
+  /* border */
+  --ui-border: #e5e7eb;
+  --ui-border-strong: #d1d5db;
+
+  /* text */
+  --ui-text: #111827;
+  --ui-text-muted: #6b7280;
+  --ui-text-subtle: #9ca3af;
+  --ui-text-inverse: #ffffff;
+
+  /* brand */
+  --ui-primary: #111111;
+  --ui-primary-hover: #2b2b2b;
+  --ui-accent: #00ab92;
+  --ui-accent-strong: #007a69; /* accent for text on white (4.5:1+) */
+  --ui-accent-soft: #e6f7f4;
+
+  /* status */
+  --ui-danger: #dc2626;
+  --ui-danger-soft: #fef2f2;
+  --ui-danger-text: #b91c1c;
+  --ui-warn: #d97706;
+  --ui-warn-soft: #fffbeb;
+  --ui-warn-text: #92400e;
+  --ui-success: #059669;
+  --ui-success-soft: #ecfdf5;
+  --ui-success-text: #047857;
+  --ui-info: #2563eb;
+  --ui-info-soft: #eff6ff;
+  --ui-info-text: #1d4ed8;
+
+  /* motion */
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+
+  /* z-index scale */
+  --z-sticky: 10;
+  --z-dropdown: 40;
+  --z-overlay: 50;
+  --z-modal: 60;
+  --z-popover: 70;
+  --z-tooltip: 80;
+  --z-toast: 90;
+
+  /* keyboard focus */
+  --focus-ring-color: #111111;
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+}
+
+@theme inline {
+  --color-ui-surface: var(--ui-surface);
+  --color-ui-surface-muted: var(--ui-surface-muted);
+  --color-ui-surface-sunken: var(--ui-surface-sunken);
+  --color-ui-border: var(--ui-border);
+  --color-ui-border-strong: var(--ui-border-strong);
+  --color-ui-text: var(--ui-text);
+  --color-ui-muted: var(--ui-text-muted);
+  --color-ui-subtle: var(--ui-text-subtle);
+  --color-ui-inverse: var(--ui-text-inverse);
+  --color-ui-primary: var(--ui-primary);
+  --color-ui-primary-hover: var(--ui-primary-hover);
+  --color-ui-accent: var(--ui-accent);
+  --color-ui-accent-strong: var(--ui-accent-strong);
+  --color-ui-accent-soft: var(--ui-accent-soft);
+  --color-ui-danger: var(--ui-danger);
+  --color-ui-danger-soft: var(--ui-danger-soft);
+  --color-ui-danger-text: var(--ui-danger-text);
+  --color-ui-warn: var(--ui-warn);
+  --color-ui-warn-soft: var(--ui-warn-soft);
+  --color-ui-warn-text: var(--ui-warn-text);
+  --color-ui-success: var(--ui-success);
+  --color-ui-success-soft: var(--ui-success-soft);
+  --color-ui-success-text: var(--ui-success-text);
+  --color-ui-info: var(--ui-info);
+  --color-ui-info-soft: var(--ui-info-soft);
+  --color-ui-info-text: var(--ui-info-text);
+  --radius-ui-sm: 6px;
+  --radius-ui-md: 8px;
+  --radius-ui-lg: 12px;
+  --shadow-ui-xs: 0 1px 2px rgb(16 24 40 / 0.05);
+  --shadow-ui-sm: 0 1px 3px rgb(16 24 40 / 0.1), 0 1px 2px rgb(16 24 40 / 0.06);
+  --shadow-ui-md: 0 8px 24px -4px rgb(16 24 40 / 0.12), 0 2px 6px -2px rgb(16 24 40 / 0.06);
+}
+
+/* Shared motion helpers */
+.ui-transition {
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+  transition-duration: var(--dur-fast);
+  transition-timing-function: var(--ease-out);
+}
+
+@keyframes ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes ui-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@keyframes ui-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes ui-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes ui-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ui-sheet-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes ui-sheet-out-right {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes ui-sheet-in-bottom {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes ui-sheet-out-bottom {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+.ui-skeleton {
+  background-color: var(--ui-surface-sunken);
+  background-image: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.7) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: ui-shimmer 1.4s linear infinite;
+}
+
+.ui-spinner {
+  animation: ui-spin 0.7s linear infinite;
+}
+
+.ui-fade[data-state="open"] {
+  animation: ui-fade-in var(--dur-base) var(--ease-out);
+}
+.ui-fade[data-state="closed"] {
+  animation: ui-fade-out var(--dur-fast) var(--ease-out);
+}
+.ui-pop[data-state="open"] {
+  animation: ui-pop-in var(--dur-base) var(--ease-out);
+}
+.ui-pop[data-state="closed"] {
+  animation: ui-fade-out var(--dur-fast) var(--ease-out);
+}
+.ui-sheet[data-state="open"] {
+  animation: ui-sheet-in-bottom var(--dur-base) var(--ease-out);
+}
+.ui-sheet[data-state="closed"] {
+  animation: ui-sheet-out-bottom var(--dur-fast) var(--ease-out);
+}
+@media (min-width: 640px) {
+  .ui-sheet[data-state="open"] {
+    animation: ui-sheet-in-right var(--dur-base) var(--ease-out);
+  }
+  .ui-sheet[data-state="closed"] {
+    animation: ui-sheet-out-right var(--dur-fast) var(--ease-out);
+  }
+}
+
+/* Dialog: centered pop on >=640px, bottom sheet below. */
+.ui-dialog[data-state="open"] {
+  animation: ui-pop-in var(--dur-base) var(--ease-out);
+}
+.ui-dialog[data-state="closed"] {
+  animation: ui-fade-out var(--dur-fast) var(--ease-out);
+}
+@media (max-width: 639.98px) {
+  .ui-dialog[data-state="open"] {
+    animation: ui-sheet-in-bottom var(--dur-base) var(--ease-out);
+  }
+  .ui-dialog[data-state="closed"] {
+    animation: ui-sheet-out-bottom var(--dur-fast) var(--ease-out);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .ui-skeleton {
+    animation: none;
+    background-image: none;
+  }
+}
