@@ -125,7 +125,7 @@ export default function WebflowCard() {
     }
   }
 
-  const input = "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400";
+  const input = "w-full min-w-0 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400";
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">

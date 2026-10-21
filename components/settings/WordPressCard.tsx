@@ -124,7 +124,7 @@ export default function WordPressCard() {
 
       {!loaded ? null : connected ? (
         <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
-          <span className="truncate font-mono">{siteSaved}</span>
+          <span className="min-w-0 truncate font-mono">{siteSaved}</span>
           <button onClick={handleDisconnect} disabled={busy} className="shrink-0 font-medium text-red-600 hover:underline disabled:opacity-50">
             Disconnect
           </button>
@@ -135,14 +135,14 @@ export default function WordPressCard() {
             value={siteUrl}
             onChange={(e) => setSiteUrl(e.target.value)}
             placeholder="yoursite.com"
-            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
+            className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
           />
           <div className="flex gap-2">
             <input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="WordPress username"
-              className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
+              className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
             />
             <input
               value={appPassword}
@@ -150,7 +150,7 @@ export default function WordPressCard() {
               onKeyDown={(e) => e.key === "Enter" && handleConnect()}
               placeholder="Application password"
               type="password"
-              className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
+              className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
             />
           </div>
           <button

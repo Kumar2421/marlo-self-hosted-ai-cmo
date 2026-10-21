@@ -80,14 +80,14 @@ export default function NotificationsSettingsPage() {
 
   if (query.isPending) {
     return (
-      <div className="max-w-2xl">
+      <div className="min-w-0 max-w-2xl">
         <SkeletonCard rows={5} />
       </div>
     );
   }
   if (query.isError || !data) {
     return (
-      <div className="max-w-2xl">
+      <div className="min-w-0 max-w-2xl">
         <h1 className="text-[15px] font-semibold text-gray-900">Notifications</h1>
         <p className="mt-2 text-[13px] text-gray-600" role="alert">
           Couldn&apos;t load your notification settings.{" "}
@@ -126,7 +126,7 @@ export default function NotificationsSettingsPage() {
   }
 
   return (
-    <div className="max-w-2xl">
+    <div className="min-w-0 max-w-2xl">
       <h1 className="text-[15px] font-semibold text-gray-900">Notifications</h1>
       <p className="mb-5 text-[13px] text-gray-500">
         Choose what Marlo tells you about. Everything shows in the bell at the top of your dashboard; email is optional on top of that.
@@ -150,7 +150,7 @@ export default function NotificationsSettingsPage() {
               </p>
             ) : (
               <p className="mt-1 text-[13px] leading-relaxed text-gray-600">
-                {email ? <>Emails go to <span className="font-medium text-gray-900">{email}</span>.</> : "We don't have an email address for you yet."} They&apos;re separate from the
+                {email ? <>Emails go to <span className="break-all font-medium text-gray-900">{email}</span>.</> : "We don't have an email address for you yet."} They&apos;re separate from the
                 outreach emails you send to leads, and every one has an unsubscribe link.
               </p>
             )}

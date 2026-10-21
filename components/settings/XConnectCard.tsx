@@ -120,7 +120,7 @@ export default function XConnectCard() {
 
       {!loaded ? null : connected ? (
         <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
-          <span className="font-mono">{keyPreview}</span>
+          <span className="min-w-0 break-all font-mono">{keyPreview}</span>
           <button onClick={handleDisconnect} disabled={busy} className="font-medium text-red-600 hover:underline disabled:opacity-50">
             Disconnect
           </button>
@@ -133,7 +133,7 @@ export default function XConnectCard() {
             onKeyDown={(e) => e.key === "Enter" && handleConnect()}
             placeholder="OAuth2 access token (tweet.write scope)"
             type="password"
-            className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
+            className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
           />
           <button
             onClick={handleConnect}

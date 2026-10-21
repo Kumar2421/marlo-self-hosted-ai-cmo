@@ -37,15 +37,15 @@ function EditForm({ project, onClose }: { project: ActiveProject; onClose: () =>
     <div className="space-y-3 border-t border-gray-200 px-4 py-3">
       <div>
         <label className="mb-1 block text-[11px] font-medium text-gray-500">Name</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] outline-none focus:border-black" />
+        <input value={name} onChange={(e) => setName(e.target.value)} className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] outline-none focus:border-black" />
       </div>
       <div>
         <label className="mb-1 block text-[11px] font-medium text-gray-500">Website URL</label>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] outline-none focus:border-black" />
+        <input value={url} onChange={(e) => setUrl(e.target.value)} className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] outline-none focus:border-black" />
       </div>
       <div>
         <label className="mb-1 block text-[11px] font-medium text-gray-500">Category</label>
-        <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="SaaS" className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] outline-none focus:border-black" />
+        <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="SaaS" className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] outline-none focus:border-black" />
       </div>
       <div>
         <label className="mb-1 block text-[11px] font-medium text-gray-500">Description</label>
@@ -145,7 +145,7 @@ function ProjectRow({ p, isActive }: { p: ActiveProject; isActive: boolean }) {
       </div>
 
       {confirmingDelete && (
-        <div className="flex items-center justify-between gap-3 border-t border-red-100 bg-red-50 px-4 py-2.5">
+        <div className="flex flex-col gap-2 border-t border-red-100 bg-red-50 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <span className="flex items-center gap-1.5 text-[12px] text-red-700">
             <AlertTriangle size={13} className="shrink-0" />
             Delete {p.name} and all its data? This can&apos;t be undone.
@@ -176,8 +176,8 @@ export default function WebsitesPage() {
   const [modalOpen, setModalOpen] = useState(false);
 
   return (
-    <div className="max-w-2xl">
-      <div className="mb-4 flex items-start justify-between">
+    <div className="min-w-0 max-w-2xl">
+      <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-[15px] font-semibold text-gray-900">Websites</h1>
           <p className="text-[13px] text-gray-500">

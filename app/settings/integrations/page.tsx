@@ -17,7 +17,7 @@ import { cmsIntegrations, socialIntegrations, codeRepoIntegrations } from "@/lib
 // code-repo "SEO agent PRs" slot below, not two separate fake cards.
 export default function IntegrationsPage() {
   return (
-    <div className="max-w-4xl">
+    <div className="min-w-0 max-w-4xl">
       <h1 className="text-[15px] font-semibold text-gray-900">Article Publishing</h1>
       <p className="mb-4 text-[13px] text-gray-500">Publish articles directly to your CMS or blog platform</p>
 
@@ -26,7 +26,7 @@ export default function IntegrationsPage() {
         You can connect one publishing destination at a time.
       </div>
 
-      <div className="mb-8 grid grid-cols-2 gap-3">
+      <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {cmsIntegrations.map((i) => {
           if (i.id === "wordpress-self") return <WordPressCard key={i.id} />;
           if (i.id === "webflow") return <WebflowCard key={i.id} />;
@@ -37,7 +37,7 @@ export default function IntegrationsPage() {
 
       <h2 className="text-[15px] font-semibold text-gray-900">Socials</h2>
       <p className="mb-4 text-[13px] text-gray-500">Connect your social accounts to post and share content</p>
-      <div className="mb-8 grid grid-cols-2 gap-3">
+      <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {socialIntegrations.map((i) => {
           if (i.name === "X (Twitter)") return <XConnectCard key={i.id} />;
           return <ComingSoonCard key={i.id} name={i.name} desc={i.desc} icon={i.icon} color={i.color} />;
@@ -46,7 +46,7 @@ export default function IntegrationsPage() {
 
       <h2 className="text-[15px] font-semibold text-gray-900">Code Repository</h2>
       <p className="mb-4 text-[13px] text-gray-500">Connect a GitHub repo so the SEO agent can open pull requests against it</p>
-      <div className="mb-8 grid grid-cols-2 gap-3">
+      <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {codeRepoIntegrations.map((i) =>
           i.id === "github-seo" ? <GitHubCodeFixCard key={i.id} /> : <ComingSoonCard key={i.id} name={i.name} desc={i.desc} icon={i.icon} color={i.color} />
         )}

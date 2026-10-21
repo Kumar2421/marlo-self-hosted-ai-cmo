@@ -72,12 +72,12 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <div className="mb-3 flex items-start justify-between">
+      <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <BrandIcon id={provider.id} color={provider.color} fallback={provider.icon} size={19} />
 
           <div>
-            <div className="flex items-center gap-2 text-[13px] font-semibold text-gray-900">
+            <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
               {provider.name}
               {isConnected && (
                 <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">
@@ -109,13 +109,13 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
         <div className="space-y-3">
           <div className="space-y-1.5 rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
             {connection.baseUrl && (
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <span className="text-gray-400">Endpoint</span>
-                <span className="font-mono">{connection.baseUrl}</span>
+                <span className="min-w-0 break-all font-mono">{connection.baseUrl}</span>
               </div>
             )}
-            <div className="flex items-center justify-between">
-              <span className="font-mono">
+            <div className="flex items-center justify-between gap-3">
+              <span className="min-w-0 break-all font-mono">
                 {/* apiKey already holds the server's masked keyPreview after reconcile, or the raw
                     value briefly right after connect() before the next server round-trip — mask
                     defensively either way so a raw key is never left rendered unmasked. Empty
@@ -148,7 +148,7 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
                 onKeyDown={(e) => e.key === "Enter" && handleConnect()}
                 placeholder={provider.keyPlaceholder}
                 type="password"
-                className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
+                className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
               />
               <button
                 onClick={handleConnect}
@@ -174,7 +174,7 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
               onChange={(e) => setBaseUrlInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !needsKey && handleConnect()}
               placeholder={provider.baseUrlPlaceholder || "http://localhost:1234/v1"}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
+              className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
             />
           )}
           <div className="flex gap-2">
@@ -185,7 +185,7 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
                 onKeyDown={(e) => e.key === "Enter" && handleConnect()}
                 placeholder={provider.keyPlaceholder || "API key (optional)"}
                 type="password"
-                className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
+                className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
               />
             )}
             <button

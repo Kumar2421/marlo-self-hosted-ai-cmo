@@ -42,7 +42,7 @@ export default function GeminiCard() {
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-[13px] font-semibold text-gray-900">Gemini API key</div>
           <p className="mt-0.5 text-[12px] text-gray-500">Used to ask Gemini (with Google Search) the questions your buyers ask, and see if you are mentioned.</p>

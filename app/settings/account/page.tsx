@@ -59,7 +59,7 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="max-w-2xl">
+    <div className="min-w-0 max-w-2xl">
       <h1 className="text-[15px] font-semibold text-gray-900">Account & Security</h1>
       <p className="mb-4 text-[13px] text-gray-500">Manage your login and account protection.</p>
 
@@ -78,7 +78,7 @@ export default function AccountPage() {
       </div>
 
       <div className="mb-4 rounded-xl border border-gray-200 bg-white px-4 py-3">
-        <div className="mb-2 flex items-center justify-between">
+        <div className="mb-2 flex items-center justify-between gap-3">
           <div>
             <div className="text-[13px] font-semibold text-gray-900">Password</div>
             <div className="text-[12px] text-gray-500">Set a new password for your account.</div>
@@ -99,7 +99,7 @@ export default function AccountPage() {
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder="New password"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-black"
+              className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-black"
             />
             <input
               type="password"
@@ -107,7 +107,7 @@ export default function AccountPage() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleChangePassword()}
               placeholder="Confirm new password"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-black"
+              className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-black"
             />
             <div className="flex justify-end gap-2">
               <button
