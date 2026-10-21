@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Users, ChevronLeft, Loader2, RefreshCw, X, ExternalLink, Mail, Search, Phone, Building2, Reply } from "lucide-react";
+import { Users, ChevronLeft, Loader2, RefreshCw, X, ExternalLink, Mail, MailCheck, MailMinus, Search, Phone, Building2, Reply, AlertTriangle } from "lucide-react";
 import CollapsedRail, { RailButton } from "./CollapsedRail";
 import { useToast } from "./Toast";
 import { useProject } from "@/lib/project-store";
@@ -19,6 +19,7 @@ import type { BusinessLead } from "./leads/BusinessLeadCard";
 import { SkeletonCard } from "@/components/shared/Skeleton";
 import { FEATURES } from "@/lib/features";
 import type { LeadSearchTarget } from "@/lib/domain/leads/leadProfile";
+import { countLeads, defaultFilter, filterLabel, filterLeads, profileSummary, type LeadFilter } from "@/lib/domain/leads/leadListView";
 import {
   sortByFitScore,
   suggestCategory,
@@ -118,6 +119,10 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
   const [bizEmailLead, setBizEmailLead] = useState<Lead | null>(null);
   const gmail = useGmailStatus();
   const leadProfile = useLeadProfile();
+  // null = automatic: the profile form is open only while there are no leads.
+  const [profileOpen, setProfileOpen] = useState<boolean | null>(null);
+  // null = automatic: "With email" when any lead has an address, otherwise "All".
+  const [filter, setFilter] = useState<LeadFilter | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardDismissed, setWizardDismissed] = useState(false);
   const [googleCloudConnected, setGoogleCloudConnected] = useState(false);
@@ -140,6 +145,10 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
 
   const personLeads = leads.filter((l) => l.lead_type !== "business");
   const businessLeads = leads.filter((l) => l.lead_type === "business");
+  const leadCounts = countLeads(personLeads);
+  const activeFilter = filter ?? defaultFilter(personLeads);
+  const visibleLeads = filterLeads(personLeads, activeFilter);
+  const profileExpanded = profileOpen ?? personLeads.length === 0;
   const businessById = new Map(businessLeads.map((l) => [l.id, l]));
   const resultIdSet = new Set(bizResultIds);
   const bizResults = bizResultIds.map((id) => businessById.get(id)).filter((l): l is Lead => Boolean(l));
@@ -474,8 +483,11 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                   disabled={!project}
                   onEdit={() => setWizardOpen(true)}
                   onSearch={(target) => handleSearch({ ...target, useProfile: true })}
+                  collapsed={!profileExpanded}
+                  summary={profileSummary(leadProfile.profile)}
+                  onToggle={() => setProfileOpen(!profileExpanded)}
                 />
-                <details className="group rounded-lg border border-gray-100 px-2.5 py-1.5">
+                {profileExpanded && <details className="group rounded-lg border border-gray-100 px-2.5 py-1.5">
                   <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-800">Custom search</summary>
                   <div className="mt-2 space-y-2">
                 <input
@@ -508,7 +520,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                   {searching ? "Searching..." : "Search Leads"}
                 </button>
                   </div>
-                </details>
+                </details>}
               </>
             ) : (
               <div className="rounded-xl border border-dashed border-gray-300 p-4 text-center">
@@ -645,9 +657,14 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
             <p className="text-[13px] text-gray-500">Link a website first to search for leads.</p>
           </div>
         ) : loading ? (
-          <div className="space-y-2 p-3">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-16 animate-pulse rounded-xl bg-gray-100" />
+          <div className="divide-y divide-gray-100" aria-busy="true" aria-label="Loading leads" data-testid="leads-skeleton">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex min-h-9 items-center gap-2 px-3 py-0.5">
+                <div className="h-4 w-4 shrink-0 animate-pulse rounded bg-gray-100" />
+                <div className="h-3 w-28 animate-pulse rounded bg-gray-100" />
+                <div className="h-3 flex-1 animate-pulse rounded bg-gray-100" />
+                <div className="h-3 w-4 shrink-0 animate-pulse rounded bg-gray-100" />
+              </div>
             ))}
           </div>
         ) : mode === "business" ? (
@@ -671,94 +688,126 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
         ) : personLeads.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
             <Search size={18} className="text-gray-300" />
-            <p className="text-[13px] font-medium text-gray-700">No leads yet</p>
-            <p className="max-w-[220px] text-[12px] text-gray-500">
-              Search by role, company, or location above — real people pulled from real web search
-              results, never invented.
-            </p>
+            <p className="max-w-[240px] text-[12px] text-gray-500">No leads yet - set up your profile then Find leads</p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-100">
-            {personLeads.map((lead) => (
-              <div key={lead.id} className="group flex gap-2.5 px-3 py-2.5">
-                <input
-                  type="checkbox"
-                  checked={selected.has(lead.id)}
-                  onChange={() => toggleSelected(lead.id)}
-                  className="mt-1 shrink-0"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-[13px] font-semibold text-gray-900">{lead.name}</span>
-                    <button
-                      onClick={() => handleRemove(lead.id)}
-                      className="shrink-0 text-gray-300 opacity-0 hover:text-gray-600 group-hover:opacity-100"
-                    >
-                      <X size={13} />
-                    </button>
-                  </div>
-                  {(lead.title || lead.company) && (
-                    <div className="truncate text-[12px] text-gray-600">
-                      {[lead.title, lead.company].filter(Boolean).join(" · ")}
+          <>
+            <div className="flex items-center gap-1 overflow-x-auto border-b border-gray-100 px-3 py-2" role="tablist" aria-label="Filter leads by email">
+              {(["all", "with", "without"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeFilter === value}
+                  onClick={() => setFilter(value)}
+                  className={`min-h-8 shrink-0 rounded-md px-2.5 text-[12px] font-medium ${
+                    activeFilter === value ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {filterLabel(value, leadCounts)}
+                </button>
+              ))}
+            </div>
+            {visibleLeads.length === 0 ? (
+              <p className="px-4 py-6 text-center text-[12px] text-gray-500">
+                {activeFilter === "with" ? "No leads with an email yet. " : "No leads without an email. "}
+                <button type="button" onClick={() => setFilter("all")} className="font-medium text-gray-800 underline underline-offset-2">
+                  Show all {leadCounts.all}
+                </button>
+              </p>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {visibleLeads.map((lead) => {
+                  const source = websiteHref(lead.source_url);
+                  const meta = [lead.title, lead.company].filter(Boolean).join(" · ") || lead.email || "";
+                  return (
+                    <div key={lead.id} className="group">
+                      <div className="flex min-h-9 items-center gap-2 px-3 py-0.5">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(lead.id)}
+                          onChange={() => toggleSelected(lead.id)}
+                          aria-label={`Select ${lead.name}`}
+                          className="h-4 w-4 shrink-0"
+                        />
+                        <div className="flex min-w-0 flex-1 items-baseline gap-2">
+                          <span className="max-w-[55%] shrink-0 truncate text-[13px] font-semibold text-gray-900">{lead.name}</span>
+                          <span className="min-w-0 truncate text-[11px] text-gray-500">{meta}</span>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          {lead.last_reply_snippet && (
+                            <span title="Replied" className="text-blue-600">
+                              <Reply size={13} aria-label="Replied" />
+                            </span>
+                          )}
+                          {lead.email_status === "sent" && (
+                            <span title="Email sent" className="text-[#00846f]">
+                              <Mail size={13} aria-label="Email sent" />
+                            </span>
+                          )}
+                          {lead.email_status === "failed" && (
+                            <span title="Send failed" className="text-red-600">
+                              <AlertTriangle size={13} aria-label="Send failed" />
+                            </span>
+                          )}
+                          {lead.phone && (
+                            <span title={lead.phone} className="text-gray-400">
+                              <Phone size={12} aria-label={`Phone ${lead.phone}`} />
+                            </span>
+                          )}
+                          {lead.email ? (
+                            <span
+                              title={`${lead.email}${lead.email_verified ? " (guessed; the mail server accepted it, which is not a guarantee it exists)" : " (found in real search results)"}`}
+                              className="text-[#00846f]"
+                            >
+                              <MailCheck size={14} aria-label={`Email found: ${lead.email}`} />
+                            </span>
+                          ) : (
+                            <span title="No email found" className="text-gray-300">
+                              <MailMinus size={14} aria-label="No email found" />
+                            </span>
+                          )}
+                          {source && (
+                            <a
+                              href={source}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Open source"
+                              aria-label={`Open source for ${lead.name}`}
+                              className="flex h-9 w-6 items-center justify-center text-gray-400 hover:text-gray-700"
+                            >
+                              <ExternalLink size={12} />
+                            </a>
+                          )}
+                          <button
+                            onClick={() => handleRemove(lead.id)}
+                            title="Remove"
+                            aria-label={`Remove ${lead.name}`}
+                            className="flex h-9 w-7 shrink-0 items-center justify-center text-gray-400 hover:text-gray-700 md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100"
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                      </div>
+                      {lead.last_reply_snippet && (
+                        <div className="flex items-center justify-between gap-2 pb-1.5 pl-9 pr-3">
+                          <p className="truncate text-[11px] text-blue-700">&ldquo;{lead.last_reply_snippet}&rdquo;</p>
+                          <button
+                            onClick={() => handleDraftFollowUp(lead)}
+                            disabled={draftingFollowUp === lead.id}
+                            className="flex shrink-0 items-center gap-1 rounded-full border border-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            {draftingFollowUp === lead.id ? <Loader2 size={9} className="animate-spin" /> : <Reply size={9} />}
+                            Draft follow-up
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {lead.location && <div className="truncate text-[11px] text-gray-400">{lead.location}</div>}
-                  {lead.phone && (
-                    <div className="mt-0.5 flex items-center gap-1 text-[11px] text-gray-600">
-                      <Phone size={10} /> {lead.phone}
-                    </div>
-                  )}
-                  <div className="mt-1 flex items-center gap-2 text-[11px]">
-                    {lead.lead_type === "business" ? null : lead.email ? (
-                      <span
-                        title={lead.email_verified ? "Guessed address. The mail server accepted it, but many servers accept any address, so this is not a guarantee it exists" : "Found directly in real search results"}
-                        className="rounded-full bg-[#e6f7f4] px-2 py-0.5 font-medium text-[#00846f]"
-                      >
-                        {lead.email}
-                        {!!lead.email_verified && " ✓ server accepted"}
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-400">No email found</span>
-                    )}
-                    {websiteHref(lead.source_url) && (
-                      <a
-                        href={websiteHref(lead.source_url) ?? undefined}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-0.5 text-gray-400 hover:text-gray-700"
-                      >
-                        {lead.lead_type === "business" ? "Website" : "Source"} <ExternalLink size={10} />
-                      </a>
-                    )}
-                    {lead.email_status === "sent" && (
-                      <span className="flex items-center gap-0.5 text-[#00846f]">
-                        <Mail size={10} /> Sent
-                      </span>
-                    )}
-                    {lead.email_status === "failed" && <span className="text-red-600">⚠ Send failed</span>}
-                    {lead.last_reply_snippet && (
-                      <span className="flex items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 font-medium text-blue-700">
-                        <Reply size={10} /> Replied
-                      </span>
-                    )}
-                  </div>
-                  {lead.last_reply_snippet && (
-                    <div className="mt-1 flex items-center justify-between gap-2">
-                      <p className="truncate text-[11px] text-blue-700">&ldquo;{lead.last_reply_snippet}&rdquo;</p>
-                      <button
-                        onClick={() => handleDraftFollowUp(lead)}
-                        disabled={draftingFollowUp === lead.id}
-                        className="shrink-0 flex items-center gap-1 rounded-full border border-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                      >
-                        {draftingFollowUp === lead.id ? <Loader2 size={9} className="animate-spin" /> : <Reply size={9} />}
-                        Draft follow-up
-                      </button>
-                    </div>
-                  )}
-                </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </div>
       </div>
