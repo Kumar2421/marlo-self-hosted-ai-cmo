@@ -8,7 +8,7 @@ import { getFindingRecommendations } from "@/lib/domain/recommendations/recommen
 import { readOutcomes, type OutcomePorts } from "@/lib/domain/search/outcomeService";
 import { getLatestSnapshot } from "@/lib/domain/search/searchSnapshotStore";
 import { getLatestSnapshot as getLatestSnapshotSupabase } from "@/lib/domain/search/searchSnapshotStoreSupabase";
-import { geoFromRow, summarizeLeads, supabaseGeoStatus, supabaseLeadSummary, LEAD_SCAN_LIMIT, type LeadRow } from "./chatQueries";
+import { auditFromRow, geoFromRow, summarizeLeads, supabaseAuditSummary, supabaseCompetitors, supabaseGeoStatus, supabaseLeadSummary, LEAD_SCAN_LIMIT, type LeadRow } from "./chatQueries";
 import type { ChatPorts } from "./tools";
 
 type Snapshot = Awaited<ReturnType<ChatPorts["getSearchSnapshot"]>>;
@@ -51,6 +51,8 @@ export function platformChatPorts(db: SupabaseClient, userId: string, projectId:
       readOutcomes(outcomePorts, await listProjectActionsSupabase(db, userId, projectId, findingId)),
     getLeadSummary: (n) => supabaseLeadSummary(db, userId, projectId, n),
     getGeoStatus: () => supabaseGeoStatus(db, userId, projectId),
+    getAuditSummary: () => supabaseAuditSummary(db, userId, projectId),
+    listCompetitors: () => supabaseCompetitors(db, userId, projectId),
     now: () => new Date(),
   };
 }
@@ -84,6 +86,16 @@ export function selfHostChatPorts(projectId: string): ChatPorts {
         | undefined;
       return geoFromRow(row ?? null);
     },
+    getAuditSummary: async () => {
+      const proj = getDb().prepare("SELECT url FROM projects WHERE id = ?").get(projectId) as { url: string | null } | undefined;
+      if (!proj?.url) return null;
+      const row = getDb().prepare("SELECT url, payload, created_at FROM seo_audits WHERE url = ?").get(proj.url) as
+        | { url: string; payload: string; created_at: string }
+        | undefined;
+      return auditFromRow(row ?? null);
+    },
+    listCompetitors: async () =>
+      (getDb().prepare("SELECT url FROM project_competitors WHERE project_id = ? ORDER BY created_at ASC LIMIT 50").all(projectId) as { url: string }[]).map((r) => r.url),
     now: () => new Date(),
   };
 }
