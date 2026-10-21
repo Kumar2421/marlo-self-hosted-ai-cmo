@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from "react";
 import { SkeletonCard } from "@/components/shared/Skeleton";
 import {
   Layers,
@@ -34,6 +34,39 @@ import ContentStrategyPanel from "./documents/ContentStrategyPanel";
 import DesignGuidePanel from "./documents/DesignGuidePanel";
 import { WebsiteIcon } from "@/components/shared/WebsiteIcon";
 
+// Long descriptions clamp to 4 lines with a toggle; short ones render as-is.
+function ProjectDescription({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const ref = useRef<HTMLParagraphElement>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && !expanded) setOverflows(el.scrollHeight > el.clientHeight + 1);
+  }, [text, expanded]);
+
+  return (
+    <div className="mb-6">
+      <p
+        id="project-description"
+        ref={ref}
+        className={`dash-body text-gray-500 ${expanded ? "" : "line-clamp-4"}`}
+      >
+        {text}
+      </p>
+      {(overflows || expanded) && (
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-controls="project-description"
+          className="dash-focus dash-meta mt-1 font-medium text-gray-600 hover:text-gray-900"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default function ContextPanel({
   open,
@@ -201,8 +234,8 @@ export default function ContextPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col border-r border-gray-200 bg-white">
-      <div className="flex h-11 shrink-0 items-center justify-between border-b border-gray-200 px-4">
-        <div className="flex items-center gap-2 text-[13px] font-semibold text-gray-900">
+      <div className="dash-panel-header">
+        <div className="dash-title">
           <Layers size={15} className="text-gray-500" />
           Context
         </div>
@@ -246,8 +279,8 @@ export default function ContextPanel({
             )}
 
             <div className="mb-4">
-              <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-gray-400">
-                <Link2 size={11} /> WEBSITE
+              <label className="dash-section-label mb-1.5 flex items-center gap-1.5">
+                <Link2 size={11} /> Website
               </label>
               <a
                 href={project.url}
@@ -275,7 +308,7 @@ export default function ContextPanel({
             </div>
 
             {project.description && (
-              <p className="mb-6 text-[13px] leading-relaxed text-gray-500">{project.description}</p>
+              <ProjectDescription text={project.description} />
             )}
           </>
         )}
@@ -283,9 +316,10 @@ export default function ContextPanel({
         <div className="mb-1 flex w-full items-center justify-between">
           <button
             onClick={() => setDocsExpanded((v) => !v)}
-            className="flex-1 text-left text-[11px] font-semibold tracking-wide text-gray-400"
+            aria-expanded={docsExpanded}
+            className="dash-focus dash-section-label flex-1 py-1 text-left"
           >
-            DOCUMENTS
+            Documents
           </button>
         </div>
         {docsExpanded && (
@@ -317,7 +351,7 @@ export default function ContextPanel({
                       setDesignGuideOpen(true);
                     }
                   }}
-                  className="flex w-full items-center justify-between py-2.5 text-left text-[13px] text-gray-700 hover:text-gray-900"
+                  className="dash-focus dash-body flex min-h-9 w-full items-center justify-between py-1.5 text-left text-gray-700 hover:text-gray-900"
                 >
                   <span className="flex items-center gap-2">
                     {doc.name}
@@ -336,9 +370,10 @@ export default function ContextPanel({
 
         <button
           onClick={() => setCompsExpanded((v) => !v)}
-          className="mb-2 flex w-full items-center justify-between"
+          aria-expanded={compsExpanded}
+          className="dash-focus mb-2 flex min-h-9 w-full items-center justify-between"
         >
-          <h3 className="text-[11px] font-semibold tracking-wide text-gray-400">COMPETITORS</h3>
+          <h3 className="dash-section-label">Competitors</h3>
           <span className="flex items-center gap-2.5">
             <span
               role="button"
@@ -410,9 +445,9 @@ export default function ContextPanel({
                   : " — works best with a Tavily API key connected (Settings → API Credentials)."}
               </p>
             ) : (
-              <div className="space-y-1.5 text-[13px] text-gray-700">
+              <div className="dash-body text-gray-700">
                 {competitors.map((c) => (
-                  <div key={c.id} className="group flex items-center justify-between gap-2">
+                  <div key={c.id} className="group flex min-h-9 items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <WebsiteIcon url={c.url} size={6} />
                       <a
@@ -426,7 +461,8 @@ export default function ContextPanel({
                     </div>
                     <button
                       onClick={() => handleRemoveCompetitor(c.id)}
-                      className="shrink-0 text-gray-300 opacity-0 hover:text-gray-600 group-hover:opacity-100"
+                      aria-label="Remove competitor"
+                      className="dash-focus shrink-0 p-1 text-gray-300 opacity-0 hover:text-gray-600 focus-visible:opacity-100 group-hover:opacity-100"
                     >
                       <X size={13} />
                     </button>
@@ -438,7 +474,7 @@ export default function ContextPanel({
         )}
       </div>
 
-      <div className="shrink-0 border-t border-gray-200 px-4 py-3 text-[11px] text-gray-400">
+      <div className="dash-meta shrink-0 border-t border-gray-200 px-4 py-3 text-gray-400">
         What your CMO reads before writing anything — edit any of it, anytime.
       </div>
 
