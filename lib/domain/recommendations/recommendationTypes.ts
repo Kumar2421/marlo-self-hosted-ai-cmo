@@ -4,6 +4,11 @@ export const RECOMMENDATION_TYPES = [
   "low_keyword_relevance",
   "slow_ttfb",
   "lighthouse_issue",
+  // Findings Marlo creates itself (see lib/domain/recommendations/issueRecommendations.ts)
+  "seo_issue",
+  "geo_readiness",
+  "geo_mention_gap",
+  "review_finding",
   // Search-opportunity findings (see lib/domain/search/opportunityRecommendations.ts)
   "improve_search_intent_alignment",
   "rewrite_snippet",
