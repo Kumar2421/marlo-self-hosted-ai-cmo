@@ -17,6 +17,7 @@ import Loading from "../loading";
 import { DashboardDataProvider, useDashboardData } from "@/lib/dashboard-data";
 import OnboardingModal from "@/components/dashboard/OnboardingModal";
 import { SocialPanelProvider } from "@/components/dashboard/social/SocialPanelProvider";
+import ErrorBoundary, { ErrorCard } from "@/components/shared/ErrorBoundary";
 
 const RAIL = "56px";
 
@@ -44,6 +45,27 @@ function AnalyticsPanel(props: React.ComponentProps<typeof AnalyticsPanelBase>) 
   return <AnalyticsPanelBase key={project?.id ?? "none"} {...props} />;
 }
 
+/** Contains a crash to one panel: the other three keep working and the slot keeps a header. */
+function PanelGuard({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <ErrorBoundary
+      label={`The ${label} panel`}
+      fallback={({ error, reset }) => (
+        <div className="flex h-full min-h-0 flex-col border-r border-gray-200 bg-white">
+          <div className="dash-panel-header">
+            <div className="dash-title">{label}</div>
+          </div>
+          <div className="okara-scroll flex-1 overflow-y-auto">
+            <ErrorCard label={`The ${label} panel`} error={error} onReset={reset} />
+          </div>
+        </div>
+      )}
+    >
+      {children}
+    </ErrorBoundary>
+  );
+}
+
 /** Phone and tablet shell. Panels mount the first time their tab is opened and
  * then stay mounted (hidden + inert), so scroll, filters, chat drafts and
  * Leads data survive tab switches. Phones show one panel; tablets (768-1099px)
@@ -67,17 +89,19 @@ function CompactShell({ bp }: { bp: "mobile" | "tablet" }) {
     if (!opened.has(t) && !shown.includes(t)) return null;
     switch (t) {
       case "context":
-        return <ContextPanel open onToggle={noop} />;
+        return <PanelGuard label="Context"><ContextPanel open onToggle={noop} /></PanelGuard>;
       case "analytics":
         return (
-          <Suspense fallback={null}>
-            <AnalyticsPanel open onToggle={noop} />
-          </Suspense>
+          <PanelGuard label="Analytics">
+            <Suspense fallback={null}>
+              <AnalyticsPanel open onToggle={noop} />
+            </Suspense>
+          </PanelGuard>
         );
       case "agents":
-        return <LeadsPanel open onToggle={noop} />;
+        return <PanelGuard label="Leads"><LeadsPanel open onToggle={noop} /></PanelGuard>;
       case "chat":
-        return <ChatPanel open onToggle={noop} />;
+        return <PanelGuard label="Chat"><ChatPanel open onToggle={noop} /></PanelGuard>;
     }
   };
 
@@ -149,12 +173,14 @@ export default function DashboardPage() {
         <div className="flex h-dvh flex-col bg-white">
           <TerminalLog />
           <div className="grid min-h-0 flex-1 overflow-hidden" style={{ gridTemplateColumns: cols, gridTemplateRows: "minmax(0, 1fr)" }}>
-            <ContextPanel open={contextOpen} onToggle={() => setContextOpen((v) => !v)} />
-            <Suspense fallback={null}>
-              <AnalyticsPanel open={analyticsOpen} onToggle={() => setAnalyticsOpen((v) => !v)} />
-            </Suspense>
-            <LeadsPanel open={agentsOpen} onToggle={() => setAgentsOpen((v) => !v)} />
-            <ChatPanel open={chatOpen} onToggle={() => setChatOpen((v) => !v)} />
+            <PanelGuard label="Context"><ContextPanel open={contextOpen} onToggle={() => setContextOpen((v) => !v)} /></PanelGuard>
+            <PanelGuard label="Analytics">
+              <Suspense fallback={null}>
+                <AnalyticsPanel open={analyticsOpen} onToggle={() => setAnalyticsOpen((v) => !v)} />
+              </Suspense>
+            </PanelGuard>
+            <PanelGuard label="Leads"><LeadsPanel open={agentsOpen} onToggle={() => setAgentsOpen((v) => !v)} /></PanelGuard>
+            <PanelGuard label="Chat"><ChatPanel open={chatOpen} onToggle={() => setChatOpen((v) => !v)} /></PanelGuard>
           </div>
         </div>
       </OnboardingGate>

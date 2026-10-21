@@ -60,7 +60,8 @@ export function useSocialDraftList(platform: SocialPlatform, view: DraftView, en
     queryKey: keys.list(view),
     queryFn: async () => {
       const response = await fetchJson<{ drafts: AnyDraft[] }>(`${url}?view=${view}`);
-      return response.drafts;
+      // TanStack Query forbids undefined from a queryFn; a partial response means "no drafts".
+      return response?.drafts ?? [];
     },
     enabled: Boolean(project) && enabled,
     ...(staleTime !== undefined && { staleTime }),

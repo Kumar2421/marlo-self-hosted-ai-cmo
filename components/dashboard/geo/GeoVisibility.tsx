@@ -12,6 +12,7 @@ import { useToast } from "@/components/dashboard/Toast";
 import type { GeoOverview, PromptRow, ReferralView } from "@/lib/domain/geo/geoService";
 import type { ReadinessResult } from "@/lib/domain/geo/readiness";
 import type { AnswerMethod, GeoPrompt, GeoRunRow } from "@/lib/domain/geo/types";
+import { normalizeGeoChecks, normalizeOverview, normalizeReferral, normalizeRuns } from "./normalizeGeo";
 
 const METHOD_LABEL: Record<AnswerMethod, string> = {
   "gemini-grounded": "Gemini + Google Search",
@@ -37,6 +38,15 @@ function TrendIcon({ trend }: { trend: PromptRow["methods"][number]["trend"] }) 
   if (trend === "down") return <span title="Mentioned less than last time" className="text-red-500"><ArrowDown size={12} /></span>;
   if (trend === "flat") return <span title="About the same as last time" className="text-gray-400"><ArrowRight size={12} /></span>;
   return <span title="Not enough history yet" className="text-[10px] text-gray-400">new</span>;
+}
+
+function InlineError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-gray-200 p-3 text-[12px] text-gray-500">
+      <span className="min-w-0 flex-1">{message}</span>
+      <button type="button" onClick={onRetry} className="shrink-0 rounded-md border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-50">Retry</button>
+    </div>
+  );
 }
 
 function Block({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
@@ -65,20 +75,23 @@ function Readiness({ pid }: { pid: string | undefined }) {
     },
     onError: (e) => show(e instanceof Error ? e.message : "Could not add this to findings."),
   });
+  const readiness = normalizeGeoChecks(query.data);
 
   return (
     <Block title="AI readiness" subtitle="Can AI tools find, read and understand your site? This is a checklist of facts, not a ranking.">
       {query.isPending ? (
         <SkeletonCard rows={5} />
       ) : query.isError ? (
-        <p className="text-[12px] text-gray-500">{query.error.message}</p>
+        <InlineError message={query.error.message} onRetry={() => void query.refetch()} />
+      ) : readiness.checks.length === 0 ? (
+        <InlineError message="No GEO checks yet. We could not read any readiness checks for your site." onRetry={() => void query.refetch()} />
       ) : (
         <div className="overflow-hidden rounded-xl border border-gray-200">
           <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-3 py-2.5">
-            <span className="text-[12px] text-gray-600">Readiness score for {query.data.domain}</span>
-            <span className="text-[15px] font-semibold text-gray-900">{query.data.score}/100</span>
+            <span className="text-[12px] text-gray-600">Readiness score{readiness.domain ? ` for ${readiness.domain}` : ""}</span>
+            <span className="text-[15px] font-semibold text-gray-900">{readiness.score}/100</span>
           </div>
-          {query.data.checks.map((c) => (
+          {readiness.checks.map((c) => (
             <div key={c.id} className="flex items-start justify-between gap-3 border-t border-gray-100 px-3 py-2.5 text-[13px] first:border-t-0">
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-gray-800">
@@ -111,22 +124,23 @@ function Referrals({ pid }: { pid: string | undefined }) {
     staleTime: 5 * 60_000,
     queryFn: () => fetchJson<ReferralView & { unavailable?: boolean }>("/api/geo/referral"),
   });
+  const referral = normalizeReferral(query.data);
   return (
     <Block title="AI referral visits" subtitle="Visits from ChatGPT, Perplexity, Claude, Gemini and Copilot in the last 28 days (a floor; some visits carry no referrer).">
       {query.isPending ? (
         <SkeletonLines rows={2} />
-      ) : query.isError || ("unavailable" in query.data && query.data.unavailable) ? (
-        <p className="text-[12px] text-gray-500">We could not read Google Analytics right now.</p>
+      ) : query.isError || typeof query.data !== "object" || query.data === null || ("unavailable" in query.data && query.data.unavailable) ? (
+        <InlineError message="We could not read Google Analytics right now." onRetry={() => void query.refetch()} />
       ) : "notConnected" in query.data ? (
         <p className="rounded-xl border border-dashed border-gray-200 p-4 text-[12px] text-gray-500">Connect Google Analytics in Settings to see visits that come from AI assistants.</p>
       ) : (
         <div className="rounded-xl border border-gray-200 p-3">
-          <div className="text-[20px] font-semibold text-gray-900">{query.data.total} <span className="text-[12px] font-normal text-gray-500">visits</span></div>
-          {query.data.bySource.length === 0 ? (
+          <div className="text-[20px] font-semibold text-gray-900">{referral.total} <span className="text-[12px] font-normal text-gray-500">visits</span></div>
+          {referral.bySource.length === 0 ? (
             <p className="mt-1 text-[12px] text-gray-500">No visits with an AI assistant as the referrer yet.</p>
           ) : (
             <ul className="mt-2 space-y-1 text-[12px] text-gray-700">
-              {query.data.bySource.map((s) => (
+              {referral.bySource.map((s) => (
                 <li key={s.source} className="flex justify-between"><span>{s.source}</span><span>{s.sessions}</span></li>
               ))}
             </ul>
@@ -143,17 +157,18 @@ function PromptHistory({ pid, prompt, onClose }: { pid: string | undefined; prom
     enabled: Boolean(pid && prompt),
     queryFn: () => fetchJson<{ runs: GeoRunRow[] }>(`/api/geo/history?prompt=${encodeURIComponent(prompt ?? "")}`),
   });
+  const runs = normalizeRuns(query.data);
   return (
     <SidePanel open={Boolean(prompt)} onClose={onClose} title="Run history" subtitle={prompt ?? ""} width="lg">
       {query.isPending ? (
         <SkeletonCard rows={5} />
       ) : query.isError ? (
         <p className="text-[12px] text-gray-500">{query.error.message}</p>
-      ) : query.data.runs.length === 0 ? (
+      ) : runs.length === 0 ? (
         <p className="text-[13px] text-gray-500">No runs yet for this prompt.</p>
       ) : (
         <div className="space-y-2">
-          {query.data.runs.map((r, i) => (
+          {runs.map((r, i) => (
             <div key={i} className="rounded-lg border border-gray-200 p-3 text-[12px]">
               <div className="mb-1 flex items-center justify-between gap-2">
                 <MethodBadge method={r.method} />
@@ -336,7 +351,8 @@ export default function GeoVisibility() {
     onError: (e) => show(e instanceof Error ? e.message : "Could not run the check."),
   });
 
-  const cap = overview.data?.capabilities;
+  const ov = normalizeOverview(overview.data);
+  const cap = ov.capabilities;
 
   return (
     <div className="mb-8">
@@ -346,7 +362,7 @@ export default function GeoVisibility() {
       {overview.isPending ? (
         <SkeletonCard rows={5} />
       ) : overview.isError ? (
-        <p className="text-[12px] text-gray-500">{overview.error.message}</p>
+        <InlineError message={overview.error.message} onRetry={() => void overview.refetch()} />
       ) : (
         <>
           <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -359,7 +375,7 @@ export default function GeoVisibility() {
               {run.isPending ? "Running..." : "Run now"}
             </button>
             <span className="text-[11px] text-gray-500">
-              {overview.data.lastRunAt ? `Last run ${new Date(overview.data.lastRunAt).toLocaleDateString()}. ` : "Not run yet. "}
+              {ov.lastRunAt ? `Last run ${new Date(ov.lastRunAt).toLocaleDateString()}. ` : "Not run yet. "}
               Runs automatically once a week.
               {cap?.geminiAvailable && cap.geminiDailyCap !== null ? ` Gemini checks today: ${cap.geminiUsedToday} of ${cap.geminiDailyCap}.` : ""}
               {cap?.simulatedAvailable && cap.simulatedDailyCap !== null ? ` Simulated checks today: ${cap.simulatedUsedToday} of ${cap.simulatedDailyCap}.` : ""}
@@ -367,7 +383,7 @@ export default function GeoVisibility() {
             </span>
           </div>
           {lastSummary && <SkippedPrompts summary={lastSummary} />}
-          <Prompts pid={pid} overview={overview.data} />
+          <Prompts pid={pid} overview={ov} />
         </>
       )}
     </div>

@@ -14,7 +14,7 @@ export function useXDraftList(view: XDraftView, enabled = true) {
   const { project } = useProject();
   return useQuery({
     queryKey: qk.xDrafts(project?.id, view),
-    queryFn: async () => (await fetchJson<{ drafts: XDraft[] }>(`${URL}?view=${view}`)).drafts,
+    queryFn: async () => (await fetchJson<{ drafts?: XDraft[] } | null>(`${URL}?view=${view}`))?.drafts ?? [],
     enabled: Boolean(project) && enabled,
   });
 }

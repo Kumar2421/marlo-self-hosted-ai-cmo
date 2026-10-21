@@ -24,6 +24,7 @@ import SearchHistoryBar from "@/components/dashboard/search/SearchHistoryBar";
 import SearchOverviewPanel from "@/components/dashboard/search/SearchOverviewPanel";
 import SearchInsightsSection from "@/components/dashboard/search/SearchInsightsSection";
 import GeoVisibility from "@/components/dashboard/geo/GeoVisibility";
+import ErrorBoundary from "@/components/shared/ErrorBoundary";
 
 const TABS = ["SEO", "Links", "Technical", "GEO", "Traffic", "Findings"] as const;
 type Tab = (typeof TABS)[number];
@@ -155,17 +156,21 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
   type LinksResult = { links: CheckedLink[]; checkedAt: string };
   type GeoResult = { rows: GeoCitationRow[]; checkedAt: string };
   type CrawlResult = { pages: CrawledPage[]; checkedAt: string };
-  const savedResult = <T,>(key: readonly string[], url: string, enabled: boolean) => ({
+  // `list` names the array the tab renders; a saved result without it (partial or error-shaped JSON) counts as "never run".
+  const savedResult = <T,>(key: readonly string[], url: string, enabled: boolean, list: keyof T) => ({
     queryKey: key,
     enabled,
-    queryFn: async (): Promise<T | null> => (await fetchJson<{ result?: T | null }>(url)).result ?? null,
+    queryFn: async (): Promise<T | null> => {
+      const result = (await fetchJson<{ result?: T | null } | null>(url))?.result ?? null;
+      return result && Array.isArray(result[list]) ? result : null;
+    },
   });
   const linksKey = qk.links(pid);
   const geoKey = qk.geo(pid);
   const crawlKey = qk.siteCrawl(pid);
-  const linksResult = useQuery(savedResult<LinksResult>(linksKey, "/api/agents/links/check", open && Boolean(project) && tab === "Links")).data ?? null;
-  const geoResult = useQuery(savedResult<GeoResult>(geoKey, "/api/agents/geo/check", open && Boolean(project) && tab === "GEO")).data ?? null;
-  const siteCrawlResult = useQuery(savedResult<CrawlResult>(crawlKey, "/api/agents/site-crawl/run", open && Boolean(project) && tab === "Links")).data ?? null;
+  const linksResult = useQuery(savedResult<LinksResult>(linksKey, "/api/agents/links/check", open && Boolean(project) && tab === "Links", "links")).data ?? null;
+  const geoResult = useQuery(savedResult<GeoResult>(geoKey, "/api/agents/geo/check", open && Boolean(project) && tab === "GEO", "rows")).data ?? null;
+  const siteCrawlResult = useQuery(savedResult<CrawlResult>(crawlKey, "/api/agents/site-crawl/run", open && Boolean(project) && tab === "Links", "pages")).data ?? null;
   const setLinksResult = (value: LinksResult | null) => queryClient.setQueryData(linksKey, value);
   const setGeoResult = (value: GeoResult | null) => queryClient.setQueryData(geoKey, value);
   const setSiteCrawlResult = (value: CrawlResult | null) => queryClient.setQueryData(crawlKey, value);
@@ -490,6 +495,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
       </div>
 
       <div className="okara-scroll flex-1 overflow-y-auto p-4">
+        <ErrorBoundary label={`The ${tab} tab`} resetKeys={[tab, pid]}>
         {tab === "Findings" ? (
           <FindingsWorkspace onRunAudit={handleRunAudit} auditRunning={loading} />
         ) : tab === "Traffic" ? (
@@ -1359,6 +1365,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
             )}
           </>
         )}
+        </ErrorBoundary>
       </div>
     </div>
   );

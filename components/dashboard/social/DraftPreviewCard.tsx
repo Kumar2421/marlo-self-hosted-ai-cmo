@@ -110,7 +110,7 @@ export default function DraftPreviewCard({
   });
 
   const getDefaultSubreddit = () => {
-    if (redditSettingsQuery.data?.settings.subreddits.length) {
+    if (redditSettingsQuery.data?.settings?.subreddits?.length) {
       return redditSettingsQuery.data.settings.subreddits[0].replace(/^r\//, "");
     }
     return "";

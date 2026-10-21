@@ -42,7 +42,7 @@ export function useDailyDraftSettings(enabled: boolean) {
 
   const query = useQuery({
     queryKey: key,
-    queryFn: async () => (await fetchJson<{ settings: DailyDraftSettings }>(DAILY_ENDPOINT)).settings,
+    queryFn: async () => (await fetchJson<{ settings?: DailyDraftSettings } | null>(DAILY_ENDPOINT))?.settings ?? null,
     enabled: Boolean(project) && enabled,
   });
 

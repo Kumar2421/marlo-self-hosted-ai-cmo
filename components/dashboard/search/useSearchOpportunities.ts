@@ -29,7 +29,7 @@ export function useSearchOpportunities(): SearchOpportunitiesState {
 
   if (query.isPending) return { status: "loading" };
   if (query.isError) return { status: "error" };
-  const { snapshot, opportunities } = query.data;
+  const { snapshot, opportunities } = query.data ?? { snapshot: null };
   if (!snapshot || !opportunities) return { status: "empty" };
   return { status: "ready", capturedAt: snapshot.capturedAt, opportunities };
 }
