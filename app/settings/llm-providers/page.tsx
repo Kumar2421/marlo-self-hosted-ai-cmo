@@ -155,7 +155,7 @@ export default function LlmProvidersPage() {
     <div className="min-w-0 max-w-3xl">
       <h1 className="text-[15px] font-semibold text-gray-900">LLM Providers</h1>
       <p className="mb-4 text-[13px] text-gray-500">
-        Connect the model providers your agents can use. Pick one model as primary — that's what
+        Connect the model providers your agents can use. Pick one model as primary — that&apos;s what
         the chat and agents default to.
       </p>
 
