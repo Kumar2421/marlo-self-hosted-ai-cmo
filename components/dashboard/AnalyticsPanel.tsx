@@ -90,8 +90,8 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
   );
 }
 
-function StatusDot({ status }: { status: "good" | "warn" | "bad" | "Pass" | "Warn" | "Fail" }) {
-  const color = (status === "good" || status === "Pass") ? "bg-[#00ab92]" : (status === "warn" || status === "Warn") ? "bg-amber-500" : "bg-red-500";
+function StatusDot({ status }: { status: "good" | "warn" | "bad" | "Pass" | "Warn" | "Fail" | "Unknown" }) {
+  const color = (status === "good" || status === "Pass") ? "bg-[#00ab92]" : (status === "warn" || status === "Warn") ? "bg-amber-500" : status === "Unknown" ? "bg-gray-300" : "bg-red-500";
   return <span className={`h-1.5 w-1.5 rounded-full ${color}`} />;
 }
 
