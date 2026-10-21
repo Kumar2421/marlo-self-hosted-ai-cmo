@@ -37,18 +37,22 @@ export function brandTermsFrom(name: string | null | undefined, url: string | nu
   for (const word of normalizeQuery(name ?? "").split(" ")) {
     if (word.length >= 3) terms.add(word);
   }
-  if (url) {
-    try {
-      const labels = new URL(url.includes("://") ? url : `https://${url}`).hostname.split(".");
-      labels.pop(); // TLD
-      if (labels.length > 1 && SECOND_LEVEL_LABELS.has(labels[labels.length - 1])) labels.pop(); // co.uk, com.au
-      const label = normalizeQuery(labels[labels.length - 1] ?? "").replace(/ /g, "");
-      if (label.length >= 3) terms.add(label);
-    } catch {
-      // Unparseable URL: fall back to name-derived terms only.
-    }
-  }
+  const label = registrableLabel(url);
+  if (label.length >= 3) terms.add(label);
   return [...terms];
+}
+
+/** The brand label of a URL or domain ("https://www.marlo.ai" -> "marlo", "shop.acme.co.uk" -> "acme"). Empty when unparseable. */
+export function registrableLabel(url: string | null | undefined): string {
+  if (!url) return "";
+  try {
+    const labels = new URL(url.includes("://") ? url : `https://${url}`).hostname.split(".");
+    labels.pop(); // TLD
+    if (labels.length > 1 && SECOND_LEVEL_LABELS.has(labels[labels.length - 1])) labels.pop(); // co.uk, com.au
+    return normalizeQuery(labels[labels.length - 1] ?? "").replace(/ /g, "");
+  } catch {
+    return ""; // Unparseable URL: callers fall back to name-derived terms only.
+  }
 }
 
 function matchesBrand(normalized: string, brandTerms: string[]): boolean {

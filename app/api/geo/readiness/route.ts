@@ -7,9 +7,13 @@ import { checkReadiness, loadProject } from "@/lib/domain/geo/geoService";
 export async function GET() {
   const r = await resolveGeoContext();
   if ("response" in r) return r.response;
-  const project = await loadProject(r.ctx);
-  if (!project) return NextResponse.json({ error: "No project website linked yet. Add one in the project switcher first." }, { status: 422 });
-  return NextResponse.json({ ...(await checkReadiness(project.domain)), domain: project.domain, checkedAt: new Date().toISOString() });
+  try {
+    const project = await loadProject(r.ctx);
+    if (!project) return NextResponse.json({ error: "No project website linked yet. Add one in the project switcher first." }, { status: 422 });
+    return NextResponse.json({ ...(await checkReadiness(project.domain)), domain: project.domain, checkedAt: new Date().toISOString() });
+  } catch {
+    return NextResponse.json({ error: "The readiness check could not run. Try again in a moment.", code: "readiness_unavailable" }, { status: 502 });
+  }
 }
 
 /** Turn one failing readiness check into a tracked finding. Re-evaluated server side; the client only names the check. */
