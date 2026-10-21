@@ -471,7 +471,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
         role="tablist"
         aria-label="Analytics sections"
         onKeyDown={onTabKeyDown}
-        className="flex shrink-0 gap-0.5 overflow-x-auto border-b border-gray-200 p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="@container flex shrink-0 gap-0.5 overflow-x-auto border-b border-gray-200 p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {TABS.map((t) => (
           <button
@@ -482,7 +482,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
             aria-selected={tab === t}
             tabIndex={tab === t ? 0 : -1}
             onClick={() => setTab(t)}
-            className={`min-w-fit flex-1 truncate rounded-lg px-1.5 py-1.5 text-center text-[12px] font-medium transition-colors ${tab === t ? "bg-gray-100 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}
+            className={`min-w-fit flex-1 truncate rounded-lg px-1 py-1.5 text-center text-[11px] font-medium @[20rem]:px-1.5 @[20rem]:text-[12px] transition-colors ${tab === t ? "bg-gray-100 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}
           >
             {t}
           </button>
