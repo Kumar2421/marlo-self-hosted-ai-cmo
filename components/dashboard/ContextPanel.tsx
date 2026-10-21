@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from "react";
-import { SkeletonCard } from "@/components/shared/Skeleton";
 import {
   Layers,
   ChevronLeft,
