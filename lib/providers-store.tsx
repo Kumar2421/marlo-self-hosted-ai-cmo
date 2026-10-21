@@ -2,7 +2,10 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { providers as PROVIDER_DEFS } from "./mock-providers";
+import { useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/utils/supabase/client";
+import { fetchAuthUser, syncAuthUser } from "@/lib/query/authUser";
+import { qk } from "@/lib/query/keys";
 import { FEATURES } from "./features";
 
 type ConnectionState = {
@@ -22,6 +25,12 @@ type Ctx = {
   connect: (providerId: string, apiKey: string, baseUrl?: string) => Promise<void>;
   disconnect: (providerId: string) => Promise<void>;
   connectedModels: { providerId: string; providerName: string; model: string }[];
+};
+
+type ProvidersResponse = {
+  connections: { providerId: string; keyPreview: string; baseUrl?: string }[];
+  primaryModel: string | null;
+  platformProviders?: string[];
 };
 
 const ProvidersCtx = createContext<Ctx | null>(null);
@@ -44,6 +53,7 @@ export default function ProvidersProvider({ children }: { children: React.ReactN
   const [platformProviders, setPlatformProviders] = useState<string[]>([]);
 
   const userIdRef = useRef<string | null>(null);
+  const queryClient = useQueryClient();
 
   const persistCache = useCallback(
     (next: ProvidersState, primary: string | null, id = userIdRef.current) => {
@@ -83,17 +93,24 @@ export default function ProvidersProvider({ children }: { children: React.ReactN
       } catch {}
 
       try {
-        const response = await fetch("/api/providers", { cache: "no-store" });
-        if (response.status === 401 && FEATURES.PLATFORM_MODE) {
+        // One shared query: concurrent callers (getUser result + auth event) join a
+        // single /api/providers request instead of each issuing their own.
+        const result = await queryClient.fetchQuery({
+          queryKey: qk.providers(id),
+          staleTime: 30_000,
+          queryFn: async () => {
+            const response = await fetch("/api/providers", { cache: "no-store" });
+            if (response.status === 401 && FEATURES.PLATFORM_MODE) return { unauthorized: true as const };
+            if (!response.ok) throw new Error("Failed to load providers");
+            const body: ProvidersResponse = await response.json();
+            return { unauthorized: false as const, body };
+          },
+        });
+        if (result.unauthorized) {
           clearSessionState(null);
           return;
         }
-        if (!response.ok) throw new Error("Failed to load providers");
-        const data: {
-          connections: { providerId: string; keyPreview: string; baseUrl?: string }[];
-          primaryModel: string | null;
-          platformProviders?: string[];
-        } = await response.json();
+        const data = result.body;
 
         const next: ProvidersState = {};
         for (const connection of data.connections) {
@@ -108,23 +125,27 @@ export default function ProvidersProvider({ children }: { children: React.ReactN
         setLoading(false);
       }
     },
-    [clearSessionState, persistCache]
+    [clearSessionState, persistCache, queryClient]
   );
 
   useEffect(() => {
     let mounted = true;
     const supabase = createClient();
-    void supabase.auth.getUser().then(({ data }) => {
-      if (!mounted) return;
-      const id = data.user?.id ?? null;
-      userIdRef.current = id;
-      void loadProviders(id);
-    });
+    void fetchAuthUser(queryClient)
+      .catch(() => null)
+      .then((user) => {
+        if (!mounted) return;
+        const id = user?.id ?? null;
+        userIdRef.current = id;
+        void loadProviders(id);
+      });
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
       const id = session?.user?.id ?? null;
+      syncAuthUser(queryClient, session?.user ?? null);
       if (event === "SIGNED_OUT") {
+        queryClient.removeQueries({ queryKey: qk.providers(userIdRef.current) });
         clearSessionState(null);
         setLoading(false);
         return;
@@ -141,7 +162,7 @@ export default function ProvidersProvider({ children }: { children: React.ReactN
       mounted = false;
       authListener.subscription.unsubscribe();
     };
-  }, [clearSessionState, loadProviders]);
+  }, [clearSessionState, loadProviders, queryClient]);
 
   const connect = useCallback(
     async (providerId: string, apiKey: string, baseUrl?: string) => {
@@ -151,6 +172,7 @@ export default function ProvidersProvider({ children }: { children: React.ReactN
         body: JSON.stringify({ providerId, apiKey, baseUrl }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? "Failed to connect");
+      queryClient.removeQueries({ queryKey: qk.providers(userIdRef.current) });
 
       setState((prev) => {
         const next = { ...prev, [providerId]: { connected: true, apiKey: "", baseUrl } };
@@ -158,7 +180,7 @@ export default function ProvidersProvider({ children }: { children: React.ReactN
         return next;
       });
     },
-    [persistCache, primaryModel]
+    [persistCache, primaryModel, queryClient]
   );
 
   const disconnect = useCallback(
@@ -167,6 +189,7 @@ export default function ProvidersProvider({ children }: { children: React.ReactN
         method: "DELETE",
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? "Failed to disconnect");
+      queryClient.removeQueries({ queryKey: qk.providers(userIdRef.current) });
 
       setState((prev) => {
         const next = { ...prev, [providerId]: { connected: false, apiKey: "" } };
@@ -174,13 +197,14 @@ export default function ProvidersProvider({ children }: { children: React.ReactN
         return next;
       });
     },
-    [persistCache, primaryModel]
+    [persistCache, primaryModel, queryClient]
   );
 
   const setPrimaryModel = useCallback(
     (model: string) => {
       setPrimaryModelState(model);
       persistCache(state, model);
+      queryClient.removeQueries({ queryKey: qk.providers(userIdRef.current) });
       fetch("/api/providers", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -189,7 +213,7 @@ export default function ProvidersProvider({ children }: { children: React.ReactN
         // local state remains usable; the next backend reconciliation restores truth
       });
     },
-    [persistCache, state]
+    [persistCache, state, queryClient]
   );
 
   const connectedModels = PROVIDER_DEFS.filter(

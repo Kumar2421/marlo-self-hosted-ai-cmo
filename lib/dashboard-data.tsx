@@ -40,7 +40,8 @@ const DashboardDataContext = createContext<DashboardDataState | null>(null);
 
 export async function fetchDashboardData(projectId?: string | null): Promise<DashboardData> {
   const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
-  const payload = await fetchJson<Partial<DashboardData>>(`/api/project/data${query}`);
+  // "no-cache" (not the default no-store) lets the browser revalidate with the route's ETag: an unchanged dashboard costs a 304, not the full payload.
+  const payload = await fetchJson<Partial<DashboardData>>(`/api/project/data${query}`, { cache: "no-cache" });
 
   if (!payload.project || !payload.projectId || !payload.data) {
     throw new Error("Dashboard data response is incomplete");

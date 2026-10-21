@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from "react";
-import { SkeletonCard } from "@/components/shared/Skeleton";
 import {
   Layers,
   ChevronLeft,
@@ -68,6 +67,8 @@ function ProjectDescription({ text }: { text: string }) {
     </div>
   );
 }
+// The project header block and its loading skeleton share this height, so the swap to real content doesn't shift the Documents list below it.
+const HEADER_BLOCK = "min-h-[228px] md:min-h-[284px]";
 
 export default function ContextPanel({
   open,
@@ -247,9 +248,14 @@ export default function ContextPanel({
 
       <div className="okara-scroll flex-1 overflow-y-auto px-4 py-4">
         {loading || (project && contextLoading && documents.length === 0 && contextCompetitors.length === 0) ? (
-          <div className="space-y-4" aria-busy="true">
-            <SkeletonCard rows={3} />
-            <SkeletonCard rows={2} />
+          <div key="header-skeleton" className={HEADER_BLOCK} aria-busy="true" role="status" aria-label="Loading">
+            <div className="mb-2.5 flex items-center gap-2">
+              <div className="h-6 w-6 animate-pulse rounded-full bg-gray-200" />
+              <div className="h-3.5 w-32 animate-pulse rounded bg-gray-200" />
+            </div>
+            <div className="mb-3 h-[23px] w-20 animate-pulse rounded-full bg-gray-100" />
+            <div className="mb-4 h-[59px] animate-pulse rounded-lg bg-gray-100" />
+            <div className="h-[44px] animate-pulse rounded-lg bg-gray-100" />
           </div>
         ) : !project ? (
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-gray-200 px-4 py-8 text-center">
@@ -262,7 +268,7 @@ export default function ContextPanel({
             </p>
           </div>
         ) : (
-          <>
+          <div key="header" className={HEADER_BLOCK}>
             <div className="mb-2.5 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="h-6 w-6 rounded-full bg-indigo-400" />
@@ -311,7 +317,7 @@ export default function ContextPanel({
             {project.description && (
               <ProjectDescription text={project.description} />
             )}
-          </>
+          </div>
         )}
 
         <div className="mb-1 flex w-full items-center justify-between">
@@ -437,7 +443,10 @@ export default function ContextPanel({
               </button>
             )}
             {competitorsLoading ? (
-              <p className="text-[12px] text-gray-400">Loading...</p>
+              <div className="min-h-[56px] space-y-1.5" role="status" aria-label="Loading">
+                <div className="h-6 animate-pulse rounded bg-gray-100" />
+                <div className="h-6 w-2/3 animate-pulse rounded bg-gray-100" />
+              </div>
             ) : competitors.length === 0 ? (
               <p className="text-[12px] leading-5 text-gray-400">
                 No competitors added yet. Add one manually above, or use &ldquo;Find competitors automatically&rdquo;

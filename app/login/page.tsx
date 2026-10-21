@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Lock, KeyRound, ArrowLeft } from "lucide-react";
-import { DotLottieReact } from "@lottiefiles/dotlottie-react";
+import GhostLoader from "@/components/shared/GhostLoader";
 import { createClient } from "@/utils/supabase/client";
 import { FEATURES } from "@/lib/features";
 import { GOOGLE_ANALYTICS_SCOPES } from "@/lib/googleOAuthScopes";
@@ -326,7 +326,7 @@ export default function LoginPage() {
         <div className="flex items-center justify-center overflow-y-auto rounded-md border border-black/10 bg-white px-6 py-6 sm:px-10 lg:px-14 xl:px-16">
           <div className="w-full max-w-[420px]">
             <div className="mb-2 flex items-center gap-2">
-              <DotLottieReact src="/ghost-loader.lottie" autoplay loop className="h-6 w-6" />
+              <GhostLoader className="h-6 w-6" />
               <span className="text-sm font-bold tracking-tight">Marlo</span>
             </div>
 
@@ -392,7 +392,7 @@ export default function LoginPage() {
                     disabled={isLoading || !isOtpComplete(otpCode)}
                     className="mt-1 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#111111] text-sm font-medium text-white hover:bg-black disabled:opacity-50"
                   >
-                    {isLoading ? <DotLottieReact src="/ghost-loader.lottie" autoplay loop className="h-4 w-4" /> : null}
+                    {isLoading ? <GhostLoader className="h-4 w-4" tone="light" /> : null}
                     {isLoading ? "Verifying..." : mode === "verify-signup" ? "Verify & continue" : "Reset password"}
                   </button>
                 </form>
@@ -443,7 +443,7 @@ export default function LoginPage() {
                     disabled={isLoading}
                     className="mt-1 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#111111] text-sm font-medium text-white hover:bg-black disabled:opacity-50"
                   >
-                    {isLoading ? <DotLottieReact src="/ghost-loader.lottie" autoplay loop className="h-4 w-4" /> : null}
+                    {isLoading ? <GhostLoader className="h-4 w-4" tone="light" /> : null}
                     {isLoading ? "Sending..." : "Send code"}
                   </button>
                 </form>
@@ -566,7 +566,7 @@ export default function LoginPage() {
                     disabled={isLoading}
                     className="mt-1 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#111111] text-sm font-medium text-white hover:bg-black disabled:opacity-50"
                   >
-                    {isLoading ? <DotLottieReact src="/ghost-loader.lottie" autoplay loop className="h-4 w-4" /> : null}
+                    {isLoading ? <GhostLoader className="h-4 w-4" tone="light" /> : null}
                     {isLoading ? "Loading..." : isSignUp ? "Create Account" : "Sign In"}
                   </button>
                 </form>
@@ -595,7 +595,7 @@ export default function LoginPage() {
 
           <div className="relative z-10 flex h-full w-full flex-col justify-between overflow-y-auto p-8 sm:p-10">
             <div className="flex items-center gap-2.5">
-              <DotLottieReact src="/ghost-loader.lottie" autoplay loop className="h-9 w-9" />
+              <GhostLoader className="h-9 w-9" tone="light" />
               <span className="text-sm font-semibold tracking-tight text-white/90">Marlo</span>
             </div>
 

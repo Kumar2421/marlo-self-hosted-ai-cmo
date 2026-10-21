@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { DotLottieReact } from "@lottiefiles/dotlottie-react";
+import GhostLoader from "@/components/shared/GhostLoader";
 import {
   ChevronDown,
   ChevronUp,
@@ -349,7 +349,7 @@ export default function TerminalLog() {
     <div ref={ref} className="relative z-30 shrink-0 bg-white px-3 pb-1 pt-2">
       <div data-testid="terminal-bar" className="flex h-12 shrink-0 items-center justify-between rounded-xl bg-[#110f0e] px-3">
         <div className="flex min-w-0 flex-1 items-center gap-1">
-          <DotLottieReact src="/ghost-loader.lottie" autoplay loop className="mr-1 h-7 w-7 shrink-0" />
+          <GhostLoader className="mr-1 h-7 w-7" tone="light" />
           <ProjectSwitcher />
 
           <button

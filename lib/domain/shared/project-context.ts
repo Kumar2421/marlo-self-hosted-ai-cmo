@@ -23,24 +23,29 @@ export async function getAuthenticatedProjectContext(
     }
 
     const db = createServiceClient();
-    const projectQuery = db
-      .from("projects")
-      .select("id, owner_id, name, category, description, url, created_at, updated_at")
-      .eq("owner_id", user.id);
+    const projectColumns = "id, owner_id, name, category, description, url, created_at, updated_at";
 
-    const projectId = requestedProjectId ?? null;
-    const { data: setting } = await db
-      .from("user_settings")
-      .select("value")
-      .eq("user_id", user.id)
-      .eq("key", "active_project_id")
-      .maybeSingle();
-    const activeId = projectId ?? setting?.value ?? null;
-    if (!activeId) {
-      return { response: NextResponse.json({ error: "No active project" }, { status: 404 }) };
+    // Explicit project: one query, no need to read the saved active-project setting.
+    // Otherwise read the setting and the owner's projects concurrently (one round
+    // trip instead of two) and pick the active one locally.
+    let project: { id: string } & Record<string, unknown> | null | undefined;
+    let error: { message: string } | null = null;
+    if (requestedProjectId) {
+      const res = await db.from("projects").select(projectColumns).eq("owner_id", user.id).eq("id", requestedProjectId).maybeSingle();
+      project = res.data;
+      error = res.error;
+    } else {
+      const [settingRes, projectsRes] = await Promise.all([
+        db.from("user_settings").select("value").eq("user_id", user.id).eq("key", "active_project_id").maybeSingle(),
+        db.from("projects").select(projectColumns).eq("owner_id", user.id),
+      ]);
+      const activeId = settingRes.data?.value ?? null;
+      if (!activeId) {
+        return { response: NextResponse.json({ error: "No active project" }, { status: 404 }) };
+      }
+      error = projectsRes.error;
+      project = (projectsRes.data ?? []).find((p: { id: string }) => p.id === activeId);
     }
-
-    const { data: project, error } = await projectQuery.eq("id", activeId).maybeSingle();
     if (error) return { response: NextResponse.json({ error: error.message }, { status: 500 }) };
     if (!project) return { response: NextResponse.json({ error: "Project not found" }, { status: 404 }) };
 

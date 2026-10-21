@@ -10,6 +10,8 @@ const scope = (projectId: string | undefined) => ["project", projectId ?? "none"
 const account = ["account"] as const;
 
 export const qk = {
+  authUser: () => [...account, "auth-user"] as const,
+  providers: (userId: string | null) => [...account, "providers", userId ?? "anonymous"] as const,
   gmailStatus: () => [...account, "gmail-status"] as const,
   notifications: () => [...account, "notifications"] as const,
   notificationPrefs: () => [...account, "notification-prefs"] as const,
