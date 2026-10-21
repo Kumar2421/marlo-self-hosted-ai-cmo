@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCachedFavicon } from "@/lib/domain/shared/faviconFetch";
 import { assertSafeUserUrl, INVALID_USER_URL_MESSAGE } from "@/lib/domain/net/publicUrl";
+import { BLOCKED_MESSAGE } from "@/lib/domain/net/ssrf";
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createFixedWindowLimiter } from "@/lib/domain/shared/fixedWindowLimiter";
@@ -35,6 +36,10 @@ export async function GET(req: NextRequest) {
     await assertSafeUserUrl(raw);
   } catch (error) {
     const message = error instanceof Error ? error.message : INVALID_USER_URL_MESSAGE;
+    // Unresolvable or non-public host (typo, dead domain): not a client error for an icon, answer "no icon" quickly.
+    if (message === BLOCKED_MESSAGE) {
+      return NextResponse.json({ favicon: null }, { headers: { "Cache-Control": "private, max-age=3600" } });
+    }
     return NextResponse.json({ favicon: null, error: message }, { status: 400 });
   }
 

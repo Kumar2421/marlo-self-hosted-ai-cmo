@@ -33,6 +33,7 @@ import CompetitorComparisonPanel from "./documents/CompetitorComparisonPanel";
 import ContentStrategyPanel from "./documents/ContentStrategyPanel";
 import DesignGuidePanel from "./documents/DesignGuidePanel";
 import { WebsiteIcon } from "@/components/shared/WebsiteIcon";
+import { normalizeHostUrl } from "@/lib/domain/shared/hostLike";
 
 // Long descriptions clamp to 4 lines with a toggle; short ones render as-is.
 function ProjectDescription({ text }: { text: string }) {
@@ -451,7 +452,7 @@ export default function ContextPanel({
                     <div className="flex items-center gap-2 min-w-0">
                       <WebsiteIcon url={c.url} size={6} />
                       <a
-                        href={c.url}
+                        href={normalizeHostUrl(c.url)?.url}
                         target="_blank"
                         rel="noreferrer"
                         className="truncate hover:text-gray-900 hover:underline"

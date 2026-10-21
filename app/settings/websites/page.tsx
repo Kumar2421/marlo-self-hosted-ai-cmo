@@ -6,6 +6,7 @@ import { useToast } from "@/components/dashboard/Toast";
 import { useProject, type ActiveProject } from "@/lib/project-store";
 import { NewProjectModal } from "@/components/dashboard/TerminalLog";
 import { WebsiteIcon } from "@/components/shared/WebsiteIcon";
+import { normalizeHostUrl } from "@/lib/domain/shared/hostLike";
 
 function EditForm({ project, onClose }: { project: ActiveProject; onClose: () => void }) {
   const { updateProject } = useProject();
@@ -113,7 +114,7 @@ function ProjectRow({ p, isActive }: { p: ActiveProject; isActive: boolean }) {
                 <span className="shrink-0 rounded-full bg-gray-200 px-2 py-0.5 text-[11px] font-medium text-gray-600">{p.category}</span>
               )}
             </div>
-            <a href={p.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 truncate text-[12px] text-gray-500 hover:underline">
+            <a href={normalizeHostUrl(p.url)?.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 truncate text-[12px] text-gray-500 hover:underline">
               {p.url.replace(/^https?:\/\//, "")} <ExternalLink size={10} className="shrink-0" />
             </a>
             {p.description && <p className="mt-0.5 truncate text-[11px] text-gray-400">{p.description}</p>}
