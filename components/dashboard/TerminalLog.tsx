@@ -321,65 +321,76 @@ function ProjectSwitcher() {
 }
 
 export default function TerminalLog() {
-  // Starts collapsed on mobile — expanded it eats a third of the viewport
-  // and leaves little room for the active panel below. Desktop keeps the
-  // original always-open default.
-  const [logOpen, setLogOpen] = useState(() => !(typeof window !== "undefined" && window.innerWidth < 768));
+  // The terminal body is a drop-down overlay opened on demand, never auto-opened
+  // and never in the layout flow: the bar stays one compact row and the 4-panel
+  // grid below keeps its full height whether the log is open or not.
+  const [logOpen, setLogOpen] = useState(false);
   const { lines } = useTerminalLog();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const ref = useClickOutside(() => setLogOpen(false));
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [lines]);
+    if (!logOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setLogOpen(false);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [logOpen]);
 
-  const latest = lines[lines.length - 1];
+  useEffect(() => {
+    if (!logOpen) return;
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [lines, logOpen]);
+
+  const latest = [...lines].reverse().find((l) => l.type !== "divider");
 
   return (
-    <div className="shrink-0 bg-white p-3 pb-2">
-      <div className="flex flex-col rounded-xl bg-[#110f0e]">
-        <div className="flex h-[52px] shrink-0 items-center justify-between px-4">
-          <div className="flex min-w-0 items-center gap-1">
-            <DotLottieReact src="/ghost-loader.lottie" autoplay loop className="mr-1 h-7 w-7 shrink-0" />
-            <button
-              onClick={() => setLogOpen((v) => !v)}
-              className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-400 hover:bg-white/10 hover:text-white"
-              title={logOpen ? "Collapse terminal" : "Expand terminal"}
-            >
-              <ChevronUp size={14} className={`transition-transform ${logOpen ? "" : "rotate-180"}`} />
-            </button>
-            <ProjectSwitcher />
+    <div ref={ref} className="relative z-30 shrink-0 bg-white px-3 pb-1 pt-2">
+      <div data-testid="terminal-bar" className="flex h-12 shrink-0 items-center justify-between rounded-xl bg-[#110f0e] px-3">
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+          <DotLottieReact src="/ghost-loader.lottie" autoplay loop className="mr-1 h-7 w-7 shrink-0" />
+          <ProjectSwitcher />
 
-            <div className="ml-2 hidden min-w-0 items-center gap-2 border-l border-white/10 pl-3 text-[13px] md:flex">
-              <span className="flex shrink-0 items-center gap-1.5 text-gray-400">
-                <ScrollText size={13} />
-                Status Log
+          <button
+            onClick={() => setLogOpen((v) => !v)}
+            aria-expanded={logOpen}
+            aria-controls="terminal-log-panel"
+            title={logOpen ? "Hide agent activity" : "Show agent activity"}
+            className="ml-2 flex min-w-0 flex-1 items-center gap-2 rounded-md border-l border-white/10 py-1 pl-3 pr-1 text-left text-[13px] hover:bg-white/5"
+          >
+            <span className="hidden shrink-0 items-center gap-1.5 text-gray-400 md:flex">
+              <ScrollText size={13} />
+              Status Log
+            </span>
+            <span className="hidden shrink-0 text-gray-600 md:inline">|</span>
+            {latest ? (
+              <span className={`min-w-0 flex-1 truncate ${latest.type === "done" ? "text-[#00ab92]" : "text-gray-300"}`}>
+                {latest.type === "done" && <Check size={12} className="mr-1 inline shrink-0 align-[-1px]" />}
+                {latest.text}
               </span>
-              <span className="shrink-0 text-gray-600">|</span>
-              {latest ? (
-                <span
-                  className={`truncate ${latest.type === "done" ? "text-[#00ab92]" : "text-gray-300"}`}
-                >
-                  {latest.type === "done" && <Check size={12} className="mr-1 inline shrink-0 align-[-1px]" />}
-                  {latest.text}
-                </span>
-              ) : (
-                <span className="truncate text-gray-500">No activity yet.</span>
-              )}
-            </div>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2">
-            <SocialNavMenu />
-            <NotificationBell />
-            <UserMenu />
-          </div>
+            ) : (
+              <span className="min-w-0 flex-1 truncate text-gray-500">No activity yet.</span>
+            )}
+            <ChevronDown size={13} className={`shrink-0 text-gray-400 transition-transform ${logOpen ? "rotate-180" : ""}`} />
+          </button>
         </div>
 
-        {logOpen && (
-          <div
-            ref={scrollRef}
-            className="okara-scroll-dark max-h-[185px] overflow-y-auto border-t border-white/10 px-4 py-2.5 font-mono text-[12px] leading-[1.65]"
-          >
+        <div className="ml-2 flex shrink-0 items-center gap-2">
+          <SocialNavMenu />
+          <NotificationBell />
+          <UserMenu />
+        </div>
+      </div>
+
+      {logOpen && (
+        <div
+          id="terminal-log-panel"
+          role="log"
+          aria-label="Agent activity"
+          ref={scrollRef}
+          className="okara-scroll-dark absolute inset-x-3 top-full z-40 max-h-[185px] overflow-y-auto rounded-xl border border-white/10 bg-[#110f0e] px-4 py-2.5 font-mono text-[12px] leading-[1.65] shadow-xl"
+        >
           {lines.length === 0 && <div className="text-gray-600">Agent activity will show up here as it happens.</div>}
           {lines.map((line, i) => {
             if (line.type === "muted-link") {
@@ -414,9 +425,8 @@ export default function TerminalLog() {
               </div>
             );
           })}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
