@@ -438,6 +438,8 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
         </button>
       </div>
 
+      {/* One scroll region for everything between the header and the footer: the profile form, Gmail card, wizard and results can together be taller than the screen. */}
+      <div className="okara-scroll min-h-0 flex-1 overflow-y-auto">
       <div className="shrink-0 space-y-2 border-b border-gray-200 p-3">
         <div className="mb-1 flex rounded-lg bg-gray-100 p-0.5 text-[12px]">
           <button
@@ -569,7 +571,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
       )}
 
       {selected.size > 0 && (
-        <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-3 py-2">
+        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-3 py-2">
           <span className="text-[12px] text-gray-600">{selected.size} selected</span>
           <button
             onClick={() => setComposeOpen(true)}
@@ -636,7 +638,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
         />
       )}
 
-      <div className="okara-scroll flex-1 overflow-y-auto">
+      <div className="min-w-0">
         {!project ? (
           <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
             <Users size={18} className="text-gray-300" />
@@ -758,6 +760,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
             ))}
           </div>
         )}
+      </div>
       </div>
 
       <div className="flex shrink-0 items-center justify-between border-t border-gray-200 px-4 py-2.5 text-[11px] text-gray-400">

@@ -112,7 +112,7 @@ export default function DashboardPage() {
       <OnboardingGate>
         <div className="flex h-dvh flex-col bg-white">
           <TerminalLog />
-          <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns: cols }}>
+          <div className="grid min-h-0 flex-1 overflow-hidden" style={{ gridTemplateColumns: cols, gridTemplateRows: "minmax(0, 1fr)" }}>
             <ContextPanel open={contextOpen} onToggle={() => setContextOpen((v) => !v)} />
             <Suspense fallback={null}>
               <AnalyticsPanel open={analyticsOpen} onToggle={() => setAnalyticsOpen((v) => !v)} />
