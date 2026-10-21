@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/utils/supabase/client";
+import { fetchAuthUser, syncAuthUser } from "@/lib/query/authUser";
 
 export type AuthUser = {
   name: string;
@@ -23,29 +25,36 @@ function deriveDisplay(email: string, fullName?: string | null): { name: string;
  * Returns null while loading or if no Supabase project is configured yet
  * (credentials pending) — callers should fall back to a placeholder. */
 export function useAuthUser(): { user: AuthUser | null; loading: boolean } {
+  const configured = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(configured);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      setLoading(false);
-      return;
-    }
+    if (!configured) return;
 
     const supabase = createClient();
+    let mounted = true;
 
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        const { name, initials } = deriveDisplay(
-          data.user.email ?? "",
-          data.user.user_metadata?.full_name
-        );
-        setUser({ name, initials, email: data.user.email ?? "" });
-      }
-      setLoading(false);
-    });
+    // Shared with the providers store: one /auth/v1/user call for the whole app.
+    fetchAuthUser(queryClient)
+      .then((authUser) => {
+        if (!mounted) return;
+        if (authUser) {
+          const { name, initials } = deriveDisplay(
+            authUser.email ?? "",
+            authUser.user_metadata?.full_name
+          );
+          setUser({ name, initials, email: authUser.email ?? "" });
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      syncAuthUser(queryClient, session?.user ?? null);
       if (session?.user) {
         const { name, initials } = deriveDisplay(
           session.user.email ?? "",
@@ -57,8 +66,11 @@ export function useAuthUser(): { user: AuthUser | null; loading: boolean } {
       }
     });
 
-    return () => sub.subscription.unsubscribe();
-  }, []);
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, [queryClient, configured]);
 
   return { user, loading };
 }

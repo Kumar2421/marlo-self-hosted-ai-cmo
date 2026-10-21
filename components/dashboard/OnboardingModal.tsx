@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
-import { DotLottieReact } from "@lottiefiles/dotlottie-react";
+import GhostLoader from "@/components/shared/GhostLoader";
 import { useProject } from "@/lib/project-store";
 import { useToast } from "@/components/dashboard/Toast";
 
@@ -137,7 +137,7 @@ export default function OnboardingModal({ onDone }: { onDone: () => void }) {
             disabled={saving}
             className="mt-1 flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-[#111111] text-[13px] font-medium text-white hover:bg-black disabled:opacity-50"
           >
-            {saving ? <DotLottieReact src="/ghost-loader.lottie" autoplay loop className="h-4 w-4" /> : null}
+            {saving ? <GhostLoader className="h-4 w-4" tone="light" /> : null}
             {saving ? "Setting up your site..." : "Get started"}
             {!saving && <ArrowRight className="h-3.5 w-3.5" />}
           </button>
