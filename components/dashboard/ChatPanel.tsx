@@ -23,6 +23,12 @@ import CollapsedRail, { RailButton } from "./CollapsedRail";
 import { useToast } from "./Toast";
 import { useProviders, findProviderForModel } from "@/lib/providers-store";
 
+const SUGGESTED_PROMPTS = [
+  "What should I fix first on my site?",
+  "Summarise my SEO findings",
+  "Draft a post about my latest feature",
+];
+
 type Msg = {
   role: "user" | "assistant";
   text: string;
@@ -94,6 +100,7 @@ export default function ChatPanel({
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const { show } = useToast();
   const { primaryModel } = useProviders();
 
@@ -161,8 +168,8 @@ export default function ChatPanel({
   return (
     <div className="flex h-full min-h-0 flex-col bg-white">
 
-      <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-2.5">
-        <div className="flex items-center gap-2 text-[13px] font-medium text-gray-700">
+      <div className="dash-panel-header">
+        <div className="dash-title">
           <Search size={13} className="text-gray-400" />
           mlforge studio 
         </div>
@@ -229,8 +236,25 @@ export default function ChatPanel({
           )
         )}
         {messages.length === 0 && (
-          <div className="flex h-full items-center justify-center text-[13px] text-gray-400">
-            hi how can i help u today - by mlforge studio!
+          <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
+            <div className="space-y-1">
+              <p className="dash-title justify-center">How can I help today?</p>
+              <p className="dash-meta text-gray-400">Ask about your site, your data or your content.</p>
+            </div>
+            <div className="flex w-full max-w-[260px] flex-col gap-1.5">
+              {SUGGESTED_PROMPTS.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => {
+                    setInput(p);
+                    inputRef.current?.focus();
+                  }}
+                  className="dash-focus dash-body min-h-9 rounded-lg border border-gray-200 px-3 py-1.5 text-left text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {sending && (
@@ -245,6 +269,7 @@ export default function ChatPanel({
       <div className="shrink-0 border-t border-gray-200 bg-[#f9fafb] p-3">
         <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm focus-within:border-gray-400">
           <input
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
