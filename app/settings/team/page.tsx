@@ -7,8 +7,8 @@ export default function TeamPage() {
   const { user, loading } = useAuthUser();
 
   return (
-    <div className="max-w-2xl">
-      <div className="mb-4 flex items-start justify-between">
+    <div className="min-w-0 max-w-2xl">
+      <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-[15px] font-semibold text-gray-900">Team</h1>
           <p className="text-[13px] text-gray-500">Manage who has access to this workspace.</p>

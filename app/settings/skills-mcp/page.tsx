@@ -4,7 +4,7 @@ import { Puzzle } from "lucide-react";
 
 export default function SkillsMcpPage() {
   return (
-    <div className="max-w-2xl">
+    <div className="min-w-0 max-w-2xl">
       <h1 className="text-[15px] font-semibold text-gray-900">Skills &amp; MCP</h1>
       <p className="mb-4 text-[13px] text-gray-500">Extend your AI CMO with custom skills and MCP servers.</p>
 

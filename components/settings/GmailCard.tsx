@@ -122,11 +122,11 @@ export default function GmailCard() {
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <div className="mb-3 flex items-start justify-between">
+      <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <BrandIcon id="gmail" color="#ea4335" fallback="G" />
           <div>
-            <div className="flex items-center gap-2 text-[13px] font-semibold text-gray-900">
+            <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
               Gmail
               {connectedEmail && (
                 <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">
@@ -190,8 +190,8 @@ export default function GmailCard() {
                 </code>
               </p>
               <div className="mb-2 space-y-2">
-                <input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="Client ID" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400" />
-                <input value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder="Client Secret" type="password" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400" />
+                <input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="Client ID" className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400" />
+                <input value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder="Client Secret" type="password" className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400" />
               </div>
               <button onClick={handleSaveClientCreds} disabled={busy} className="rounded-lg bg-[#111111] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50">
                 {busy ? "Saving..." : "Save to .env.local"}

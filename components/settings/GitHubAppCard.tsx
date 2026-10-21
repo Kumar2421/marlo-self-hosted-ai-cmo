@@ -83,7 +83,7 @@ export default function GitHubAppCard() {
         <div className="flex items-start gap-3">
           <BrandIcon id="github" color="#111111" fallback="G" />
           <div>
-            <div className="flex items-center gap-2 text-[13px] font-semibold text-gray-900">
+            <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
               GitHub
               {gh?.connected && (
                 <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">
@@ -127,7 +127,7 @@ export default function GitHubAppCard() {
           )}
           {gh?.connected && (
             <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
-              <span className="font-mono">{gh.repoFullName}</span>
+              <span className="min-w-0 break-all font-mono">{gh.repoFullName}</span>
               <button onClick={disconnect} disabled={busy} className="font-medium text-red-600 hover:underline disabled:opacity-50">Disconnect</button>
             </div>
           )}

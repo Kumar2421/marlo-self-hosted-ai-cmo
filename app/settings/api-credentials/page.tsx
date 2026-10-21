@@ -12,7 +12,7 @@ import CompetitorDiscoveryToggle from "@/components/settings/CompetitorDiscovery
 
 export default function ApiCredentialsPage() {
   return (
-    <div className="max-w-3xl">
+    <div className="min-w-0 max-w-3xl">
       <h1 className="text-[15px] font-semibold text-gray-900">API Credentials</h1>
       <p className="mb-4 text-[13px] text-gray-500">
         External services that ground agents in real data — separate from the LLM providers that

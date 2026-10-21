@@ -8,9 +8,9 @@ const baseURL = externalBaseUrl ?? "http://localhost:3000";
 // The dev server gets placeholder Supabase config so the auth screens render
 // without real credentials. Every Supabase auth request made by the browser is
 // intercepted with page.route() in e2e/. The server-side session check for
-// /dashboard cannot be intercepted, so the URL points at a tiny local fake
-// (e2e/support/fakeSupabaseServer.ts, started below). Override the URL with
-// E2E_SUPABASE_URL; the fake listens on that URL's port.
+// /dashboard and /settings cannot be intercepted, so the URL points at a tiny
+// local fake (e2e/support/fakeSupabaseServer.ts, started below). Override the
+// URL with E2E_SUPABASE_URL; the fake listens on that URL's port.
 // Placeholder values are forced over any local .env so a developer's real
 // Supabase URL can never be reached from the test run.
 const supabaseUrl = process.env.E2E_SUPABASE_URL || "http://localhost:54329";

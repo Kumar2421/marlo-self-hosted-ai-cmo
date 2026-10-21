@@ -55,7 +55,7 @@ export default function CreditsPage() {
 
   if (!data?.available) {
     return (
-      <div className="max-w-2xl">
+      <div className="min-w-0 max-w-2xl">
         <h1 className="text-[15px] font-semibold text-gray-900">Credits</h1>
         <p className="mb-4 text-[13px] text-gray-500">
           Not applicable in self-host mode — you bring your own LLM keys, so nothing here is metered or charged.
@@ -75,12 +75,12 @@ export default function CreditsPage() {
     status === "Out" ? "bg-red-50 text-red-700" : status === "Low" ? "bg-amber-50 text-amber-700" : "bg-[#e6f7f4] text-[#00846f]";
 
   return (
-    <div className="max-w-3xl">
+    <div className="min-w-0 max-w-3xl">
       <h1 className="text-[15px] font-semibold text-gray-900">Credits</h1>
       <p className="mb-4 text-[13px] text-gray-500">Monitor usage and manage tasks for your AI CMO.</p>
 
       <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4">
-        <div className="mb-3 flex items-start justify-between">
+        <div className="mb-3 flex items-start justify-between gap-3">
           <div>
             <div className="text-[11px] uppercase tracking-wide text-gray-400">Credits used</div>
             <div className="flex items-baseline gap-1.5">

@@ -1,11 +1,11 @@
 import http from "node:http";
 
 /**
- * Tiny local stand-in for Supabase, used only by the dashboard layout e2e.
+ * Tiny local stand-in for Supabase, used only by the signed-in e2e specs.
  *
- * proxy.ts calls supabase.auth.getUser() on the server for /dashboard, and that
+ * proxy.ts calls supabase.auth.getUser() on the server for /dashboard and /settings, and that
  * request cannot be intercepted by page.route(). This server answers it (and the
- * token / REST calls the browser client may make) so the dashboard renders for a
+ * token / REST calls the browser client may make) so the page renders for a
  * signed-in test user. It stores nothing and is never a real backend.
  *
  * Run: node --experimental-strip-types e2e/support/fakeSupabaseServer.ts

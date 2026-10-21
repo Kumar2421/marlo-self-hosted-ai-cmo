@@ -181,7 +181,7 @@ export default function GitHubCodeFixCard() {
   if (FEATURES.PLATFORM_MODE) {
     return (
       <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <div className="mb-3 flex items-start justify-between">
+        <div className="mb-3 flex items-start justify-between gap-3">
           <div className="flex items-start gap-3">
             <BrandIcon id="github" color="#111111" fallback="G" />
             <div>
@@ -195,12 +195,12 @@ export default function GitHubCodeFixCard() {
           <a href="/api/auth/github/connect" className="inline-flex rounded-lg bg-[#111111] px-3 py-2 text-[13px] font-medium text-white hover:bg-black">Connect GitHub</a>
         ) : connected ? (
           <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
-            <span className="font-mono">{repoSaved}</span>
+            <span className="min-w-0 break-all font-mono">{repoSaved}</span>
             <button onClick={handleDisconnect} disabled={busy} className="font-medium text-red-600 hover:underline disabled:opacity-50">Disconnect</button>
           </div>
         ) : (
           <div className="flex gap-2">
-            <input value={repoInput} onChange={(e) => setRepoInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleConnect()} placeholder="owner/repository" className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400" />
+            <input value={repoInput} onChange={(e) => setRepoInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleConnect()} placeholder="owner/repository" className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400" />
             <button onClick={handleConnect} disabled={busy} className="shrink-0 rounded-lg bg-[#111111] px-3 py-2 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50">{busy ? "Verifying..." : "Use repository"}</button>
           </div>
         )}
@@ -210,11 +210,11 @@ export default function GitHubCodeFixCard() {
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <div className="mb-3 flex items-start justify-between">
+      <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <BrandIcon id="github" color="#111111" fallback="G" />
           <div>
-            <div className="flex items-center gap-2 text-[13px] font-semibold text-gray-900">
+            <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
               GitHub — Code Fix Agent
               {connected && (
                 <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">
@@ -241,7 +241,7 @@ export default function GitHubCodeFixCard() {
 
       {!loaded ? null : connected ? (
         <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
-          <span className="font-mono">{repoSaved}</span>
+          <span className="min-w-0 break-all font-mono">{repoSaved}</span>
           <button onClick={handleDisconnect} disabled={busy} className="font-medium text-red-600 hover:underline disabled:opacity-50">
             Disconnect
           </button>
@@ -253,7 +253,7 @@ export default function GitHubCodeFixCard() {
             onChange={(e) => setPatInput(e.target.value)}
             placeholder="github_pat_..."
             type="password"
-            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
+            className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
           />
           <div className="flex gap-2">
             <input
@@ -261,7 +261,7 @@ export default function GitHubCodeFixCard() {
               onChange={(e) => setRepoInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleConnect()}
               placeholder="yourname/yourrepo"
-              className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
+              className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
             />
             <button
               onClick={handleConnect}

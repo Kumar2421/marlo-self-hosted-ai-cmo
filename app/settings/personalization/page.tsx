@@ -62,7 +62,7 @@ export default function PersonalizationPage() {
   }
 
   return (
-    <div className="max-w-2xl">
+    <div className="min-w-0 max-w-2xl">
       <h2 className="mb-1 text-[15px] font-semibold text-gray-900">Profile</h2>
       <p className="mb-3 text-[13px] text-gray-500">Your account identity.</p>
       <div className="mb-8 flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3">
@@ -91,7 +91,7 @@ export default function PersonalizationPage() {
               maxLength={50}
               onChange={(e) => setName(e.target.value)}
               placeholder="Enter your name"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2.5 pr-14 text-[13px] text-gray-800 placeholder:text-gray-400"
+              className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2.5 pr-14 text-[13px] text-gray-800 placeholder:text-gray-400"
             />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">{name.length}/50</span>
           </div>
@@ -103,7 +103,7 @@ export default function PersonalizationPage() {
               maxLength={100}
               onChange={(e) => setRole(e.target.value)}
               placeholder="Engineer, student, etc."
-              className="w-full rounded-lg border border-gray-200 px-3 py-2.5 pr-16 text-[13px] text-gray-800 placeholder:text-gray-400"
+              className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2.5 pr-16 text-[13px] text-gray-800 placeholder:text-gray-400"
             />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">{role.length}/100</span>
           </div>

@@ -62,11 +62,11 @@ function SingleKeyCard() {
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <div className="mb-3 flex items-start justify-between">
+      <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <BrandIcon id={provider.id} color={provider.color} fallback={provider.icon} size={19} />
           <div>
-            <div className="flex items-center gap-2 text-[13px] font-semibold text-gray-900">
+            <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
               {isConnected ? "Your API key" : "Included model"}
               {isConnected ? (
                 <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">
@@ -97,7 +97,7 @@ function SingleKeyCard() {
 
       {isConnected ? (
         <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
-          <span className="font-mono">
+          <span className="min-w-0 break-all font-mono">
             {connection.apiKey?.includes("•")
               ? connection.apiKey
               : connection.apiKey
@@ -120,7 +120,7 @@ function SingleKeyCard() {
             onKeyDown={(e) => e.key === "Enter" && handleConnect()}
             placeholder={provider.keyPlaceholder}
             type="password"
-            className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
+            className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
           />
           <button
             onClick={handleConnect}
@@ -140,7 +140,7 @@ export default function LlmProvidersPage() {
 
   if (FEATURES.PLATFORM_MODE) {
     return (
-      <div className="max-w-3xl">
+      <div className="min-w-0 max-w-3xl">
         <h1 className="text-[15px] font-semibold text-gray-900">LLM Provider</h1>
         <p className="mb-4 text-[13px] text-gray-500">
           Your plan already includes a model for chat and agents — nothing to set up. Bring your own key only if
@@ -152,10 +152,10 @@ export default function LlmProvidersPage() {
   }
 
   return (
-    <div className="max-w-3xl">
+    <div className="min-w-0 max-w-3xl">
       <h1 className="text-[15px] font-semibold text-gray-900">LLM Providers</h1>
       <p className="mb-4 text-[13px] text-gray-500">
-        Connect the model providers your agents can use. Pick one model as primary — that's what
+        Connect the model providers your agents can use. Pick one model as primary — that&apos;s what
         the chat and agents default to.
       </p>
 
