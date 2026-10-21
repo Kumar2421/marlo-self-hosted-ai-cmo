@@ -56,7 +56,7 @@ export default function GmailOutreachBar() {
   };
 
   if (gmail.isLoading) {
-    return <div className="mx-4 my-3 h-12 animate-pulse rounded-xl bg-gray-100" aria-hidden="true" />;
+    return <div className="mx-3 my-2 h-5 animate-pulse rounded bg-gray-100" aria-hidden="true" />;
   }
 
   if (gmail.isError) {
@@ -103,11 +103,10 @@ export default function GmailOutreachBar() {
   }
 
   return (
-    <div className="mx-4 my-3 flex items-center justify-between gap-3 text-[11px] text-gray-500">
-      <span className="flex min-w-0 items-center gap-1.5">
-        <Check size={12} className="shrink-0 text-emerald-600" />
-        <span className="truncate">Sending as {gmail.email ?? "your Gmail"}</span>
-      </span>
+    <div className="mx-3 flex min-h-9 items-center gap-1.5 text-[11px] text-gray-500" data-testid="gmail-status-bar">
+      <Check size={12} className="shrink-0 text-emerald-600" />
+      <span className="min-w-0 truncate">Sending as {gmail.email ?? "your Gmail"}</span>
+      <span className="shrink-0 text-gray-300">·</span>
       {button("Reconnect", "plain")}
     </div>
   );
