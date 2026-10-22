@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import { visibleTabs, TABLET_LEFT, TABLET_RIGHT, type DashboardTab } from "@/lib/dashboardShell";
+import { visibleTabs, TABLET_LEFT, TABLET_RIGHT, DEFAULT_TABLET_RIGHT, type DashboardTab } from "@/lib/dashboardShell";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { useDashboardTab } from "@/lib/useDashboardTab";
 import TerminalLog from "@/components/dashboard/TerminalLog";
@@ -50,12 +50,21 @@ function AnalyticsPanel(props: React.ComponentProps<typeof AnalyticsPanelBase>) 
 /** Phone and tablet shell. Panels mount the first time their tab is opened and
  * then stay mounted (hidden + inert), so scroll, filters, chat drafts and
  * Leads data survive tab switches. Phones show one panel; tablets (768-1099px)
- * show two panes: Context|Analytics on the left, Leads|Chat on the right. */
+ * show two panes: Context|Analytics on the left, Leads|Chat on the right.
+ * First screen: ?tab=, else the user's last tab, else Analytics when the
+ * project has an audit (Context while setup is unfinished). On tablets the
+ * right pane defaults to Chat, so the first pair is Analytics + Chat. */
 function CompactShell({ bp }: { bp: "mobile" | "tablet" }) {
-  const [tab, setTab] = useDashboardTab();
+  const { data, loading } = useDashboardData();
+  // null = not known yet (still loading). A failed load counts as "no audit": setup lives in Context.
+  const hasAudit = data ? data.data.seo_audits.length > 0 : loading ? null : false;
+  const [tab, setTab] = useDashboardTab(hasAudit);
   const [lastLeft, setLastLeft] = useState<DashboardTab>("analytics");
-  const [lastRight, setLastRight] = useState<DashboardTab>("agents");
+  const [lastRight, setLastRight] = useState<DashboardTab>(DEFAULT_TABLET_RIGHT);
   const [opened, setOpened] = useState<ReadonlySet<DashboardTab>>(() => new Set());
+
+  // Undecided: keep the loading screen instead of flashing a panel and switching.
+  if (tab === null) return <Loading />;
 
   const shown = visibleTabs(bp, tab, lastLeft, lastRight);
 
