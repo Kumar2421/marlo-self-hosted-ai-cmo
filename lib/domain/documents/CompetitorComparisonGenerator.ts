@@ -1,5 +1,6 @@
+import { GROUNDING_RULES } from "./grounding.ts";
 import type { LlmDriver } from "@/lib/llm";
-import { crawlCompetitorSite } from "@/lib/domain/shared/webCrawler";
+import { crawlCompetitorSite } from "../shared/webCrawler.ts";
 
 export type CompetitorData = {
   id: string;
@@ -13,6 +14,18 @@ export type ComparisonResult = {
   competitors: CompetitorData[];
   generatedAt: string;
 };
+
+export function buildComparisonExtractionPrompt(context: string): string {
+  return `Extract pricing and 3-4 key features. Return only JSON:
+{"startingPrice":"$X/month or free or contact sales","features":["feature1","feature2","feature3"]}
+
+Use ONLY what the context below states. If pricing is not stated, use "pricing not found"; if fewer than 3 features are stated, return fewer. Never guess a price or feature.
+
+${GROUNDING_RULES}
+
+Context:
+${context}`;
+}
 
 export async function generateCompetitorComparison(
   competitors: { id: string; url: string }[],
@@ -60,11 +73,7 @@ ${crawled.aboutSection || "(not found)"}
         messages: [
           {
             role: "user",
-            content: `Extract pricing and 3-4 key features. Return only JSON:
-{"startingPrice":"$X/month or free or contact sales","features":["feature1","feature2","feature3"]}
-
-Context:
-${context}`,
+            content: buildComparisonExtractionPrompt(context),
           },
         ],
       });

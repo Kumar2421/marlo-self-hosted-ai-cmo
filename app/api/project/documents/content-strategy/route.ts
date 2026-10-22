@@ -1,3 +1,4 @@
+import { guardCompletionResult } from "@/lib/domain/documents/grounding";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getDriver, providerSupportsTools } from "@/lib/llm";
@@ -159,7 +160,7 @@ export async function POST(req: NextRequest) {
     return await withRefund(ticket, async () => {
       try {
         const generator = new ContentStrategyGenerator(driver, apiKey, baseUrl);
-        const result = await generator.generate({
+        const genReq = {
           projectName: project.name,
           url: project.url,
           bodyText: audit.bodyText ?? "",
@@ -170,7 +171,8 @@ export async function POST(req: NextRequest) {
           competitorAnalysis,
           model,
           tavilyApiKey,
-        });
+        };
+        const result = guardCompletionResult(await generator.generate(genReq), genReq);
 
         if (!result.stream) {
           const text = (result.text ?? "") + (tavilyApiKey ? "" : NO_TAVILY_FOOTER);
@@ -262,7 +264,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const generator = new ContentStrategyGenerator(driver, keyRow.api_key, keyRow.base_url ?? undefined);
-    const result = await generator.generate({
+    const genReq = {
       projectName: project.name,
       url: project.url,
       bodyText: audit.bodyText ?? "",
@@ -273,7 +275,8 @@ export async function POST(req: NextRequest) {
       competitorAnalysis,
       model,
       tavilyApiKey,
-    });
+    };
+    const result = guardCompletionResult(await generator.generate(genReq), genReq);
 
     if (!result.stream) {
       const text = (result.text ?? "") + (tavilyApiKey ? "" : NO_TAVILY_FOOTER);

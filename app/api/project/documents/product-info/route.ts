@@ -1,3 +1,4 @@
+import { guardCompletionResult } from "@/lib/domain/documents/grounding";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getDriver } from "@/lib/llm";
@@ -135,14 +136,15 @@ export async function POST(req: NextRequest) {
 
     try {
       const generator = new ProductInfoGenerator(driver, apiKey, baseUrl);
-      const result = await generator.generate({
+      const genReq = {
         projectName: project.name,
         url: project.url,
         bodyText: audit.bodyText ?? "",
         metaTitle: audit.meta.title,
         metaDescription: audit.meta.description,
         model,
-      });
+      };
+      const result = guardCompletionResult(await generator.generate(genReq), genReq);
 
       if (!result.stream) {
         const now = new Date().toISOString();
@@ -215,14 +217,15 @@ export async function POST(req: NextRequest) {
 
   try {
     const generator = new ProductInfoGenerator(driver, keyRow.api_key, keyRow.base_url ?? undefined);
-    const result = await generator.generate({
+    const genReq = {
       projectName: project.name,
       url: project.url,
       bodyText: audit.bodyText ?? "",
       metaTitle: audit.meta.title,
       metaDescription: audit.meta.description,
       model,
-    });
+    };
+    const result = guardCompletionResult(await generator.generate(genReq), genReq);
 
     if (!result.stream) {
       // Non-streaming drivers: save immediately, same as the streaming path

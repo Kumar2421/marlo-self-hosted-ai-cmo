@@ -1,6 +1,7 @@
+import { GROUNDING_RULES } from "./grounding.ts";
 import * as cheerio from "cheerio";
 import type { LlmDriver, CompletionResult } from "@/lib/llm";
-import { buildWebSearchTool } from "@/lib/domain/shared/webSearchTool";
+import { buildWebSearchTool } from "../shared/webSearchTool.ts";
 import { safeFetch, SafeFetchError } from "../net/safeFetch.ts";
 
 export type CompetitorSnippet = {
@@ -63,7 +64,14 @@ export async function fetchCompetitorSnippet(url: string): Promise<CompetitorSni
  * crawled data for each competitor — never invents what a competitor does.
  */
 export class CompetitorAnalysisGenerator {
-  constructor(private driver: LlmDriver, private apiKey: string, private baseUrl?: string) {}
+  private driver: LlmDriver;
+  private apiKey: string;
+  private baseUrl?: string;
+  constructor(driver: LlmDriver, apiKey: string, baseUrl?: string) {
+    this.driver = driver;
+    this.apiKey = apiKey;
+    this.baseUrl = baseUrl;
+  }
 
   async generate(req: CompetitorAnalysisRequest): Promise<CompletionResult> {
     if (req.competitors.length === 0) {
@@ -86,7 +94,9 @@ If a competitor's crawl failed or its description is too thin to say anything
 specific${hasWebSearch ? " even after searching" : ""}, say so plainly instead
 of guessing what the company does. Never invent competitor pricing, feature
 lists, or company size. Never disparage a competitor — describe differences
-factually.`;
+factually.
+
+${GROUNDING_RULES}`;
 
     const competitorBlock = req.competitors
       .map(
