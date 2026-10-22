@@ -1,3 +1,4 @@
+import type { Finding } from "@/lib/domain/findings/findingTypes";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getDb } from "@/lib/db";
 import { fetchGA4Report, getSelectedGA4Property } from "@/lib/domain/analytics/googleAnalyticsData";
@@ -6,6 +7,9 @@ import { getLatestSnapshot } from "@/lib/domain/search/searchSnapshotStore";
 import { getLatestSnapshot as getLatestSnapshotSupabase } from "@/lib/domain/search/searchSnapshotStoreSupabase";
 import { brandTermsFrom } from "@/lib/domain/search/searchIntent";
 import { assertPublicHttpUrl } from "@/lib/domain/seo/SEOAgent";
+import { listProjectFindings as listFindingsSqlite, upsertFinding as upsertFindingSqlite } from "@/lib/domain/findings/findingStore";
+import { listProjectFindings as listFindingsSupabase, upsertFinding as upsertFindingSupabase } from "@/lib/domain/findings/findingStoreSupabase";
+import { sqliteFindingRepository, supabaseFindingRepository } from "@/lib/domain/findings/findingRepositories";
 import { getValidPlatformGoogleToken } from "@/lib/domain/shared/getValidPlatformGoogleToken";
 import { resolvePlatformApiKey } from "@/lib/domain/shared/resolvePlatformApiKey";
 import { tavilySearchRaw } from "@/lib/domain/shared/webSearchTool";
@@ -21,6 +25,8 @@ import { evaluateReadiness, type Fetched, type ReadinessResult } from "./readine
 import { fetchPublic, type FetchOutcome } from "./safeFetch";
 import { emptySummary, runGeoPrompts, type RunStore, type RunSummary } from "./runner";
 import { MAX_TRACKED_PROMPTS, type AnswerMethod, type GeoPrompt, type GeoRunRow } from "./types";
+import { deriveGeoGapFindings, GEO_GAP_CATEGORY, GEO_GAP_SOURCE, geoGapEntityId } from "./geoGaps";
+import { syncGeoGapFindings, toUpsertInput, type GapSyncPorts, type GapSyncSummary } from "./geoGapSync";
 import { aggregateRuns, compareTrend, dayOf, ratesByDay, type Subject, type Trend } from "./visibility";
 
 export type GeoContext =
@@ -170,7 +176,7 @@ export async function runProjectGeo(
 
   const subject: Subject = { brand: project.name, domain: project.domain, competitors: await loadCompetitorDomains(ctx) };
   const now = opts.now;
-  return runGeoPrompts({
+  const summary = await runGeoPrompts({
     prompts,
     ports,
     subject,
@@ -183,12 +189,49 @@ export async function runProjectGeo(
     maxRunsPerPrompt: opts.maxRunsPerPrompt,
     now: now ? () => now : undefined,
   });
+  // New rows may open a gap or close one. A failure here must never fail the run that already saved its rows.
+  if (summary.ran > 0) {
+    try {
+      await syncGapFindings(ctx, project, now);
+    } catch {
+      // gaps are re-derived on the next run
+    }
+  }
+  return summary;
+}
+
+function gapPorts(ctx: GeoContext, project: ProjectInfo, now: Date): GapSyncPorts {
+    return {
+    projectId: ctx.projectId,
+    runs: () => listRuns(ctx, now),
+    activePrompts: async () => activePrompts(await listPrompts(ctx)),
+    listFindings: async () => (ctx.mode === "platform" ? listFindingsSupabase(ctx.db, ctx.userId, ctx.projectId) : listFindingsSqlite(ctx.projectId)),
+    upsert: async (input) => (ctx.mode === "platform" ? upsertFindingSupabase(ctx.db, ctx.userId, input) : upsertFindingSqlite(input)),
+    repository: ctx.mode === "platform" ? supabaseFindingRepository(ctx.db, ctx.userId) : sqliteFindingRepository(),
+  };
+}
+
+export function syncGapFindings(ctx: GeoContext, project: ProjectInfo, now = new Date()): Promise<GapSyncSummary> {
+  return syncGeoGapFindings(gapPorts(ctx, project, now), project, now);
+}
+
+/** "Track as a fix" for one prompt: the gap is re-derived from stored runs here; the client only names the prompt. */
+export async function trackGeoGap(ctx: GeoContext, prompt: string, now = new Date()) {
+  const project = await loadProject(ctx);
+  if (!project) return { status: "no-project" as const };
+  const ports = gapPorts(ctx, project, now);
+  const key = geoGapEntityId(prompt);
+  const gap = deriveGeoGapFindings(await ports.runs(), [prompt], project).find((g) => g.entityId === key);
+  if (!gap) return { status: "no-gap" as const };
+  return { status: "tracked" as const, finding: await ports.upsert(toUpsertInput(ctx.projectId, gap)) };
 }
 
 export type PromptRow = {
   prompt: string;
   source: "gsc" | "manual";
   active: boolean;
+  /** Set when recent answers miss you (open) and/or a finding already tracks it. */
+  gap: { method: AnswerMethod; open: boolean; tracked: boolean; findingStatus: string | null } | null;
   methods: Array<{
     method: AnswerMethod;
     runs: number;
@@ -219,6 +262,15 @@ export async function getOverview(ctx: GeoContext, now = new Date()): Promise<Ge
   const usedToday = keys.gemini ? await store.countMethodRunsToday("gemini-grounded", today) : 0;
   const simulatedUsed = keys.tavily && keys.groq ? await store.countMethodRunsToday("simulated", today) : 0;
 
+  const gaps = deriveGeoGapFindings(runs, activePrompts(prompts), project);
+  let trackedGaps: Finding[] = [];
+  try {
+    const all = ctx.mode === "platform" ? await listFindingsSupabase(ctx.db, ctx.userId, ctx.projectId) : listFindingsSqlite(ctx.projectId);
+    trackedGaps = all.filter((f) => f.source === GEO_GAP_SOURCE && f.category === GEO_GAP_CATEGORY);
+  } catch {
+    // the overview still shows measured data without finding links
+  }
+
   const rows: PromptRow[] = prompts.map((p) => {
     const own = runs.filter((r) => r.prompt === p.prompt);
     const methods = (["gemini-grounded", "simulated"] as const)
@@ -240,7 +292,12 @@ export async function getOverview(ctx: GeoContext, now = new Date()): Promise<Ge
           lastRunAt: latestRuns.map((r) => r.runAt).sort().reverse()[0],
         };
       });
-    return { prompt: p.prompt, source: p.source, active: p.active, methods };
+    const gap = p.active ? gaps.find((g) => g.entityId === geoGapEntityId(p.prompt)) : undefined;
+    const tracked = trackedGaps.find((f) => f.entityId === geoGapEntityId(p.prompt));
+    return {
+      prompt: p.prompt, source: p.source, active: p.active, methods,
+      gap: gap || tracked ? { method: (gap?.evidence.method ?? tracked?.evidence.method) as AnswerMethod, open: Boolean(gap), tracked: Boolean(tracked), findingStatus: tracked?.status ?? null } : null,
+    };
   });
 
   return {

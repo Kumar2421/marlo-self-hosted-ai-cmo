@@ -203,6 +203,16 @@ function Prompts({ pid, overview }: { pid: string | undefined; overview: GeoOver
     onError: (e) => show(e instanceof Error ? e.message : "Could not load suggestions."),
   });
 
+  const trackGap = useMutation({
+    mutationFn: (prompt: string) => fetchJson("/api/geo/gaps", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt }) }),
+    onSuccess: () => {
+      window.dispatchEvent(new CustomEvent("marlo:findings-updated"));
+      qc.invalidateQueries({ queryKey: qk.geoOverview(pid) });
+      show("Added to your findings.");
+    },
+    onError: (e) => show(e instanceof Error ? e.message : "Could not add this to findings."),
+  });
+
   const asPrompts = (rows: PromptRow[]): GeoPrompt[] => rows.map((r) => ({ prompt: r.prompt, source: r.source, active: r.active }));
   const activeCount = overview.prompts.filter((p) => p.active).length;
 
@@ -226,6 +236,17 @@ function Prompts({ pid, overview }: { pid: string | undefined; overview: GeoOver
                   />
                   Track
                 </label>
+                {p.gap?.tracked ? (
+                  <span title={`Finding status: ${p.gap.findingStatus ?? "new"}`} className="rounded-md bg-gray-100 px-2 py-0.5 font-medium text-gray-600">Tracked</span>
+                ) : p.gap?.open ? (
+                  <button
+                    onClick={() => trackGap.mutate(p.prompt)}
+                    disabled={trackGap.isPending}
+                    className="rounded-md border border-gray-200 px-2 py-0.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    Track as a fix
+                  </button>
+                ) : null}
                 <button aria-label="Remove question" onClick={() => save.mutate(asPrompts(overview.prompts).filter((x) => x.prompt !== p.prompt))} className="text-gray-400 hover:text-red-500"><Trash2 size={12} /></button>
               </div>
             </div>

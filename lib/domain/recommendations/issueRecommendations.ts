@@ -167,6 +167,29 @@ const GEO_READINESS: Record<string, StaticEntry> = {
   },
 };
 
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v.length > 0) : [];
+}
+
+/** An AI-answer gap: the action comes from who the AI named instead and which sources it read. */
+function geoGapEntry(finding: CatalogFinding): StaticEntry {
+  const prompt = text(finding.evidence.prompt) || finding.entityId.slice("geo-gap:".length);
+  const named = strings(finding.evidence.namedInstead);
+  const sources = strings(finding.evidence.sources);
+  const steps: string[] = [];
+  if (sources.length > 0) steps.push(`Get listed or mentioned on ${sources.join(", ")}, which the AI read for this question.`);
+  steps.push("Publish a page that answers this exact question directly, with a short FAQ, and name your product in the first paragraph.");
+  steps.push("Run the AI check again: this is verified when a later answer names you.");
+  return {
+    type: "geo_mention_gap",
+    title: `Get named when AI is asked "${prompt}"`,
+    summary: named.length > 0 ? `The AI named ${named.join(", ")} instead of you.` : "The AI answered this question without naming you.",
+    priority: "medium",
+    kind: "content",
+    action: steps.join(" "),
+  };
+}
+
 function geoEntry(finding: CatalogFinding): StaticEntry | null {
   const id = finding.entityId.toLowerCase();
   const known = GEO_READINESS[id];
@@ -183,6 +206,7 @@ function geoEntry(finding: CatalogFinding): StaticEntry | null {
     };
   }
   const category = (finding.category ?? "").toLowerCase();
+  if (category === "geo_gap" || id.startsWith("geo-gap:")) return geoGapEntry(finding);
   if (/mention|gap|visibility/.test(category) || /mention|gap/.test(id)) {
     return {
       type: "geo_mention_gap",
