@@ -9,15 +9,16 @@ export default function ScoreCircle({
   label,
   size = 56,
 }: {
-  value: number;
+  /** Undefined means the score was not measured: shown as a dash, never as 0. */
+  value: number | undefined;
   label: string;
   size?: number;
 }) {
   const stroke = 4;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (value / 100) * circumference;
-  const color = colorFor(value);
+  const offset = circumference - ((value ?? 0) / 100) * circumference;
+  const color = value === undefined ? "rgba(0,0,0,0.08)" : colorFor(value);
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -44,7 +45,7 @@ export default function ScoreCircle({
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-gray-900">
-          {value}
+          {value ?? "—"}
         </div>
       </div>
       <span className="text-[11px] text-gray-500">{label}</span>

@@ -22,9 +22,9 @@ import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 
-function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
+import { ga4FromReport, searchTraffic, trafficWindow, type Ga4Summary } from "@/lib/domain/analytics/trafficResult";
+
+type TrafficDays = { date: string; clicks: number; impressions: number; ctr: number; position: number }[];
 
 /* ---------- Platform-mode GA4 call ----------
  * googleAnalyticsData.ts's fetch* helpers pull the access token from the
@@ -46,9 +46,8 @@ async function fetchGA4SummaryPlatform(accessToken: string, propertyId: string, 
     const detail = await res.text().catch(() => "");
     throw new Error(`GA4 report failed: HTTP ${res.status}${detail ? ` — ${detail.slice(0, 200)}` : ""}`);
   }
-  const data = await res.json();
-  const values: string[] = data.rows?.[0]?.metricValues?.map((m: { value: string }) => m.value) ?? ["0", "0", "0"];
-  return { sessions: Number(values[0] ?? 0), activeUsers: Number(values[1] ?? 0), screenPageViews: Number(values[2] ?? 0) };
+  // No rows means no data (or no tag), reported as null rather than 0 sessions.
+  return ga4FromReport(await res.json());
 }
 
 export async function GET() {
@@ -77,17 +76,11 @@ export async function GET() {
       }, { status: 422 });
     }
 
-    const end = new Date();
-    end.setDate(end.getDate() - 3);
-    const start = new Date(end);
-    start.setDate(start.getDate() - 27);
-    const startDate = isoDate(start);
-    const endDate = isoDate(end);
+    const { startDate, endDate } = trafficWindow();
 
-    let byDate: { date: string; clicks: number; impressions: number; ctr: number; position: number }[] = [];
+    let byDate: TrafficDays = [];
     let topQueries: { query: string; clicks: number; impressions: number; ctr: number; position: number }[] = [];
     let opportunities: ReturnType<typeof findQueryOpportunities> = [];
-    let totals = { clicks: 0, impressions: 0, ctr: 0, position: 0 };
     let search: SearchInsights | null = null;
     let gscError: string | null = null;
 
@@ -118,22 +111,12 @@ export async function GET() {
 
         const { data: project } = await db.from("projects").select("name, url").eq("id", projectId).eq("owner_id", user.id).maybeSingle();
         search = buildSearchInsights(queryRows, brandTermsFrom(project?.name, project?.url));
-
-        const totalClicks = byDate.reduce((sum, r) => sum + r.clicks, 0);
-        const totalImpressions = byDate.reduce((sum, r) => sum + r.impressions, 0);
-        const weightedPosition = byDate.reduce((sum, r) => sum + r.position * r.impressions, 0);
-        totals = {
-          clicks: totalClicks,
-          impressions: totalImpressions,
-          ctr: totalImpressions > 0 ? totalClicks / totalImpressions : 0,
-          position: totalImpressions > 0 ? weightedPosition / totalImpressions : 0,
-        };
       } catch (err) {
         gscError = err instanceof Error ? err.message : String(err);
       }
     }
 
-    let ga4: { sessions: number; activeUsers: number; screenPageViews: number } | null = null;
+    let ga4: Ga4Summary | null = null;
     let ga4Error: string | null = null;
     if (ga4Property) {
       try {
@@ -144,15 +127,20 @@ export async function GET() {
       }
     }
 
+    // Failure or an empty answer is reported as such (totals: null), never as zeros.
+    const gsc = searchTraffic({ connected: Boolean(siteUrl), error: gscError, byDate });
     const result = {
       range: { startDate, endDate },
       site: siteUrl,
       propertyName: ga4Property?.name ?? null,
-      byDate,
-      topQueries,
-      opportunities,
-      search,
-      totals,
+      status: gsc.status,
+      reason: gsc.reason,
+      needs_reconnect: gsc.needsReconnect,
+      byDate: gsc.byDate,
+      topQueries: gsc.status === "ok" ? topQueries : [],
+      opportunities: gsc.status === "ok" ? opportunities : [],
+      search: gsc.status === "ok" ? search : null,
+      totals: gsc.totals,
       gscError,
       ga4,
       ga4Error,
@@ -182,17 +170,11 @@ export async function GET() {
     }, { status: 422 });
   }
 
-  const end = new Date();
-  end.setDate(end.getDate() - 3);
-  const start = new Date(end);
-  start.setDate(start.getDate() - 27);
-  const startDate = isoDate(start);
-  const endDate = isoDate(end);
+  const { startDate, endDate } = trafficWindow();
 
-  let byDate: { date: string; clicks: number; impressions: number; ctr: number; position: number }[] = [];
+  let byDate: TrafficDays = [];
   let topQueries: { query: string; clicks: number; impressions: number; ctr: number; position: number }[] = [];
   let opportunities: ReturnType<typeof findQueryOpportunities> = [];
-  let totals = { clicks: 0, impressions: 0, ctr: 0, position: 0 };
   let search: SearchInsights | null = null;
   let gscError: string | null = null;
 
@@ -222,22 +204,12 @@ export async function GET() {
 
       const project = getDb().prepare("SELECT name, url FROM projects WHERE id = ?").get(projectId) as { name: string; url: string } | undefined;
       search = buildSearchInsights(queryRows, brandTermsFrom(project?.name, project?.url));
-
-      const totalClicks = byDate.reduce((sum, r) => sum + r.clicks, 0);
-      const totalImpressions = byDate.reduce((sum, r) => sum + r.impressions, 0);
-      const weightedPosition = byDate.reduce((sum, r) => sum + r.position * r.impressions, 0);
-      totals = {
-        clicks: totalClicks,
-        impressions: totalImpressions,
-        ctr: totalImpressions > 0 ? totalClicks / totalImpressions : 0,
-        position: totalImpressions > 0 ? weightedPosition / totalImpressions : 0,
-      };
     } catch (err) {
       gscError = err instanceof Error ? err.message : String(err);
     }
   }
 
-  let ga4: { sessions: number; activeUsers: number; screenPageViews: number } | null = null;
+  let ga4: Ga4Summary | null = null;
   let ga4Error: string | null = null;
   if (ga4Property) {
     try {
@@ -247,15 +219,19 @@ export async function GET() {
     }
   }
 
+  const gsc = searchTraffic({ connected: Boolean(siteUrl), error: gscError, byDate });
   return NextResponse.json({
     range: { startDate, endDate },
     site: siteUrl,
     propertyName: ga4Property?.name ?? null,
-    byDate,
-    topQueries,
-    opportunities,
-    search,
-    totals,
+    status: gsc.status,
+    reason: gsc.reason,
+    needs_reconnect: gsc.needsReconnect,
+    byDate: gsc.byDate,
+    topQueries: gsc.status === "ok" ? topQueries : [],
+    opportunities: gsc.status === "ok" ? opportunities : [],
+    search: gsc.status === "ok" ? search : null,
+    totals: gsc.totals,
     gscError,
     ga4,
     ga4Error,

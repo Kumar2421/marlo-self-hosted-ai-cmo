@@ -3,7 +3,7 @@ import { jinaRead, extractMarkdownLinks } from "@/lib/domain/shared/jinaReader";
 import { assertPublicHostLiteral } from "@/lib/domain/net/ssrf";
 import { SafeFetchError } from "../net/safeFetch.ts";
 import { extractTitle } from "@/lib/domain/seo/extractTitle";
-import { fetchPageSpeed, type CwvSnapshot, type LighthouseIssue } from "@/lib/domain/seo/pageSpeedInsights";
+import { fetchPageSpeed, type CwvSnapshot, type LighthouseIssue, type PageSpeedResult } from "@/lib/domain/seo/pageSpeedInsights";
 import { checkRobotsTxt, fetchSitePage, SITE_MAX_REDIRECTS, type SitePageFetch } from "./siteFetch.ts";
 
 export type { CwvStatus, CwvMetric, CwvSnapshot } from "@/lib/domain/seo/pageSpeedInsights";
@@ -46,10 +46,7 @@ export type SEOAuditPayload = {
   /** Undefined (not a fake fallback) when no PageSpeed key is connected, or
    * the real PSI call failed — the frontend shows a real crawl-derived
    * substitute instead of ever presenting invented Lighthouse-shaped numbers. */
-  pageSpeed?: {
-    desktop: { performance: number; accessibility: number; bestPractices: number; seo: number };
-    mobile: { performance: number; accessibility: number; bestPractices: number; seo: number };
-  };
+  pageSpeed?: PageSpeedResult["pageSpeed"];
   coreWebVitals?: {
     desktop: CwvSnapshot;
     mobile: CwvSnapshot;
