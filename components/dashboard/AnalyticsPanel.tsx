@@ -175,7 +175,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
     hasWebsite: Boolean(project?.url),
     findings: storedFindings.isError
       ? { status: "error" }
-      : storedFindings.data
+      : storedFindings.data && !(storedFindings.data.length === 0 && storedFindings.isFetching && (auditData?.issues.length ?? 0) > 0)
         ? { status: "ready", data: storedFindings.data }
         : { status: "pending" },
     audit: auditQuery.isError ? "error" : auditQuery.isPending ? "pending" : auditData ? "present" : "missing",
