@@ -443,6 +443,8 @@ type SetupRunCtx = {
   loadHasCompetitors: () => Promise<boolean>;
   onAudit: () => void;
   onDescription: (description: string) => void;
+  /** The crawl found the real brand name and the server renamed the auto-named project. */
+  onRenamed?: (name: string) => void;
   onCompetitors: () => void;
   onLeads: () => void;
   onDocSaved: () => void;
@@ -471,6 +473,7 @@ async function runSetupSteps(ctx: SetupRunCtx, steps: SetupStepKey[]): Promise<{
         hooks.settle("audit", "done");
         ctx.onAudit();
         const audit = await auditRes.json().catch(() => ({}));
+        if (typeof audit.projectRenamed === "string") ctx.onRenamed?.(audit.projectRenamed);
         log(
           audit.meta?.title
             ? `Found it: "${audit.meta.title}". Context, Analytics, and agents now have real data to work from.`
@@ -745,6 +748,10 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
         }
       },
       onAudit: () => setAuditVersion((v) => v + 1),
+      onRenamed: (name) => {
+        setProject((prev) => (prev && prev.id === p.id ? { ...prev, name } : prev));
+        setProjects((prev) => prev.map((x) => (x.id === p.id ? { ...x, name } : x)));
+      },
       onDescription: (description) => {
         setProject((prev) => (prev && prev.id === p.id ? { ...prev, description } : prev));
         setProjects((prev) => prev.map((x) => (x.id === p.id ? { ...x, description } : x)));

@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import { getDriver, providerSupportsTools } from "@/lib/llm";
 import { CompetitorDiscoveryAgent } from "@/lib/domain/documents/CompetitorDiscoveryAgent";
 import { fetchCompetitorSnippet } from "@/lib/domain/documents/CompetitorAnalysisGenerator";
+import { isRelevantToProduct } from "@/lib/domain/documents/competitorCandidates";
 import type { SEOAuditPayload } from "@/lib/domain/seo/SEOAgent";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import { FEATURES } from "@/lib/features";
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { data: project } = activeId
-      ? await db.from("projects").select("name, url").eq("id", activeId).eq("owner_id", user.id).maybeSingle()
+      ? await db.from("projects").select("name, url, description").eq("id", activeId).eq("owner_id", user.id).maybeSingle()
       : { data: null };
     if (!activeId || !project || !project.url) {
       return NextResponse.json(
@@ -99,6 +100,8 @@ export async function POST(req: NextRequest) {
       .in("doc_type", ["product_info", "marketing_strategy"]);
     const productInfo = groundingDocs?.find((d) => d.doc_type === "product_info")?.content;
     const marketingStrategy = groundingDocs?.find((d) => d.doc_type === "marketing_strategy")?.content;
+    // What the product does, used to drop candidates from an unrelated line of business.
+    const productText = [project.description, audit?.meta?.title, audit?.meta?.description, productInfo?.slice(0, 1500)].filter(Boolean).join(" ");
 
     // Tavily is queried directly (no model needed), so it no longer depends on the provider's tool support.
     const tavilyApiKey = process.env.TAVILY_API_KEY?.trim() || undefined;
@@ -107,6 +110,7 @@ export async function POST(req: NextRequest) {
       const agent = new CompetitorDiscoveryAgent(driver && model && apiKey ? driver : null, apiKey, baseUrl);
       const { candidates, usedWebSearch } = await agent.discover({
         projectName: project.name,
+        description: project.description ?? undefined,
         url: project.url,
         bodyText: audit?.bodyText ?? "",
         metaTitle: audit?.meta?.title ?? project.name,
@@ -125,7 +129,7 @@ export async function POST(req: NextRequest) {
       const verified = await Promise.all(
         candidates.map(async (c) => ({ ...c, snippet: await fetchCompetitorSnippet(`https://${c.domain}`) }))
       );
-      const reachable = verified.filter((v) => v.snippet.title !== "(couldn't fetch)");
+      const reachable = verified.filter((v) => v.snippet.title !== "(couldn't fetch)" && isRelevantToProduct(productText, `${v.snippet.title} ${v.snippet.description}`));
 
       const { data: existingRows } = await db
         .from("project_competitors")
@@ -173,8 +177,8 @@ export async function POST(req: NextRequest) {
   // currently active, which is the correct behavior for a direct click.
   const activeId = requestedProjectId || getActiveProjectId();
   const project = activeId
-    ? (db.prepare("SELECT name, url FROM projects WHERE id = ?").get(activeId) as
-        | { name: string; url: string }
+    ? (db.prepare("SELECT name, url, description FROM projects WHERE id = ?").get(activeId) as
+        | { name: string; url: string; description: string | null }
         | undefined)
     : undefined;
   if (!activeId || !project || !project.url) {
@@ -198,6 +202,8 @@ export async function POST(req: NextRequest) {
     .all(activeId) as { doc_type: string; content: string }[];
   const productInfo = groundingDocs.find((d) => d.doc_type === "product_info")?.content;
   const marketingStrategy = groundingDocs.find((d) => d.doc_type === "marketing_strategy")?.content;
+  // What the product does, used to drop candidates from an unrelated line of business.
+  const productText = [project.description, audit?.meta?.title, audit?.meta?.description, productInfo?.slice(0, 1500)].filter(Boolean).join(" ");
 
   const tavilyKeyRow = db.prepare("SELECT value FROM settings WHERE key = 'tavily_api_key'").get() as
     | { value: string }
@@ -209,6 +215,7 @@ export async function POST(req: NextRequest) {
     const agent = new CompetitorDiscoveryAgent(driver && model && llmConfigured ? driver : null, keyRow?.api_key || "", keyRow?.base_url ?? undefined);
     const { candidates, usedWebSearch } = await agent.discover({
       projectName: project.name,
+      description: project.description ?? undefined,
       url: project.url,
       bodyText: audit?.bodyText ?? "",
       metaTitle: audit?.meta?.title ?? project.name,
@@ -229,7 +236,7 @@ export async function POST(req: NextRequest) {
     const verified = await Promise.all(
       candidates.map(async (c) => ({ ...c, snippet: await fetchCompetitorSnippet(`https://${c.domain}`) }))
     );
-    const reachable = verified.filter((v) => v.snippet.title !== "(couldn't fetch)");
+    const reachable = verified.filter((v) => v.snippet.title !== "(couldn't fetch)" && isRelevantToProduct(productText, `${v.snippet.title} ${v.snippet.description}`));
 
     const existingRows = db
       .prepare("SELECT url FROM project_competitors WHERE project_id = ?")

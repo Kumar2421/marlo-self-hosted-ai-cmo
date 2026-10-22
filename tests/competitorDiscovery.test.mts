@@ -104,3 +104,44 @@ test("modelAttempts tries the requested model first, then each alternative once"
   assert.deepEqual(modelAttempts("old", ["a", "b"]), ["old", "a", "b"]);
   assert.deepEqual(modelAttempts("a", ["a", "b"]), ["a", "b"]);
 });
+
+import { buildDiscoveryQueries as bq, filterDeniedCandidates, isDeniedDomain, isRelevantToProduct, productCategory } from "../lib/domain/documents/competitorCandidates.ts";
+
+test("generic project name: queries come from the description, not the bare name", () => {
+  const q = bq("Home", "Home", "MLForge Studio builds enterprise AI and machine learning software for businesses.");
+  assert.ok(q.length > 0);
+  assert.ok(q.every((s) => !/\bHome\b/.test(s)), q.join(" | "));
+  assert.ok(q.some((s) => /enterprise AI/i.test(s)));
+});
+
+test("real brand name keeps its brand queries and adds the category query first", () => {
+  const q = bq("Acme", "Acme | Invoicing for freelancers", "");
+  assert.equal(q[0], "best Invoicing for freelancers alternatives");
+  assert.ok(q.includes("Acme alternatives"));
+});
+
+test("productCategory falls back to the first sentence of the description", () => {
+  assert.equal(productCategory("Acme", "Acme", "Invoicing software for freelancers. Second sentence."), "Invoicing software for freelancers");
+  assert.equal(productCategory("Acme", "Acme", ""), "");
+});
+
+test("deny list covers portals and is matched on subdomains", () => {
+  for (const d of ["redfin.com", "www.zillow.com", "en.wikipedia.org", "https://www.linkedin.com/company/x", "m.youtube.com", "reddit.com", "crunchbase.com"]) {
+    assert.ok(isDeniedDomain(d), d);
+  }
+  assert.ok(!isDeniedDomain("nestment.com"));
+  assert.deepEqual(filterDeniedCandidates([{ domain: "zillow.com" }, { domain: "acme.io" }]).map((c) => c.domain), ["acme.io"]);
+});
+
+test("relevance: unrelated business is dropped, same category is kept", () => {
+  const product = "Enterprise AI and machine learning software studio building custom ML products for businesses";
+  assert.equal(isRelevantToProduct(product, "Nestment - Real estate investing for first-time homebuyers"), false);
+  assert.equal(isRelevantToProduct(product, "Grammarly: Free writing assistant for spelling and grammar"), false);
+  assert.equal(isRelevantToProduct(product, "Fractal - enterprise machine learning and AI consulting"), true);
+});
+
+test("relevance: too little text on either side keeps the candidate", () => {
+  assert.equal(isRelevantToProduct("", "Anything at all here about stuff"), true);
+  assert.equal(isRelevantToProduct(product2(), "(no title found) (no meta description found)"), true);
+});
+function product2() { return "Invoicing software for freelancers and agencies"; }

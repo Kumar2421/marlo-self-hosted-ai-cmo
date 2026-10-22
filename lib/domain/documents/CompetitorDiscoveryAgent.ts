@@ -1,6 +1,6 @@
 import type { LlmDriver } from "@/lib/llm";
 import { buildWebSearchTool, tavilySearchRaw } from "@/lib/domain/shared/webSearchTool";
-import { buildDiscoveryQueries, extractCompetitorCandidates } from "./competitorCandidates";
+import { buildDiscoveryQueries, extractCompetitorCandidates, isDeniedDomain } from "./competitorCandidates";
 
 export type CompetitorDiscoveryRequest = {
   projectName: string;
@@ -8,6 +8,8 @@ export type CompetitorDiscoveryRequest = {
   bodyText: string;
   metaTitle: string;
   metaDescription: string;
+  /** What the product does (the project description). Drives the search queries instead of the bare name. */
+  description?: string;
   productInfo?: string;
   marketingStrategy?: string;
   /** Optional: discovery works from web search alone; a model only refines the result. */
@@ -67,7 +69,7 @@ function parseCandidates(raw: string, ownDomain: string): DiscoveredCandidate[] 
       .replace(/^https?:\/\//, "")
       .replace(/^www\./, "")
       .replace(/\/.*$/, "");
-    if (!domain || !domain.includes(".") || domain === ownDomain || seen.has(domain)) continue;
+    if (!domain || !domain.includes(".") || domain === ownDomain || seen.has(domain) || isDeniedDomain(domain)) continue;
 
     seen.add(domain);
     out.push({ domain, reason: typeof rawReason === "string" ? rawReason : "" });
@@ -102,7 +104,7 @@ export class CompetitorDiscoveryAgent {
 
     let fromSearch: DiscoveredCandidate[] = [];
     if (tavilyKey) {
-      const queries = buildDiscoveryQueries(req.projectName, req.metaTitle);
+      const queries = buildDiscoveryQueries(req.projectName, req.metaTitle, req.description || req.metaDescription);
       const resultSets = await Promise.all(queries.map((q) => tavilySearchRaw(tavilyKey, q, 10).catch(() => [])));
       fromSearch = extractCompetitorCandidates(resultSets, ownDomain);
     }
@@ -150,6 +152,8 @@ after it, in exactly this shape:
       : "";
 
     const prompt = `Product: ${req.projectName} (${req.url})
+What it does: ${req.description || req.metaDescription || "(unknown)"}
+Only name companies that sell the same kind of product to the same kind of customer; ignore businesses in unrelated industries even if a name or word matches.
 Meta title: ${req.metaTitle || "(none found)"}
 Meta description: ${req.metaDescription || "(none found)"}
 Crawled page text (truncated): """${req.bodyText.slice(0, 2000) || "(none extracted)"}"""

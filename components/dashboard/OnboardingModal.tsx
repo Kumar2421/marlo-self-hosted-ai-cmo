@@ -6,6 +6,7 @@ import { ArrowRight } from "lucide-react";
 import GhostLoader from "@/components/shared/GhostLoader";
 import { useProject } from "@/lib/project-store";
 import { useToast } from "@/components/dashboard/Toast";
+import { deriveNameFromUrl } from "@/lib/domain/project/projectName";
 
 const SOURCE_OPTIONS = [
   "Google Search",
@@ -26,16 +27,6 @@ function OkaraMark({ className }: { className?: string }) {
       <circle cx="18.5" cy="9.5" r="3.2" fill="#111111" />
     </svg>
   );
-}
-
-function deriveProjectName(url: string): string {
-  try {
-    const host = new URL(url.startsWith("http") ? url : `https://${url}`).hostname.replace(/^www\./, "");
-    const base = host.split(".")[0];
-    return base.charAt(0).toUpperCase() + base.slice(1);
-  } catch {
-    return url;
-  }
 }
 
 async function saveSetting(key: string, value: string) {
@@ -83,7 +74,7 @@ export default function OnboardingModal({ onDone }: { onDone: () => void }) {
         saveSetting("onboarding_source", source),
         saveSetting("personalization_role", role),
       ]);
-      await createProject({ name: deriveProjectName(url.trim()), url: url.trim() });
+      await createProject({ name: deriveNameFromUrl(url.trim()), url: url.trim() });
       // Only after the project exists: a failed first attempt must not count as onboarded.
       await saveSetting("onboarding_completed", "true");
       localStorage.removeItem("marlo:pending-audit-url");
