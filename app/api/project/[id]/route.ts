@@ -135,6 +135,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const wipe = db.transaction(() => {
     db.prepare("DELETE FROM project_documents WHERE project_id = ?").run(id);
     db.prepare("DELETE FROM project_competitors WHERE project_id = ?").run(id);
+    db.prepare("DELETE FROM project_setup_state WHERE project_id = ?").run(id);
     db.prepare("DELETE FROM link_checks WHERE project_id = ?").run(id);
     db.prepare("DELETE FROM geo_checks WHERE project_id = ?").run(id);
     db.prepare("DELETE FROM site_crawls WHERE project_id = ?").run(id);

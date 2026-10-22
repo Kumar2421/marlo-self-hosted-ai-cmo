@@ -8,6 +8,19 @@ import { FEATURES } from "@/lib/features";
 import { canCreateProject } from "@/lib/entitlements";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
+import { sqliteSetupStateStore } from "@/lib/domain/project/setupStateStore";
+import { supabaseSetupStateStore } from "@/lib/domain/project/setupStateStoreSupabase";
+import { startSetupState, type SetupStateStore } from "@/lib/domain/project/setupStateService";
+
+/** Records that setup began, so a tab closed mid-run can be resumed. Best effort: never fails project creation. */
+async function markSetupStarted(store: SetupStateStore): Promise<void> {
+  try {
+    await startSetupState(store);
+  } catch (e) {
+    console.warn("[project] could not record setup start:", e instanceof Error ? e.message : e);
+  }
+}
+
 
 type ProjectRow = {
   id: string;
@@ -127,6 +140,7 @@ export async function POST(req: NextRequest) {
     );
     if (settingError) return NextResponse.json({ error: settingError.message }, { status: 500 });
 
+    await markSetupStarted(supabaseSetupStateStore(db, platformUserId!, inserted.id));
     return NextResponse.json({ project: inserted });
   }
 
@@ -146,5 +160,6 @@ export async function POST(req: NextRequest) {
      ON CONFLICT(key) DO UPDATE SET value = @url`
   ).run({ url });
 
+  await markSetupStarted(sqliteSetupStateStore(db, id));
   return NextResponse.json({ project: { id, name, category, description, url, created_at: now, updated_at: now } });
 }

@@ -33,7 +33,8 @@ import ContentStrategyPanel from "./documents/ContentStrategyPanel";
 import DesignGuidePanel from "./documents/DesignGuidePanel";
 import { WebsiteIcon } from "@/components/shared/WebsiteIcon";
 import { normalizeHostUrl } from "@/lib/domain/shared/hostLike";
-import { deriveSetupChecklist, latestOnPageScore, type SetupStepId } from "@/lib/domain/project/setupChecklist";
+import { latestOnPageScore } from "@/lib/domain/project/setupChecklist";
+import { needsSetupAttention, setupCardRows } from "@/lib/domain/project/setupState";
 
 // Long descriptions clamp to 4 lines with a toggle; short ones render as-is.
 function ProjectDescription({ text }: { text: string }) {
@@ -89,8 +90,7 @@ export default function ContextPanel({
   const [discovering, setDiscovering] = useState(false);
   const { show } = useToast();
   const router = useRouter();
-  const { project, loading, setupRunning, competitorsVersion, documentsVersion, updateProject, notifyAuditChanged } = useProject();
-  const [retryingStep, setRetryingStep] = useState<SetupStepId | null>(null);
+  const { project, loading, setupRunning, setupState, retrySetupStep, competitorsVersion, documentsVersion } = useProject();
   const {
     data: dashboardData,
     documents,
@@ -114,22 +114,10 @@ export default function ContextPanel({
 
   const auditRows = useMemo(() => dashboardData?.data.seo_audits ?? [], [dashboardData]);
   const onPageScore = useMemo(() => latestOnPageScore(auditRows, project?.url), [auditRows, project?.url]);
-  // Derived from rows that already exist; nothing is stored. Empty until the
-  // shared dashboard data has loaded, so a slow load never reads as "missing".
-  const setupSteps = useMemo(
-    () =>
-      project && dashboardData
-        ? deriveSetupChecklist({
-            auditCount: auditRows.length,
-            description: project.description,
-            documentCount: documents.filter((d) => typeof d.content === "string" && d.content.trim()).length,
-            competitorCount: contextCompetitors.length,
-          })
-        : [],
-    [project, dashboardData, auditRows, documents, contextCompetitors],
-  );
-  // Hidden while the setup run is still in flight: its steps are running, not missing.
-  const showSetupCard = !setupRunning && setupSteps.some((s) => !s.optional);
+  // Read from the persisted setup state (per-step status), not guessed from which rows exist.
+  const setupRows = useMemo(() => (setupState ? setupCardRows(setupState, new Date()) : []), [setupState]);
+  // Hidden while setup is in flight (here or in another tab): its steps are running, not missing.
+  const showSetupCard = !setupRunning && needsSetupAttention(setupRows);
 
   useEffect(() => {
     if (contextError) {
@@ -219,61 +207,6 @@ export default function ContextPanel({
       show("Failed to discover competitors.");
     } finally {
       setDiscovering(false);
-    }
-  }
-
-  async function handleRetryStep(id: SetupStepId) {
-    if (!project || retryingStep) return;
-    if (id === "documents") {
-      // Document generation lives in the document panel (stream, check, save).
-      setOpenDoc("product");
-      return;
-    }
-    if (id === "competitors") {
-      await handleDiscoverCompetitors();
-      return;
-    }
-    setRetryingStep(id);
-    try {
-      if (id === "audit") {
-        log("Re-running the site audit...");
-        const res = await fetch("/api/agents/seo/audit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: project.url }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          show(data.error || "The site audit failed. Try again in a moment.");
-          return;
-        }
-        notifyAuditChanged();
-        await refreshDatasets(["seo_audits"]);
-        show("Site audit complete.");
-      } else if (id === "description") {
-        const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
-        if (!primaryModel || !providerId) {
-          show("Connect a model in Settings to generate a description.");
-          return;
-        }
-        const res = await fetch(`/api/project/${project.id}/generate-description`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: primaryModel, providerId }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || typeof data.description !== "string") {
-          show(data.error || "Couldn't generate a description. Run the site audit first, then try again.");
-          return;
-        }
-        // The route already saved it; this refreshes the project in the store.
-        await updateProject(project.id, { description: data.description });
-        show("Description generated.");
-      }
-    } catch {
-      show("That step failed. Try again in a moment.");
-    } finally {
-      setRetryingStep(null);
     }
   }
 
@@ -403,19 +336,21 @@ export default function ContextPanel({
           <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3" aria-label="Finish setup">
             <p className="mb-2 text-[12px] font-semibold text-amber-900">Finish setup</p>
             <ul className="space-y-1.5">
-              {setupSteps.map((step) => (
-                <li key={step.id} className="flex items-center justify-between gap-2 text-[12px] text-amber-900">
-                  <span>{step.label}</span>
-                  <button
-                    onClick={() => handleRetryStep(step.id)}
-                    disabled={retryingStep !== null || (step.id === "competitors" && discovering)}
-                    className="dash-focus flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
-                  >
-                    {retryingStep === step.id || (step.id === "competitors" && discovering) ? (
-                      <Loader2 size={11} className="animate-spin" />
-                    ) : null}
-                    {step.action}
-                  </button>
+              {setupRows.map((row) => (
+                <li key={row.key} className="flex items-center justify-between gap-2 text-[12px] text-amber-900">
+                  <span className="min-w-0">
+                    {row.label}
+                    {row.optional ? " (optional)" : ""}
+                    <span className="block truncate text-[11px] text-amber-700">{row.note}</span>
+                  </span>
+                  {row.canRun && (
+                    <button
+                      onClick={() => void retrySetupStep(row.key)}
+                      className="dash-focus flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-100"
+                    >
+                      {row.kind === "failed" || row.kind === "interrupted" ? "Retry" : "Run"}
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
