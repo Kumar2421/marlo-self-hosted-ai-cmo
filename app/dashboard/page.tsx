@@ -16,6 +16,7 @@ import MobileTabBar, { panelId, tabId } from "@/components/dashboard/MobileTabBa
 import Loading from "../loading";
 import { DashboardDataProvider, useDashboardData } from "@/lib/dashboard-data";
 import OnboardingModal from "@/components/dashboard/OnboardingModal";
+import { needsOnboarding } from "@/lib/domain/project/onboardingGate";
 import { SocialPanelProvider } from "@/components/dashboard/social/SocialPanelProvider";
 
 const RAIL = "56px";
@@ -28,12 +29,14 @@ const RAIL = "56px";
  * specific "no project" 404 shows the dialog. */
 function OnboardingGate({ children }: { children: React.ReactNode }) {
   const { data, loading, error, refresh } = useDashboardData();
-  const needsOnboarding = !loading && !data && error === "No active project";
+  const { projects, project } = useProject();
+  const showOnboarding =
+    !data && needsOnboarding({ projectsCount: projects.length, activeProjectId: project?.id, error, loading });
 
   return (
     <>
       {children}
-      {needsOnboarding && <OnboardingModal onDone={refresh} />}
+      {showOnboarding && <OnboardingModal onDone={refresh} />}
     </>
   );
 }
