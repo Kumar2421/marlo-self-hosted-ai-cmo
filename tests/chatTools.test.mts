@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import * as assert from "node:assert";
 import { runTool, CHAT_TOOLS, MAX_RESULT_CHARS, sanitize, type ChatPorts, type LeadSummary } from "../lib/domain/chat/tools.ts";
-import { summarizeLeads, geoFromRow, supabaseLeadSummary } from "../lib/domain/chat/chatQueries.ts";
+import { summarizeLeads, geoFromRow, supabaseLeadSummary, auditFromRow } from "../lib/domain/chat/chatQueries.ts";
 import {
   runChatTurn, buildToolDefs, buildAutoSummary, MAX_TOOL_CALLS, MAX_TOTAL_RESULT_CHARS, isToolUnsupportedError, type DriverLike,
 } from "../lib/domain/chat/toolLoop.ts";
@@ -37,6 +37,8 @@ function fakePorts(over: Partial<ChatPorts> = {}): ChatPorts {
     listActionsWithOutcomes: async () => [],
     getLeadSummary: async () => leads,
     getGeoStatus: async () => null,
+    getAuditSummary: async () => null,
+    listCompetitors: async () => [],
     now: () => new Date("2026-10-07T00:00:00Z"),
     ...over,
   };
@@ -301,4 +303,63 @@ test("total result cap holds under parallel calls", async () => {
   const tool = buildToolDefs(big, used).find((t) => t.name === "list_findings")!;
   const outs = await Promise.all(Array.from({ length: 8 }, () => tool.execute({})));
   assert.ok(outs.reduce((s, o) => s + o.length, 0) <= MAX_TOTAL_RESULT_CHARS + 8 * 80);
+});
+
+test("list_findings with zero rows and no audit says neverAudited, not 'nothing wrong'", async () => {
+  const r = await runTool(fakePorts({ listFindings: async () => [] }), "list_findings");
+  const d = JSON.parse(r.content);
+  assert.equal(d.neverAudited, true);
+  assert.equal(d.available, false);
+  assert.match(d.note, /does NOT mean the site is fine/);
+});
+
+test("list_findings with zero rows after an audit reports the audit date instead", async () => {
+  const audit = auditFromRow({ payload: { url: "https://x.com", issues: [], meta: { indexable: true } }, created_at: "2026-10-05T00:00:00Z" });
+  const r = await runTool(fakePorts({ listFindings: async () => [], getAuditSummary: async () => audit }), "list_findings");
+  const d = JSON.parse(r.content);
+  assert.equal(d.neverAudited, undefined);
+  assert.equal(d.totalFindings, 0);
+  assert.equal(d.auditedAt, "2026-10-05T00:00:00Z");
+});
+
+test("get_audit_summary: never audited vs audited (errors first, scores, checkedAt)", async () => {
+  const none = JSON.parse((await runTool(fakePorts(), "get_audit_summary")).content);
+  assert.equal(none.neverAudited, true);
+
+  const audit = auditFromRow({
+    payload: JSON.stringify({
+      url: "https://x.com", meta: { indexable: false },
+      issues: [{ label: "Missing canonical URL", level: "Warning" }, { label: "No H1 tag found", level: "Error" }],
+      pageSpeed: { mobile: { performance: 61, accessibility: 90, bestPractices: 80, seo: 95 } },
+    }),
+    created_at: "2026-10-05T00:00:00Z",
+  });
+  const d = JSON.parse((await runTool(fakePorts({ getAuditSummary: async () => audit }), "get_audit_summary")).content);
+  assert.equal(d.checkedAt, "2026-10-05T00:00:00Z");
+  assert.equal(d.errors, 1);
+  assert.equal(d.warnings, 1);
+  assert.equal(d.indexable, false);
+  assert.equal(d.topIssues[0].label, "No H1 tag found");
+  assert.equal(d.scores.seo, 95);
+});
+
+test("auditFromRow tolerates corrupt payloads", () => {
+  assert.equal(auditFromRow(null), null);
+  assert.equal(auditFromRow({ payload: "{not json", created_at: "x" }), null);
+  const a = auditFromRow({ payload: {}, created_at: "x", url: "https://y.com" });
+  assert.equal(a?.url, "https://y.com");
+  assert.equal(a?.scores, null);
+});
+
+test("list_competitors: none is noData, some are listed", async () => {
+  const none = JSON.parse((await runTool(fakePorts(), "list_competitors")).content);
+  assert.equal(none.available, false);
+  const some = JSON.parse((await runTool(fakePorts({ listCompetitors: async () => ["https://a.com", "https://b.com"] }), "list_competitors")).content);
+  assert.equal(some.total, 2);
+  assert.deepEqual(some.competitors, ["https://a.com", "https://b.com"]);
+});
+
+test("counts-only overview says the site was never audited", async () => {
+  const s = await buildAutoSummary(fakePorts());
+  assert.match(s, /Site audit: never run/);
 });

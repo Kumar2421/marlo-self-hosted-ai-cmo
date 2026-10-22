@@ -44,7 +44,4 @@ export function getDriver(providerId: string): LlmDriver | null {
  * otherwise. groq/mistral reuse the OpenAI driver under the hood so they get
  * the same tool loop for free. Callers should check this before deciding to
  * pass tools/build a tool-aware system prompt for a given provider. */
-const TOOL_CAPABLE_PROVIDERS = new Set(["openai", "groq", "mistral", "lmstudio", "ollama", "custom"]);
-export function providerSupportsTools(providerId: string): boolean {
-  return TOOL_CAPABLE_PROVIDERS.has(providerId);
-}
+export { providerSupportsTools } from "./capabilities";

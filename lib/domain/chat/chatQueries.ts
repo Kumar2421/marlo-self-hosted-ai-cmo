@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { GeoStatus, LeadSummary } from "./tools.ts";
+import type { AuditSummary, GeoStatus, LeadSummary } from "./tools.ts";
 
 /** Row shape the lead summary needs (both stores map into this). */
 export type LeadRow = {
@@ -52,6 +52,63 @@ export async function supabaseGeoStatus(db: SupabaseClient, userId: string, proj
     .maybeSingle();
   if (error) throw new Error(`Could not load GEO check: ${error.message}`);
   return geoFromRow(data ? { payload: data.payload, checked_at: String(data.checked_at) } : null);
+}
+
+type AuditLikePayload = {
+  url?: string;
+  meta?: { indexable?: boolean };
+  issues?: Array<{ label?: unknown; level?: unknown }>;
+  pageSpeed?: { mobile?: { performance: number; accessibility: number; bestPractices: number; seo: number } };
+};
+
+/** Pure: boil a stored SEO audit payload (JSON string or object) down to what chat may say. */
+export function auditFromRow(row: { payload: unknown; created_at: string; url?: string } | null): AuditSummary {
+  if (!row) return null;
+  let p: unknown = row.payload;
+  if (typeof p === "string") {
+    try { p = JSON.parse(p); } catch { return null; }
+  }
+  if (!p || typeof p !== "object") return null;
+  const a = p as AuditLikePayload;
+  const issues = (Array.isArray(a.issues) ? a.issues : [])
+    .filter((i) => typeof i?.label === "string")
+    .map((i) => ({ label: (i.label as string).slice(0, 160), level: (i.level === "Error" ? "Error" : "Warning") as "Warning" | "Error" }));
+  const errors = issues.filter((i) => i.level === "Error");
+  const warnings = issues.filter((i) => i.level === "Warning");
+  return {
+    url: a.url ?? row.url ?? "",
+    checkedAt: row.created_at,
+    errors: errors.length,
+    warnings: warnings.length,
+    indexable: a.meta?.indexable !== false,
+    topIssues: [...errors, ...warnings].slice(0, 10),
+    scores: a.pageSpeed?.mobile ?? null,
+  };
+}
+
+export async function supabaseAuditSummary(db: SupabaseClient, userId: string, projectId: string): Promise<AuditSummary> {
+  const { data, error } = await db
+    .from("seo_audits")
+    .select("url, payload, created_at")
+    .eq("user_id", userId)
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`Could not load SEO audit: ${error.message}`);
+  return auditFromRow(data ? { payload: data.payload, created_at: String(data.created_at), url: data.url } : null);
+}
+
+export async function supabaseCompetitors(db: SupabaseClient, userId: string, projectId: string): Promise<string[]> {
+  const { data, error } = await db
+    .from("project_competitors")
+    .select("url")
+    .eq("user_id", userId)
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: true })
+    .limit(50);
+  if (error) throw new Error(`Could not load competitors: ${error.message}`);
+  return (data ?? []).map((r) => String(r.url));
 }
 
 /** `payload` is a JSON string (SQLite) or already-parsed JSON (Postgres). */
