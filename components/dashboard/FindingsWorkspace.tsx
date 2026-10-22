@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronRight, CircleDot, Loader2, RefreshCw } from "lucide-react";
 import type { Finding, FindingStatus } from "@/lib/domain/findings/findingTypes";
-import { countFindings, explainPriority, findingTitle, pagePath } from "@/lib/domain/findings/findingDisplay";
+import { countFindings, explainPriority, findingCountStats, findingTitle, pagePath } from "@/lib/domain/findings/findingDisplay";
 import { friendlyGithubUrlError } from "@/lib/domain/github/friendlyGithubError";
 import { useToast } from "@/components/dashboard/Toast";
 import SidePanel from "@/components/shared/SidePanel";
@@ -148,10 +148,9 @@ export default function FindingsWorkspace({ onRunAudit, auditRunning = false }: 
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <Stat label="Needs attention" value={counts.needsAttention} />
-        <Stat label="Critical" value={counts.critical} tone="bad" />
-        <Stat label="Warnings" value={counts.warning} />
-        <Stat label="Verified" value={counts.verified} tone="good" />
+        {findingCountStats(counts).map((stat) => (
+          <Stat key={stat.key} label={stat.label} value={stat.value} tone={stat.tone} />
+        ))}
       </div>
       {counts.awaitingVerification > 0 && (
         <p className="-mt-2 text-[11px] text-gray-500">

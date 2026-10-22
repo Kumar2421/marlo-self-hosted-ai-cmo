@@ -27,6 +27,7 @@ export const qk = {
   geoHistory: (projectId: string | undefined, prompt: string) => [...scope(projectId), "geo-history", prompt] as const,
   siteCrawl: (projectId: string | undefined) => [...scope(projectId), "site-crawl"] as const,
   traffic: (projectId: string | undefined) => [...scope(projectId), "traffic"] as const,
+  googleConnection: (projectId: string | undefined) => [...scope(projectId), "google-connection"] as const,
   googleResources: (projectId: string | undefined) => [...scope(projectId), "google-resources"] as const,
   searchHistory: (projectId: string | undefined) => [...scope(projectId), "search-history"] as const,
   findings: (projectId: string | undefined) => [...scope(projectId), "findings"] as const,

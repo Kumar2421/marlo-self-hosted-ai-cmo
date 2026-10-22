@@ -5,6 +5,8 @@
  * evidence, never an invented traffic/ranking/revenue claim.
  */
 
+import { lighthouseAuditId, lighthouseGuide } from "./lighthouseAudits.ts";
+
 export type FindingExplanation = {
   whyItMatters: string;
   recommendation: string;
@@ -30,6 +32,13 @@ export function explainFinding(finding: { issueId: string; evidence: Evidence })
     const device = str(evidence, "device") || "selected";
     const mode = str(evidence, "mode") || "diagnostic";
     const displayValue = str(evidence, "displayValue");
+    const guide = lighthouseGuide(lighthouseAuditId({ entityId: issueId, evidence }));
+    if (guide) {
+      return {
+        whyItMatters: `${guide.what} Lighthouse found this on the ${device} version of your page${displayValue ? ` (${displayValue})` : ""}.`,
+        recommendation: `${guide.fix} To check it: ${guide.verify}`,
+      };
+    }
     return {
       whyItMatters: displayValue
         ? `Lighthouse detected a ${mode} issue on the ${device} experience (${displayValue}). It is part of the measured page experience and should be reviewed alongside the other audit findings.`

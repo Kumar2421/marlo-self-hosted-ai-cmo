@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchAllPages } from "../jobs/paginate.ts";
 import { AUTOMATION_DOC, PROPOSAL_CLAIM_PREFIX, PROPOSAL_CLAIM_STALE_MS, PROPOSAL_DONE_PREFIX, DEFAULT_AUTOMATION, normalizeAutomation, type AutomationSettings } from "./automationSettings.ts";
 
 // Platform (Supabase) store; every query is scoped by user and project explicitly.
@@ -44,10 +45,18 @@ export async function releaseProposalRun(db: SupabaseClient, userId: string, pro
   await db.from("project_documents").delete().eq("user_id", userId).eq("project_id", projectId).eq("doc_type", PROPOSAL_CLAIM_PREFIX + day);
 }
 
-/** Project ids whose daily proposal step already finished on this UTC day. */
+/** Project ids whose daily proposal step already finished on this UTC day. Paged (PostgREST caps a response at 1000 rows); throws on a failed read. */
 export async function listProposalsDone(db: SupabaseClient, day: string): Promise<Set<string>> {
-  const { data } = await db.from("project_documents").select("project_id").eq("doc_type", PROPOSAL_DONE_PREFIX + day);
-  return new Set((data ?? []).map((row) => String(row.project_id)));
+  const rows = await fetchAllPages<{ project_id: unknown }>(
+    (from, to) =>
+      db
+        .from("project_documents")
+        .select("project_id")
+        .eq("doc_type", PROPOSAL_DONE_PREFIX + day)
+        .order("project_id", { ascending: true })
+        .range(from, to) as unknown as PromiseLike<{ data: { project_id: unknown }[] | null; error: { message: string } | null }>,
+  );
+  return new Set(rows.map((row) => String(row.project_id)));
 }
 
 export async function markProposalsDone(db: SupabaseClient, userId: string, projectId: string, day: string, now = new Date()): Promise<void> {

@@ -4,8 +4,9 @@ import { isAuthorizedCron, runWithBudget } from "@/lib/jobs/jobRunner";
 import { runPlatformDailyProposals } from "@/lib/domain/actions/dailyProposalPorts";
 import { captureProjectSnapshotPlatform } from "@/lib/domain/search/captureForProject";
 import { listProposalsDone, markProposalsDone } from "@/lib/domain/actions/automationSettingsStoreSupabase";
-import { selectDueProjects, skippedTargets, type SnapshotTarget } from "@/lib/domain/search/dueProjects";
+import { selectDueProjects, skippedTargets } from "@/lib/domain/search/dueProjects";
 import { isoDate } from "@/lib/domain/search/searchSnapshot";
+import { loadGscTargets, loadSnapshotsDoneToday, lastCaptureTimes, linkedGithubProjects } from "@/lib/domain/search/cronSelection";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 import { runNotificationJob, type NotificationJobSummary } from "@/lib/domain/notifications/job";
 import { supabaseNotificationStore } from "@/lib/domain/notifications/notificationStoreSupabase";
@@ -18,7 +19,7 @@ import { runVerifyAndMonitorPlatform, type VerifyPhaseSummary } from "@/lib/doma
 import { listProjectActions as listProjectActionsSupabase } from "@/lib/domain/actions/actionStoreSupabase";
 import { platformOutcomePorts } from "@/lib/domain/search/outcomePorts";
 import { fixDeliveryGithub } from "@/lib/domain/fixes/fixDeliveryGithub";
-import { reconcileAllProjects, type LinkedProject, type ReconcileAllSummary } from "@/lib/domain/fixes/reconcileAllProjects";
+import { reconcileAllProjects, type ReconcileAllSummary } from "@/lib/domain/fixes/reconcileAllProjects";
 import { hostedGithubToken } from "@/lib/githubAppServer";
 
 // Hobby caps cron functions at 60s. Stop a little short of it and resume on
@@ -69,11 +70,18 @@ export async function GET(req: NextRequest) {
     if ("error" in targets) return NextResponse.json({ error: targets.error }, { status: 500 });
     const connections = targets.rows;
 
-    const { data: done } = await db.from("search_snapshots").select("project_id").eq("snapshot_date", today);
-    const doneToday = new Set((done ?? []).map((row) => String(row.project_id)));
+    // Paged read of today's snapshots. A failed read stops the run (a wrong "done" set would re-capture or skip
+    // projects); the next scheduled run starts clean.
+    let doneToday: Set<string>;
+    try {
+      doneToday = await loadSnapshotsDoneToday(db, today);
+    } catch (err) {
+      console.error("[search-monitor] could not read today's snapshots:", err instanceof Error ? err.message : err);
+      return NextResponse.json({ error: err instanceof Error ? err.message : "Could not read today's snapshots." }, { status: 500 });
+    }
 
     // Oldest capture first so a project that keeps failing cannot starve the ones behind it.
-    const lastCapturedAt = await lastCaptureTimes(db, connections.map((c) => c.projectId));
+    const lastCapturedAt = await lastCaptureTimes(db, connections.map((c) => c.projectId).filter((id) => !doneToday.has(id)));
     const due = selectDueProjects(connections, doneToday, lastCapturedAt);
     // Known-broken connections (needs reconnect, no property) are not retried; they are reported instead.
     const skippedConnections = skippedTargets(connections, doneToday);
@@ -91,8 +99,11 @@ export async function GET(req: NextRequest) {
 
     // Phase 2: daily proposals for projects captured in this run, plus projects snapshotted earlier today
     // whose proposals have not finished today. Time-budgeted; the rest wait for the next run.
-    const snapshottedToday = new Set((done ?? []).map((row) => String(row.project_id)));
-    const proposalsDone = await listProposalsDone(db, today).catch(() => new Set<string>());
+    const snapshottedToday = doneToday;
+    const proposalsDone = await listProposalsDone(db, today).catch((err) => {
+      console.error("[search-monitor] could not read finished proposals; treating none as done:", err instanceof Error ? err.message : err);
+      return new Set<string>();
+    });
     const proposalTargets = selectDueProjects(
       connections,
       proposalsDone,
@@ -218,67 +229,6 @@ export async function GET(req: NextRequest) {
   } finally {
     await cleanupRateLimitCounters(db);
   }
-}
-
-/**
- * GSC connections with their health and whether a property is selected. The health columns come from
- * migration 20261021000000; until it is applied the query falls back to the old columns and nothing is skipped.
- */
-async function loadGscTargets(db: ReturnType<typeof createServiceClient>): Promise<{ rows: SnapshotTarget[] } | { error: string }> {
-  const full = await db
-    .from("integration_connections")
-    .select("id, project_id, user_id, status")
-    .eq("provider", "gsc")
-    .not("project_id", "is", null);
-  let rows: Array<{ id: string; project_id: string; user_id: string; status?: string | null }>;
-  if (full.error) {
-    const basic = await db.from("integration_connections").select("id, project_id, user_id").eq("provider", "gsc").not("project_id", "is", null);
-    if (basic.error) return { error: basic.error.message };
-    rows = basic.data ?? [];
-  } else {
-    rows = full.data ?? [];
-  }
-
-  const { data: selected, error: selectedError } = await db
-    .from("integration_resources")
-    .select("connection_id")
-    .eq("resource_type", "search_console_property")
-    .eq("selected", true);
-  const withProperty = selectedError ? null : new Set((selected ?? []).map((r) => String(r.connection_id)));
-
-  return {
-    rows: rows.map((c) => ({
-      projectId: String(c.project_id),
-      userId: String(c.user_id),
-      status: c.status ?? null,
-      hasProperty: withProperty ? withProperty.has(String(c.id)) : undefined,
-    })),
-  };
-}
-
-/** Latest snapshot capture time per project over the last 30 days; projects without one sort first. */
-async function lastCaptureTimes(db: ReturnType<typeof createServiceClient>, projectIds: string[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  if (projectIds.length === 0) return out;
-  const since = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
-  const { data } = await db.from("search_snapshots").select("project_id, captured_at").gte("snapshot_date", since).in("project_id", projectIds);
-  for (const row of data ?? []) {
-    const id = String(row.project_id);
-    const at = String(row.captured_at);
-    const prev = out.get(id);
-    if (!prev || at > prev) out.set(id, at);
-  }
-  return out;
-}
-
-/** Projects with a GitHub App link. The link is stored per project in user_settings as `github_app:<projectId>`. */
-async function linkedGithubProjects(db: ReturnType<typeof createServiceClient>): Promise<LinkedProject[]> {
-  const PREFIX = "github_app:";
-  const { data, error } = await db.from("user_settings").select("user_id, key").like("key", `${PREFIX}%`);
-  if (error) throw new Error(error.message);
-  return (data ?? [])
-    .map((row) => ({ userId: String(row.user_id), projectId: String(row.key).slice(PREFIX.length) }))
-    .filter((project) => project.projectId !== "");
 }
 
 /** Housekeeping for the public audit rate limiter. Never throws: a failure only logs and never changes the response. */

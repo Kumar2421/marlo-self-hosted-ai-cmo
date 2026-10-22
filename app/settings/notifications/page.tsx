@@ -5,6 +5,7 @@ import { Loader2, Mail } from "lucide-react";
 import { useToast } from "@/components/dashboard/Toast";
 import { SkeletonCard } from "@/components/shared/Skeleton";
 import { useNotificationPrefs } from "@/components/dashboard/notifications/useNotificationPrefs";
+import { FEATURES } from "@/lib/features";
 import { displayedFrequency, type NotificationPrefs } from "@/lib/domain/notifications/preferences";
 import type { Frequency, NotificationCategory } from "@/lib/domain/notifications/types";
 
@@ -140,10 +141,16 @@ export default function NotificationsSettingsPage() {
               Email
             </h2>
             {!emailConfigured ? (
-              <p className="mt-1 text-[13px] leading-relaxed text-gray-600">
-                Email isn&apos;t set up on this server, so notifications stay in the app. To turn email on, the server needs a Resend API key and a sender address
-                (<code className="rounded bg-gray-100 px-1 text-[12px]">RESEND_API_KEY</code>, <code className="rounded bg-gray-100 px-1 text-[12px]">NOTIFY_FROM_EMAIL</code>).
-              </p>
+              FEATURES.PLATFORM_MODE ? (
+                <p className="mt-1 text-[13px] leading-relaxed text-gray-600">
+                  Email delivery is managed by the host, so notifications stay in the app for now.
+                </p>
+              ) : (
+                <p className="mt-1 text-[13px] leading-relaxed text-gray-600">
+                  Email isn&apos;t set up on this server, so notifications stay in the app. To turn email on, the server needs a Resend API key and a sender address
+                  (<code className="rounded bg-gray-100 px-1 text-[12px]">RESEND_API_KEY</code>, <code className="rounded bg-gray-100 px-1 text-[12px]">NOTIFY_FROM_EMAIL</code>).
+                </p>
+              )
             ) : unsubscribedAll ? (
               <p className="mt-1 text-[13px] leading-relaxed text-gray-600">
                 You unsubscribed from Marlo emails. Notifications still appear in the app.

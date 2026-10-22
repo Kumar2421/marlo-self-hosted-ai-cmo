@@ -4,6 +4,8 @@
  * person must do (`manual`: rewrites, layout, speed, server config). Nothing here touches GitHub.
  */
 
+import { lighthouseCategoryOf } from "../seo/lighthouseAudits.ts";
+
 export const FIX_KINDS = [
   "title",
   "meta_description",
@@ -78,6 +80,16 @@ function auto(kinds: FixKind[]): FixClassification {
   return { mode: "auto", kinds: unique, label: unique.map((k) => FIX_KIND_INFO[k].label).join(" + ") };
 }
 
+/** Why a Lighthouse finding is a manual change, worded for its own category (never "speed" for an accessibility audit). */
+function lighthouseManualReason(finding: FindingLike): string {
+  const category = lighthouseCategoryOf({ entityId: finding.entityId, evidence: finding.evidence });
+  if (category === "accessibility") return "This needs a manual change: accessibility fixes depend on your page's markup and content, so a person should make and check them.";
+  if (category === "performance") return "This needs a manual change: speed and performance fixes touch how the page is built.";
+  if (category === "seo") return "This needs a manual change: it depends on how your page is written and built, so a person should decide the right fix.";
+  if (category === "best-practices") return "This needs a manual change: best-practice fixes depend on how your site is built and served.";
+  return "This needs a manual change: Marlo cannot tell which part of the page this audit is about, so a person should decide the right fix.";
+}
+
 function opportunityType(evidence: Record<string, unknown> | undefined): string | null {
   const opp = evidence?.opportunity as { type?: unknown } | undefined;
   return typeof opp?.type === "string" ? opp.type : null;
@@ -102,7 +114,7 @@ export function classifyFinding(finding: FindingLike): FixClassification {
     if (id.startsWith("lighthouse-") && /(^|-)image-alt$/.test(id)) return auto(["alt_text"]);
     if (id.includes("sitemap")) return auto(["sitemap"]);
     if (id.startsWith("heading-")) return manual("This needs a manual change: heading structure depends on how the page is laid out and written.");
-    if (id.startsWith("lighthouse-")) return manual("This needs a manual change: speed and performance fixes touch how the page is built.");
+    if (id.startsWith("lighthouse-")) return manual(lighthouseManualReason(finding));
     if (id.startsWith("robots-txt")) return manual("This needs a manual change: robots rules decide what search engines may crawl, so a person should edit them.");
     return manual();
   }
