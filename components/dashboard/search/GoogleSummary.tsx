@@ -1,5 +1,8 @@
 "use client";
 
+import GoogleReconnectLink from "@/components/settings/GoogleReconnectLink";
+import { RECONNECT_TEXT } from "@/lib/domain/integrations/googleHealthView";
+
 type Totals = { clicks: number; impressions: number; ctr: number; position: number };
 type Ga4 = { sessions: number; activeUsers: number; screenPageViews: number } | null;
 
@@ -18,6 +21,7 @@ export default function GoogleSummary({
   ga4,
   loading,
   error,
+  showReconnect = false,
   onViewTraffic,
   onRetry,
 }: {
@@ -25,6 +29,8 @@ export default function GoogleSummary({
   ga4: Ga4;
   loading: boolean;
   error: string | null;
+  /** The server says Google no longer accepts the saved connection. */
+  showReconnect?: boolean;
   onViewTraffic: () => void;
   onRetry: () => void;
 }) {
@@ -34,6 +40,15 @@ export default function GoogleSummary({
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className="h-[66px] rounded-lg bg-gray-100" />
         ))}
+      </div>
+    );
+  }
+
+  if (showReconnect && !totals) {
+    return (
+      <div role="alert" className="mb-5 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-800">
+        <span className="min-w-0 break-words">{RECONNECT_TEXT}</span>
+        <GoogleReconnectLink returnTo="dashboard" className="shrink-0 font-medium underline" />
       </div>
     );
   }
