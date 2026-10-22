@@ -8,6 +8,7 @@ import { SkeletonLines } from "@/components/shared/Skeleton";
 import FindingActionsSection from "../FindingActionsSection";
 import FindingCodeFix from "./FindingCodeFix";
 import { useFindingWork } from "./useFindings";
+import { vanishedNote } from "@/lib/domain/findings/vanishedFindings";
 
 export const STATUS_LABEL: Record<FindingStatus, string> = {
   new: "New",
@@ -90,6 +91,10 @@ export default function FindingDetail({
         >
           {autoLine.text}
         </div>
+      )}
+
+      {vanishedNote(finding) && !verification && (
+        <div data-testid="finding-vanished-note" className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-[12px] text-gray-600">{vanishedNote(finding)}</div>
       )}
 
       {verification && (

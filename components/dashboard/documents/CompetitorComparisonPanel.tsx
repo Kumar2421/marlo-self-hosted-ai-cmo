@@ -1,5 +1,6 @@
 "use client";
 
+import { plainError } from "@/lib/plainError";
 import { X, ChevronsLeft, RefreshCw, Loader2, Settings } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -157,7 +158,8 @@ export default function CompetitorComparisonPanel({ onClose }: { onClose: () => 
       await new Promise(resolve => setTimeout(resolve, 500));
       await loadComparison();
     } catch (err) {
-      const errText = err instanceof Error ? err.message : "Failed to generate comparison.";
+      console.error("[comparison] generate failed", err);
+      const errText = plainError(err, "Failed to generate comparison.");
       log(`⚠ ${errText}`);
       show("Failed to generate comparison.");
     } finally {

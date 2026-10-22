@@ -45,6 +45,13 @@ export type SEOAuditPayload = {
   twitter: { key: string; value: string; ok: boolean }[];
   issues: { label: string; level: "Warning" | "Error" }[];
   findings: Finding[];
+  /**
+   * Which finding families this run could actually decide. On-page checks always run on a
+   * successful crawl; Lighthouse findings are only reliable when PageSpeed answered AND the
+   * capped list of promoted issues was not full (a full list may have dropped real ones).
+   * Absent on older payloads: treat as "Lighthouse did not run".
+   */
+  checksRan?: { lighthouse: boolean };
   /** Undefined (not a fake fallback) when no PageSpeed key is connected, or
    * the real PSI call failed — the frontend shows a real crawl-derived
    * substitute instead of ever presenting invented Lighthouse-shaped numbers. */
@@ -166,6 +173,9 @@ export function assertPublicHttpUrl(raw: string): URL {
 
   return parsed;
 }
+
+/** How many Lighthouse problems are promoted into findings per audit. */
+const LIGHTHOUSE_FINDINGS_CAP = 6;
 
 /** Crawl of the page and the robots check live in ./siteFetch.ts (guarded fetcher). */
 
@@ -420,6 +430,7 @@ export class SEOAgent {
     let vitals: SEOAuditPayload["coreWebVitals"];
     let lighthouseIssues: SEOAuditPayload["lighthouseIssues"];
     let pageSpeedUnavailable: SEOAuditPayload["pageSpeedUnavailable"];
+    let lighthouseComplete = false;
 
     if (this.pageSpeedApiKey) {
       try {
@@ -438,8 +449,9 @@ export class SEOAgent {
           ]
             .filter((issue) => issue.mode === "opportunity" || (issue.score !== null && issue.score < 0.5))
             .sort((a, b) => (a.score ?? 1) - (b.score ?? 1))
-            .slice(0, 6);
+            .slice(0, LIGHTHOUSE_FINDINGS_CAP);
 
+          lighthouseComplete = candidates.length < LIGHTHOUSE_FINDINGS_CAP;
           for (const issue of candidates) {
             findings.push({
               issueId: `lighthouse-${issue.device}-${issue.id}`,
@@ -622,6 +634,7 @@ export class SEOAgent {
       twitter,
       issues,
       findings,
+      checksRan: { lighthouse: lighthouseComplete },
       pageSpeed: pageSpeedScores,
       pageSpeedUnavailable,
       coreWebVitals: vitals,

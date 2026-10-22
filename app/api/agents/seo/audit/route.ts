@@ -11,6 +11,8 @@ import { upsertFinding } from "@/lib/domain/findings/findingStore";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import { takeCachedPublicAudit } from "@/lib/domain/seo/publicAuditCache";
 import { auditFindingInputs, saveAuditFindings } from "@/lib/domain/findings/auditFindings";
+import { flagVanishedFindings } from "@/lib/domain/findings/vanishedFindings";
+import { sqliteVanishPorts, supabaseVanishPorts } from "@/lib/domain/findings/findingRepositories";
 import { resolvePlatformApiKey } from "@/lib/domain/shared/resolvePlatformApiKey";
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
@@ -87,6 +89,7 @@ export async function POST(req: NextRequest) {
         if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
         await saveAuditFindings((input) => upsertFindingSupabase(db, user.id, input), auditFindingInputs(projectId, auditResult));
+        await flagVanishedFindings(supabaseVanishPorts(db, user.id), projectId, auditResult, createdAt);
 
         return NextResponse.json(auditResult);
       } catch (err) {
@@ -111,7 +114,9 @@ export async function POST(req: NextRequest) {
 
     const createdAt = new Date().toISOString();
 
-    await saveAuditFindings(async (input) => upsertFinding(input), auditFindingInputs(getActiveProjectId()!, auditResult));
+    const activeProjectId = getActiveProjectId()!;
+    await saveAuditFindings(async (input) => upsertFinding(input), auditFindingInputs(activeProjectId, auditResult));
+    await flagVanishedFindings(sqliteVanishPorts(), activeProjectId, auditResult, createdAt);
 
     db.prepare(`
       INSERT INTO seo_audits (url, payload, created_at)

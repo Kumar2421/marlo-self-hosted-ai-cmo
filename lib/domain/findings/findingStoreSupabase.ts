@@ -164,3 +164,12 @@ export async function refreshFinding(db: SupabaseClient, userId: string, project
   if (!data && input.expectedStatus) throw staleFindingError();
   return data ? mapFinding(data as FindingRow) : null;
 }
+
+/** Evidence-only write (see findingStore.updateFindingEvidence): no status or last_seen change, conditional on the status read. */
+export async function updateFindingEvidence(db: SupabaseClient, userId: string, projectId: string, id: string, evidence: Record<string, unknown>, expectedStatus: Finding["status"]): Promise<Finding | null> {
+  const { data, error } = await db.from("findings").update({ evidence })
+    .eq("user_id", userId).eq("project_id", projectId).eq("id", id).eq("status", expectedStatus).select("*").maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw staleFindingError();
+  return mapFinding(data as FindingRow);
+}
