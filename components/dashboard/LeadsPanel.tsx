@@ -19,6 +19,8 @@ import type { BusinessLead } from "./leads/BusinessLeadCard";
 import { SkeletonCard } from "@/components/shared/Skeleton";
 import { FEATURES } from "@/lib/features";
 import { nextTabIndex } from "@/lib/tabKeys";
+import { useLockedFeature } from "@/components/plan/usePlan";
+import { LockedLine } from "@/components/plan/LockedLine";
 import type { LeadSearchTarget } from "@/lib/domain/leads/leadProfile";
 import { LEAD_FILTERS, countLeads, defaultFilter, filterLabel, filterLeads, profileSummary, type LeadFilter } from "@/lib/domain/leads/leadListView";
 import {
@@ -96,6 +98,7 @@ async function requestPlaces(
 }
 
 export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  const leadsLock = useLockedFeature("leads_finder");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
@@ -438,6 +441,26 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
       <CollapsedRail onExpand={onToggle}>
         <RailButton icon={<Users size={15} />} label="Leads" onClick={onToggle} />
       </CollapsedRail>
+    );
+  }
+
+  if (leadsLock.locked) {
+    // Plan-locked (enforcement on): the finder is replaced by one line. Server routes still enforce.
+    return (
+      <div className="flex h-full min-h-0 flex-col border-r border-gray-200 bg-white">
+        <div className="flex h-11 shrink-0 items-center justify-between border-b border-gray-200 px-4">
+          <div className="flex items-center gap-2 text-[13px] font-semibold text-gray-900">
+            <Users size={15} className="text-gray-500" />
+            Leads
+          </div>
+          <button onClick={onToggle} title="Collapse" className="hidden text-gray-400 hover:text-gray-700 md:block">
+            <ChevronLeft size={15} />
+          </button>
+        </div>
+        <div className="p-3">
+          <LockedLine label={leadsLock.label} minPlan={leadsLock.minPlan} hint="Find and refresh qualified leads for your product." />
+        </div>
+      </div>
     );
   }
 

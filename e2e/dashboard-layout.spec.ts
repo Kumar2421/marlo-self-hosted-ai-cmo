@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockDashboardApi, signIn } from "./support/dashboardMock.ts";
+import { expectBarSilent, makeActivity, statusToggle } from "./support/headerActivity.ts";
 
 // Layout regression for the signed-in dashboard: the page must never scroll, the
 // four panels must end at the viewport bottom, and the header must stay compact.
@@ -103,6 +104,9 @@ async function showAllLeads(page: Page) {
 async function openDashboard(page: Page) {
   await page.goto("/dashboard");
   await expect(page.getByTestId("terminal-bar")).toBeVisible();
+  // Tablets now open on Analytics + Chat; bring Leads into the right pane.
+  const leadsTab = page.getByRole("navigation", { name: "Dashboard sections" }).getByRole("tab", { name: "Leads", exact: true });
+  if (await leadsTab.isVisible()) await leadsTab.click();
   await expect(page.getByRole("tab", { name: /^With email/ })).toBeVisible();
   await showAllLeads(page);
   // Let panel skeletons and late fetches settle before measuring.
@@ -160,12 +164,25 @@ for (const vp of VIEWPORTS) {
       expect(leads.lastInside).toBe(true);
     });
 
+    test("idle header is quiet: one 48px bar, no status text, nothing announced", async ({ page }) => {
+      await openDashboard(page);
+      const bar = page.getByTestId("terminal-bar");
+      await expect(bar).not.toContainText("No activity");
+      await expect(bar).not.toContainText("Status Log");
+      await expect(statusToggle(page)).toHaveCount(0);
+      await expectBarSilent(page);
+      await expect(page.getByRole("log")).toHaveCount(0);
+      expect((await measure(page)).headerBar).toBe(48);
+    });
+
     test("terminal overlay opens on demand without moving the panels", async ({ page }) => {
       await openDashboard(page);
-      const toggle = page.getByRole("button", { name: /No activity|Status Log|activity/ }).first();
+      await makeActivity(page);
+      const toggle = statusToggle(page);
       await expect(toggle).toHaveAttribute("aria-expanded", "false");
       await expect(page.getByRole("log")).toHaveCount(0);
       const before = await measure(page);
+      expect(before.headerBar).toBe(48);
 
       await toggle.click();
       await expect(toggle).toHaveAttribute("aria-expanded", "true");

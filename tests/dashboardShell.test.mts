@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   breakpointForWidth,
+  explicitTabFromSearch,
+  resolveDashboardTab,
   nextTabForKey,
   parseDashboardTab,
   searchWithTab,
@@ -47,4 +49,32 @@ test("nextTabForKey wraps and supports Home/End", () => {
   assert.equal(nextTabForKey("agents", "Home"), "context");
   assert.equal(nextTabForKey("agents", "End"), "chat");
   assert.equal(nextTabForKey("agents", "Enter"), null);
+});
+
+test("explicitTabFromSearch returns null (not the default) when ?tab= is absent or invalid", () => {
+  assert.equal(explicitTabFromSearch(""), null);
+  assert.equal(explicitTabFromSearch("?tab=bogus"), null);
+  assert.equal(explicitTabFromSearch("?x=1&tab=agents"), "agents");
+});
+
+test("resolveDashboardTab: URL beats stored choice beats the audit-based default", () => {
+  assert.equal(resolveDashboardTab({ urlTab: "chat", storedTab: "agents", hasAudit: true }), "chat");
+  assert.equal(resolveDashboardTab({ urlTab: null, storedTab: "agents", hasAudit: true }), "agents");
+  assert.equal(resolveDashboardTab({ urlTab: null, storedTab: "context", hasAudit: false }), "context");
+  assert.equal(resolveDashboardTab({ urlTab: null, storedTab: null, hasAudit: true }), "analytics");
+  assert.equal(resolveDashboardTab({ urlTab: null, storedTab: null, hasAudit: false }), "context");
+});
+
+test("resolveDashboardTab: undecided (null) only when nothing is explicit and the audit state is unknown", () => {
+  assert.equal(resolveDashboardTab({ urlTab: null, storedTab: null, hasAudit: null }), null);
+  assert.equal(resolveDashboardTab({ urlTab: "chat", storedTab: null, hasAudit: null }), "chat");
+  assert.equal(resolveDashboardTab({ urlTab: null, storedTab: "agents", hasAudit: null }), "agents");
+});
+
+test("tablet first screen: audited project shows Analytics + Chat; Leads is one tap away; setup shows Context + Chat", () => {
+  assert.deepEqual(visibleTabs("tablet", "analytics", "analytics", "chat"), ["analytics", "chat"]);
+  assert.deepEqual(visibleTabs("tablet", "context", "analytics", "chat"), ["context", "chat"]);
+  assert.deepEqual(visibleTabs("tablet", "agents", "analytics", "chat"), ["analytics", "agents"]);
+  // A bad "last" value still falls back to the Analytics + Chat pair.
+  assert.deepEqual(visibleTabs("tablet", "analytics", "analytics", "analytics"), ["analytics", "chat"]);
 });

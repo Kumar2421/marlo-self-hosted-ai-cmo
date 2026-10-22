@@ -1,3 +1,4 @@
+import { makeActivity, statusToggle } from "./support/headerActivity.ts";
 import { test, type Page } from "@playwright/test";
 import { expectNoNewViolations } from "./support/a11y.ts";
 import { mockDashboardApi, serveLottieWasmLocally, signIn } from "./support/dashboardMock.ts";
@@ -62,7 +63,8 @@ test.describe("signed in", () => {
 
     test("header log overlay open", async ({ page }, testInfo) => {
       await openDashboard(page);
-      await page.getByRole("button", { name: /No activity|Status Log|activity/ }).first().click();
+      await makeActivity(page);
+      await statusToggle(page).click();
       await page.getByRole("log").waitFor();
       await expectNoNewViolations(page, "desktop-log-open", testInfo);
     });
@@ -74,7 +76,7 @@ test.describe("signed in", () => {
     for (const t of MOBILE_TABS) {
       test(`tab ${t.key}`, async ({ page }, testInfo) => {
         await openDashboard(page);
-        if (t.key !== "Context") await page.getByRole("button", { name: t.button, exact: true }).last().click();
+        await page.getByRole("tab", { name: t.button, exact: true }).click();
         await page.waitForLoadState("networkidle");
         await expectNoNewViolations(page, `mobile-${t.key}`, testInfo);
       });
