@@ -7,8 +7,8 @@ import { getActiveProjectContextSupabase } from "@/lib/domain/shared/getActivePr
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
-import { chargeCredits, InsufficientCreditsError } from "@/lib/credits";
-import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
+import { spendCredits, withRefund, isFailedResponse, InsufficientCreditsError, type CreditTicket } from "@/lib/credits";
+import { platformKeyFor, resolveLlmCredential } from "@/lib/llm/platformKeys";
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
 // platform max for this route (Hobby plan caps at 60s; Pro allows more).
@@ -62,16 +62,17 @@ export async function POST(req: NextRequest) {
     let apiKey = "";
     let baseUrl: string | undefined;
     let chargedCredits = false;
+    let ticket: CreditTicket | null = null;
 
     if (conn?.api_key_secret_id) {
       const { data: secret } = await db.rpc("vault_get_secret", { p_id: conn.api_key_secret_id });
       apiKey = (secret as string) ?? "";
       baseUrl = conn.base_url ?? undefined;
-    } else if (PLATFORM_PROVIDER_KEYS[providerId]) {
+    } else if (platformKeyFor(providerId)) {
       // Closed-source: platform-provided key, metered via credits. Never
       // available in self-host builds (GROQ_API_KEY/MISTRAL_API_KEY unset there).
       try {
-        await chargeCredits(user.id, "social_draft", { model });
+        ticket = await spendCredits(user.id, "social_draft", { model });
         chargedCredits = true;
       } catch (err) {
         if (err instanceof InsufficientCreditsError) {
@@ -79,33 +80,34 @@ export async function POST(req: NextRequest) {
         }
         throw err;
       }
-      apiKey = PLATFORM_PROVIDER_KEYS[providerId]!;
+      apiKey = resolveLlmCredential({ providerId }).apiKey; // platform key: baseUrl intentionally not set
     } else {
       return NextResponse.json({ error: `${providerId} isn't connected yet.` }, { status: 422 });
     }
 
-    try {
-      const agent = new LinkedInAgent(driver, apiKey, baseUrl);
-      const result = await agent.generate({
-        topic,
-        brandVoice,
-        model,
-        project: await getActiveProjectContextSupabase(db, user.id),
-      });
-
-      if (result.stream) {
-        return new NextResponse(result.stream, {
-          headers: { "Content-Type": "text/plain; charset=utf-8" },
+    // Refund the charge if generation throws or ends in an error response.
+    return await withRefund(ticket, async () => {
+      try {
+        const agent = new LinkedInAgent(driver, apiKey, baseUrl);
+        const result = await agent.generate({
+          topic,
+          brandVoice,
+          model,
+          project: await getActiveProjectContextSupabase(db, user.id),
         });
-      }
 
-      return NextResponse.json({ text: result.text });
-    } catch (err) {
-      // Note: credits already charged if platform key was used — no refund
-      // path yet on generation failure.
-      const raw = err instanceof Error ? err.message : String(err);
-      return NextResponse.json({ error: raw, chargedCredits }, { status: 502 });
-    }
+        if (result.stream) {
+          return new NextResponse(result.stream, {
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
+          });
+        }
+
+        return NextResponse.json({ text: result.text });
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err);
+        return NextResponse.json({ error: raw, chargedCredits }, { status: 502 });
+      }
+    }, isFailedResponse);
   }
 
   const db = getDb();

@@ -1,5 +1,6 @@
 import type { LlmDriver } from "./types";
 import openaiDriver from "./openai";
+import { safeBaseUrl } from "./platformKeys";
 import { isModelNotFound, modelAttempts } from "./modelFallback";
 
 /** Groq retires models quickly. If the requested id is gone, fall back to these (best first). */
@@ -16,7 +17,8 @@ const GROQ_FALLBACK_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "llam
  * retry once per known fallback model, and only surface the original error
  * if none of them works either. */
 const groqDriver: LlmDriver = async (req) => {
-  const baseUrl = req.baseUrl ?? "https://api.groq.com/openai/v1";
+  // Never honour a custom baseUrl when the apiKey is the operator's platform key.
+  const baseUrl = safeBaseUrl("groq", req.apiKey, req.baseUrl) ?? "https://api.groq.com/openai/v1";
   let firstError: unknown;
 
   for (const model of modelAttempts(req.model, GROQ_FALLBACK_MODELS)) {

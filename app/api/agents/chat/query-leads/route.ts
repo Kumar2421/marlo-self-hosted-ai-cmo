@@ -5,7 +5,7 @@ import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
-import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
+import { resolveLlmCredential } from "@/lib/llm/platformKeys";
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
 // platform max for this route (Hobby plan caps at 60s; Pro allows more).
@@ -62,12 +62,12 @@ export async function POST(req: NextRequest) {
         .eq("provider_id", providerId)
         .maybeSingle();
 
-      let apiKey = "";
+      let byokKey = "";
       if (conn?.api_key_secret_id) {
         const { data: secret } = await db.rpc("vault_get_secret", { p_id: conn.api_key_secret_id });
-        apiKey = (secret as string) ?? "";
+        byokKey = (secret as string) ?? "";
       }
-      if (!apiKey) apiKey = PLATFORM_PROVIDER_KEYS[providerId] ?? "";
+      const { apiKey, baseUrl: llmBaseUrl } = resolveLlmCredential({ providerId, byokKey, byokBaseUrl: conn?.base_url });
       if (!apiKey) {
         return NextResponse.json({ error: "LLM provider not connected" }, { status: 422 });
       }
@@ -91,7 +91,7 @@ unclear, return an empty keywords array.`;
       const filterRes = await driver({
         apiKey,
         model,
-        baseUrl: conn?.base_url || undefined,
+        baseUrl: llmBaseUrl,
         messages: [{ role: "user", content: filterPrompt }],
       });
 

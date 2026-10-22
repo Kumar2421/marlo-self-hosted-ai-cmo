@@ -2,6 +2,7 @@
  * Pure, testable orchestration for draft generation across platforms.
  * Separated from route/server concerns for unit testing.
  */
+import { InsufficientCreditsError } from "../credits/errors.ts";
 
 export interface CreditState {
   billingEnabled: boolean;
@@ -19,12 +20,8 @@ export interface ReservationFailure {
   used: number;
 }
 
-export class InsufficientCreditsError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "InsufficientCreditsError";
-  }
-}
+// One shared class: the error thrown by lib/credits.ts must be the one caught below.
+export { InsufficientCreditsError };
 
 export interface DraftGenerationPorts {
   creditState(): Promise<CreditState>;

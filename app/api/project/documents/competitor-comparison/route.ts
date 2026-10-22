@@ -6,8 +6,8 @@ import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
-import { chargeCredits, InsufficientCreditsError } from "@/lib/credits";
-import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
+import { spendCredits, withRefund, isFailedResponse, InsufficientCreditsError, type CreditTicket } from "@/lib/credits";
+import { platformKeyFor, resolveLlmCredential } from "@/lib/llm/platformKeys";
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
 // platform max for this route (Hobby plan caps at 60s; Pro allows more).
@@ -124,14 +124,15 @@ export async function POST(req: NextRequest) {
     let apiKey = "";
     let baseUrl: string | undefined;
     let chargedCredits = false;
+    let ticket: CreditTicket | null = null;
 
     if (conn?.api_key_secret_id) {
       const { data: secret } = await db.rpc("vault_get_secret", { p_id: conn.api_key_secret_id });
       apiKey = (secret as string) ?? "";
       baseUrl = conn.base_url ?? undefined;
-    } else if (PLATFORM_PROVIDER_KEYS[providerId]) {
+    } else if (platformKeyFor(providerId)) {
       try {
-        await chargeCredits(user.id, "competitor_comparison", { projectId: activeId, model });
+        ticket = await spendCredits(user.id, "competitor_comparison", { projectId: activeId, model });
         chargedCredits = true;
       } catch (err) {
         if (err instanceof InsufficientCreditsError) {
@@ -139,55 +140,58 @@ export async function POST(req: NextRequest) {
         }
         throw err;
       }
-      apiKey = PLATFORM_PROVIDER_KEYS[providerId]!;
+      apiKey = resolveLlmCredential({ providerId }).apiKey; // platform key: baseUrl intentionally not set
     } else {
       return NextResponse.json({
         error: `${providerId} isn't properly connected. Check Settings → LLM Providers to add your API key or base URL.`,
       }, { status: 422 });
     }
 
-    try {
-      const result = await generateCompetitorComparison(competitors, model, driver, apiKey, baseUrl);
-      const markdown = comparisonToMarkdown(result);
+    // Refund the charge if generation throws or ends in an error response.
+    return await withRefund(ticket, async () => {
+      try {
+        const result = await generateCompetitorComparison(competitors, model, driver, apiKey, baseUrl);
+        const markdown = comparisonToMarkdown(result);
 
-      const now = new Date().toISOString();
-      const { data: existing } = await db
-        .from("project_documents")
-        .select("created_at")
-        .eq("user_id", user.id)
-        .eq("project_id", activeId)
-        .eq("doc_type", DOC_TYPE)
-        .maybeSingle();
+        const now = new Date().toISOString();
+        const { data: existing } = await db
+          .from("project_documents")
+          .select("created_at")
+          .eq("user_id", user.id)
+          .eq("project_id", activeId)
+          .eq("doc_type", DOC_TYPE)
+          .maybeSingle();
 
-      const { error: upsertError } = await db.from("project_documents").upsert(
-        {
-          user_id: user.id,
-          project_id: activeId,
-          doc_type: DOC_TYPE,
-          status: "ready",
-          content: markdown,
-          created_at: existing?.created_at ?? now,
-          updated_at: now,
-        },
-        { onConflict: "project_id,doc_type" }
-      );
-      if (upsertError) return NextResponse.json({ error: upsertError.message }, { status: 500 });
+        const { error: upsertError } = await db.from("project_documents").upsert(
+          {
+            user_id: user.id,
+            project_id: activeId,
+            doc_type: DOC_TYPE,
+            status: "ready",
+            content: markdown,
+            created_at: existing?.created_at ?? now,
+            updated_at: now,
+          },
+          { onConflict: "project_id,doc_type" }
+        );
+        if (upsertError) return NextResponse.json({ error: upsertError.message }, { status: 500 });
 
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(encoder.encode(markdown));
-          controller.close();
-        },
-      });
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(markdown));
+            controller.close();
+          },
+        });
 
-      return new NextResponse(stream, {
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
-      });
-    } catch (err) {
-      const raw = err instanceof Error ? err.message : String(err);
-      return NextResponse.json({ error: raw, chargedCredits }, { status: 502 });
-    }
+        return new NextResponse(stream, {
+          headers: { "Content-Type": "text/plain; charset=utf-8" },
+        });
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err);
+        return NextResponse.json({ error: raw, chargedCredits }, { status: 502 });
+      }
+    }, isFailedResponse);
   }
 
   try {

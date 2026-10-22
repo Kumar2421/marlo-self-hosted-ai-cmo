@@ -8,7 +8,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getDb } from "@/lib/db.ts";
 import { getDriver } from "@/lib/llm/index.ts";
-import { PLATFORM_DEFAULT_MODELS, PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys.ts";
+import { PLATFORM_DEFAULT_MODELS, platformKeyFor } from "@/lib/llm/platformKeys.ts";
 import { getUserPlan } from "@/lib/entitlements.ts";
 import { chargeCredits, getCreditState } from "@/lib/credits.ts";
 import { dailyDraftBatchLimit } from "@/lib/domain/x/xDraftTypes.ts";
@@ -51,7 +51,7 @@ export async function resolvePlatformModelAccess(db: SupabaseClient, userId: str
     const { data: secret } = await db.rpc("vault_get_secret", { p_id: conn.api_key_secret_id });
     return { apiKey: (secret as string) ?? "", baseUrl: conn.base_url ?? undefined, usesPlatformKey: false };
   }
-  const platformKey = PLATFORM_PROVIDER_KEYS[DRAFT_PROVIDER_ID];
+  const platformKey = platformKeyFor(DRAFT_PROVIDER_ID);
   if (platformKey) return { apiKey: platformKey, usesPlatformKey: true };
   return { apiKey: "", usesPlatformKey: false };
 }

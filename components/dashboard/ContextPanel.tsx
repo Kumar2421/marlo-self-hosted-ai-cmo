@@ -71,6 +71,8 @@ function ProjectDescription({ text }: { text: string }) {
 // The project header block and its loading skeleton share this height, so the swap to real content doesn't shift the Documents list below it.
 const HEADER_BLOCK = "min-h-[228px] md:min-h-[284px]";
 
+type DocDrawer = "product" | "marketing" | "competitor" | "comparison" | "content" | "design";
+
 export default function ContextPanel({
   open,
   onToggle,
@@ -80,12 +82,8 @@ export default function ContextPanel({
 }) {
   const [docsExpanded, setDocsExpanded] = useState(true);
   const [compsExpanded, setCompsExpanded] = useState(true);
-  const [productInfoOpen, setProductInfoOpen] = useState(false);
-  const [marketingStrategyOpen, setMarketingStrategyOpen] = useState(false);
-  const [competitorAnalysisOpen, setCompetitorAnalysisOpen] = useState(false);
-  const [comparisonOpen, setComparisonOpen] = useState(false);
-  const [contentStrategyOpen, setContentStrategyOpen] = useState(false);
-  const [designGuideOpen, setDesignGuideOpen] = useState(false);
+  // One document drawer at a time: opening another replaces it rather than stacking.
+  const [openDoc, setOpenDoc] = useState<DocDrawer | null>(null);
   const [addingCompetitor, setAddingCompetitor] = useState(false);
   const [newCompetitorUrl, setNewCompetitorUrl] = useState("");
   const [discovering, setDiscovering] = useState(false);
@@ -228,7 +226,7 @@ export default function ContextPanel({
     if (!project || retryingStep) return;
     if (id === "documents") {
       // Document generation lives in the document panel (stream, check, save).
-      setProductInfoOpen(true);
+      setOpenDoc("product");
       return;
     }
     if (id === "competitors") {
@@ -451,15 +449,15 @@ export default function ContextPanel({
                     } else if (!doc.available) {
                       show(`${doc.name} isn't built yet.`);
                     } else if (doc.docType === "product_info") {
-                      setProductInfoOpen(true);
+                      setOpenDoc("product");
                     } else if (doc.docType === "marketing_strategy") {
-                      setMarketingStrategyOpen(true);
+                      setOpenDoc("marketing");
                     } else if (doc.docType === "competitor_analysis") {
-                      setCompetitorAnalysisOpen(true);
+                      setOpenDoc("competitor");
                     } else if (doc.docType === "content_strategy") {
-                      setContentStrategyOpen(true);
+                      setOpenDoc("content");
                     } else if (doc.docType === "design_guide") {
-                      setDesignGuideOpen(true);
+                      setOpenDoc("design");
                     }
                   }}
                   className="dash-focus dash-body flex min-h-9 w-full items-center justify-between py-1.5 text-left text-gray-700 hover:text-gray-900"
@@ -540,7 +538,7 @@ export default function ContextPanel({
             )}
             {competitors.length > 0 && (
               <button
-                onClick={() => setComparisonOpen(true)}
+                onClick={() => setOpenDoc("comparison")}
                 className="mb-3 flex w-full items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[12px] font-medium text-blue-700 hover:bg-blue-100"
               >
                 View Comparison Table
@@ -592,43 +590,43 @@ export default function ContextPanel({
         What your CMO reads before writing anything — edit any of it, anytime.
       </div>
 
-      {productInfoOpen && (
+      {openDoc === "product" && (
         <ProductInfoPanel
           onClose={() => {
-            setProductInfoOpen(false);
+            setOpenDoc(null);
             void refreshDatasets(["project_documents"]);
           }}
         />
       )}
-      {marketingStrategyOpen && (
+      {openDoc === "marketing" && (
         <MarketingStrategyPanel
           onClose={() => {
-            setMarketingStrategyOpen(false);
+            setOpenDoc(null);
             void refreshDatasets(["project_documents"]);
           }}
         />
       )}
-      {competitorAnalysisOpen && (
+      {openDoc === "competitor" && (
         <CompetitorAnalysisPanel
           onClose={() => {
-            setCompetitorAnalysisOpen(false);
+            setOpenDoc(null);
             void refreshDatasets(["project_documents"]);
           }}
         />
       )}
-      {comparisonOpen && <CompetitorComparisonPanel onClose={() => setComparisonOpen(false)} />}
-      {contentStrategyOpen && (
+      {openDoc === "comparison" && <CompetitorComparisonPanel onClose={() => setOpenDoc(null)} />}
+      {openDoc === "content" && (
         <ContentStrategyPanel
           onClose={() => {
-            setContentStrategyOpen(false);
+            setOpenDoc(null);
             void refreshDatasets(["project_documents"]);
           }}
         />
       )}
-      {designGuideOpen && (
+      {openDoc === "design" && (
         <DesignGuidePanel
           onClose={() => {
-            setDesignGuideOpen(false);
+            setOpenDoc(null);
             void refreshDatasets(["project_documents"]);
           }}
         />

@@ -5,7 +5,7 @@ import { isConfirmed, pickSearch } from "@/lib/domain/leads/leadProfile";
 import { getLeadProfile } from "@/lib/domain/leads/leadProfileStoreSupabase";
 import { verifyMissingEmails } from "@/lib/domain/leads/verifyMissingEmails";
 import { createLeadDedupe } from "./leadDedupe.ts";
-import { PLATFORM_PROVIDER_KEYS, PLATFORM_DEFAULT_MODELS } from "@/lib/llm/platformKeys";
+import { platformKeyFor, PLATFORM_DEFAULT_MODELS } from "@/lib/llm/platformKeys";
 
 // Free tier always runs on the platform's own key/model, never a user's BYOK
 // connection — same reasoning as the "Managed by Marlo" cards: it's a free
@@ -58,7 +58,7 @@ export async function generateAutoLeads(
   project: { id: string; name: string; category: string | null },
   limit: number
 ): Promise<AutoLeadResult> {
-  const apiKey = PLATFORM_PROVIDER_KEYS[AUTO_LEAD_PROVIDER_ID];
+  const apiKey = platformKeyFor(AUTO_LEAD_PROVIDER_ID);
   const model = PLATFORM_DEFAULT_MODELS[AUTO_LEAD_PROVIDER_ID];
   const driver = getDriver(AUTO_LEAD_PROVIDER_ID);
   if (!apiKey || !model || !driver) return nothing("not_configured");
