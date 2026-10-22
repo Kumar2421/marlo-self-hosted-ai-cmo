@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Action, ActionStatus, ActionType } from "./actionTypes";
-import { canTransitionAction } from "./actionTypes";
+import { canTransitionAction, invalidActionTransitionError, staleActionError } from "./actionTypes";
 
 function mapRow(row: Record<string, unknown>): Action {
   return {
@@ -56,16 +56,19 @@ export async function createAction(db: SupabaseClient, userId: string, input: {
   return mapRow(data);
 }
 
-export async function transitionAction(db: SupabaseClient, userId: string, projectId: string, id: string, status: ActionStatus, result: Record<string, unknown> | null = null): Promise<Action | null> {
+export async function transitionAction(db: SupabaseClient, userId: string, projectId: string, id: string, status: ActionStatus, result: Record<string, unknown> | null = null, from?: ActionStatus): Promise<Action | null> {
   const existing = await getProjectAction(db, userId, projectId, id);
   if (!existing) return null;
-  if (!canTransitionAction(existing.status, status)) throw new Error(`Invalid action status transition: ${existing.status} -> ${status}`);
+  if (from && existing.status !== from) throw staleActionError();
+  if (!canTransitionAction(existing.status, status)) throw invalidActionTransitionError(existing.status, status);
   const now = new Date().toISOString();
   const patch: Record<string, unknown> = { status, result };
   if (status === "running") patch.started_at = now;
   if (["completed", "failed", "cancelled"].includes(status)) patch.completed_at = now;
-  const { data, error } = await db.from("actions").update(patch).eq("project_id", projectId).eq("id", id).select("*").single();
+  const { data, error } = await db.from("actions").update(patch).eq("project_id", projectId).eq("id", id).eq("status", existing.status).select("*").maybeSingle();
   if (error) throw new Error(error.message);
+  // Another request moved the action between the read and this write.
+  if (!data) throw staleActionError();
   return mapRow(data);
 }
 
