@@ -1,6 +1,7 @@
 import type { Finding } from "./findingTypes.ts";
 import { reconcileSeoAuditRecheck } from "../seo/reconcileRecheck.ts";
 import type { ReadinessCheck } from "../geo/readiness.ts";
+import type { GapVerdict } from "../geo/geoGaps.ts";
 
 /**
  * Automatic verification of one fixed finding. Pure: every outside effect
@@ -36,6 +37,11 @@ export type VerifyCheckPorts = {
   runSeoAudit(url: string): Promise<FreshAuditFinding[] | FreshAudit>;
   /** Re-runs the GEO readiness checks for the site that owns this URL. */
   runGeoReadiness(url: string): Promise<ReadinessCheck[]>;
+  /**
+   * AI-answer gap findings (category geo_gap): whether a stored run of the finding's prompt,
+   * made after it was first seen, names the project. Absent where the caller has no run history.
+   */
+  geoGapVerdict?(finding: { entityId: string; evidence?: Record<string, unknown>; firstSeen?: string }): Promise<GapVerdict>;
 };
 
 export const PAGESPEED_SKIP_REASON = "Needs a PageSpeed run: use Re-check";
@@ -97,7 +103,7 @@ export type VerifyOptions = {
 
 export async function verifyFinding(
   ports: VerifyCheckPorts,
-  finding: Pick<Finding, "source" | "category" | "entityId" | "url" | "severity">,
+  finding: Pick<Finding, "source" | "category" | "entityId" | "url" | "severity"> & Partial<Pick<Finding, "evidence" | "firstSeen">>,
   now: Date,
   options: VerifyOptions = {},
 ): Promise<VerifyResult> {
@@ -106,6 +112,17 @@ export async function verifyFinding(
 
   if (finding.source === "search-console") {
     return skipped("This finding is measured from search data, not re-checked on the page.");
+  }
+  if (finding.source === "geo" && finding.category === "geo_gap") {
+    if (!ports.geoGapVerdict) return skipped("AI answers are re-measured by running the check again.");
+    try {
+      const verdict = await ports.geoGapVerdict(finding);
+      if (verdict === "mentioned") return { outcome: "verified", reason: "A later AI answer to this question names you.", checkedAt };
+      if (verdict === "not-mentioned") return { outcome: "failed", reason: "Later AI answers to this question still do not name you.", checkedAt };
+      return skipped("Fix pending: this question has not been checked again since the finding was created. Run the AI check.");
+    } catch {
+      return skipped("The check could not run. It will be retried.");
+    }
   }
   if (!finding.url) return skipped("The finding has no page to check.");
   const pageSpeedFinding = needsPageSpeed(finding);

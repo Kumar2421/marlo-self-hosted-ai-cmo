@@ -53,7 +53,7 @@ test.describe("mobile 390x844", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
   test("dashboard tab shell", async ({ page }) => {
-    await page.goto("/dashboard");
+    await page.goto("/dashboard?tab=context");
     await expect(page.getByRole("button", { name: "Context", exact: true }).last()).toBeVisible();
     await settle(page);
     await expect(page).toHaveScreenshot("dashboard-mobile-context.png", { mask: volatile(page) });

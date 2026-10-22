@@ -103,3 +103,14 @@ export function upsertFinding(input: {
 
   return mapFinding(db.prepare("SELECT * FROM findings WHERE id = ?").get(id) as FindingRow);
 }
+
+/**
+ * Rewrites a finding's evidence only. The status, last_seen and resolved_at are left alone, and the
+ * write applies only while the row still has the status that was read (else a conflict).
+ */
+export function updateFindingEvidence(projectId: string, id: string, evidence: Record<string, unknown>, expectedStatus: Finding["status"]): Finding | null {
+  const changed = getDb().prepare("UPDATE findings SET evidence = ? WHERE project_id = ? AND id = ? AND status = ?")
+    .run(JSON.stringify(evidence), projectId, id, expectedStatus).changes;
+  if (changed === 0) throw staleFindingError();
+  return getProjectFinding(projectId, id);
+}

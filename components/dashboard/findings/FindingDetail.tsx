@@ -3,11 +3,12 @@
 import { AlertTriangle, Check, ChevronRight } from "lucide-react";
 import type { Finding, FindingStatus } from "@/lib/domain/findings/findingTypes";
 import { explainPriority } from "@/lib/domain/findings/findingDisplay";
-import { autoVerificationLine, evidenceRowsForFinding, whyItMattersForFinding } from "@/lib/domain/findings/evidenceDisplay";
+import { autoVerificationLine, evidenceRowsForFinding, splitEvidenceRows, whyItMattersForFinding } from "@/lib/domain/findings/evidenceDisplay";
 import { SkeletonLines } from "@/components/shared/Skeleton";
 import FindingActionsSection from "../FindingActionsSection";
 import FindingCodeFix from "./FindingCodeFix";
 import { useFindingWork } from "./useFindings";
+import { vanishedNote } from "@/lib/domain/findings/vanishedFindings";
 
 export const STATUS_LABEL: Record<FindingStatus, string> = {
   new: "New",
@@ -65,7 +66,7 @@ export default function FindingDetail({
   error: string | null;
 }) {
   const work = useFindingWork(finding.id);
-  const evidenceRows = evidenceRowsForFinding(finding);
+  const { main: evidenceRows, details: detailRows } = splitEvidenceRows(evidenceRowsForFinding(finding));
   const why = whyItMattersForFinding(finding);
   const currentIndex = STATUS_ORDER.indexOf(finding.status);
   const lastCheckReason = (finding.evidence.lastCheck as { reason?: string } | undefined)?.reason;
@@ -90,6 +91,10 @@ export default function FindingDetail({
         >
           {autoLine.text}
         </div>
+      )}
+
+      {vanishedNote(finding) && !verification && (
+        <div data-testid="finding-vanished-note" className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-[12px] text-gray-600">{vanishedNote(finding)}</div>
       )}
 
       {verification && (
@@ -121,6 +126,16 @@ export default function FindingDetail({
               <EvidenceRow key={row.key} label={row.label} value={row.value} />
             ))}
           </div>
+        )}
+        {detailRows.length > 0 && (
+          <details className="mt-2 rounded-xl border border-gray-200" data-testid="finding-details">
+            <summary className="cursor-pointer px-3 py-2 text-[12px] text-gray-500 hover:text-gray-800">Details</summary>
+            <div className="border-t border-gray-100">
+              {detailRows.map((row) => (
+                <EvidenceRow key={row.key} label={row.label} value={row.value} />
+              ))}
+            </div>
+          </details>
         )}
       </section>
 

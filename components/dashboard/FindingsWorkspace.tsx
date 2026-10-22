@@ -10,6 +10,7 @@ import SidePanel from "@/components/shared/SidePanel";
 import { SkeletonCard, SkeletonStats } from "@/components/shared/Skeleton";
 import FindingDetail, { STATUS_LABEL, severityClass, statusClass } from "./findings/FindingDetail";
 import { useFindings } from "./findings/useFindings";
+import { isVanished, vanishedNote } from "@/lib/domain/findings/vanishedFindings";
 
 const STATUS_ACTION: Partial<Record<FindingStatus, { next: FindingStatus; label: string }>> = {
   new: { next: "acknowledged", label: "Acknowledge" },
@@ -39,11 +40,25 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: "ba
  * detail (evidence, what to do, tracked actions, progress) opens in a
  * slide-over so it has room, with the main actions pinned at the bottom.
  */
-export default function FindingsWorkspace({ onRunAudit, auditRunning = false }: { onRunAudit?: () => void; auditRunning?: boolean }) {
+export default function FindingsWorkspace({
+  onRunAudit,
+  auditRunning = false,
+  openRequest = null,
+}: {
+  onRunAudit?: () => void;
+  auditRunning?: boolean;
+  /** Asks the workspace to open one finding's drawer (e.g. from the "Fix first" strip). */
+  openRequest?: { id: string; n: number } | null;
+}) {
   const { list, update } = useFindings();
   const { show } = useToast();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [verification, setVerification] = useState<"verified" | "failed" | null>(null);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (openRequest) setSelectedId(openRequest.id);
+  }, [openRequest]);
 
   const findings = useMemo(() => list.data ?? [], [list.data]);
   const counts = useMemo(() => countFindings(findings), [findings]);
@@ -197,6 +212,7 @@ export default function FindingsWorkspace({ onRunAudit, auditRunning = false }: 
                       {pagePath(finding.url)}
                     </span>
                   </span>
+                  {vanishedNote(finding) && <span data-testid="finding-vanished" className="mt-1 block text-[11px] text-gray-500">{vanishedNote(finding)}</span>}
                   {index < 3 && <span className="mt-1 block text-[11px] text-gray-500">Why it is up here: {explainPriority(finding)}</span>}
                 </span>
                 <ChevronRight size={14} className="mt-1 shrink-0 text-gray-300" />
@@ -228,7 +244,7 @@ export default function FindingsWorkspace({ onRunAudit, auditRunning = false }: 
           )
         }
         footer={
-          selected && (primary || CAN_RECHECK.has(selected.status)) ? (
+          selected && (primary || CAN_RECHECK.has(selected.status) || isVanished(selected)) ? (
             <div className="flex flex-wrap gap-2">
               {primary && (
                 <button
@@ -240,7 +256,7 @@ export default function FindingsWorkspace({ onRunAudit, auditRunning = false }: 
                   {update.isPending && !update.variables?.body.action ? <Loader2 size={13} className="inline animate-spin" /> : primary.label}
                 </button>
               )}
-              {CAN_RECHECK.has(selected.status) && (
+              {(CAN_RECHECK.has(selected.status) || isVanished(selected)) && (
                 <button
                   type="button"
                   disabled={update.isPending}

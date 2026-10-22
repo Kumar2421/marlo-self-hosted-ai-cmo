@@ -8,6 +8,7 @@ import { qk } from "@/lib/query/keys";
 import { useProject } from "@/lib/project-store";
 import { useGoogleConnection } from "@/lib/query/useGoogleConnection";
 import GoogleReconnectLink from "@/components/settings/GoogleReconnectLink";
+import { buildGoogleCardSummary } from "@/lib/domain/integrations/googleCardSummary";
 
 type IntegrationType = "google-search-console" | "google-analytics";
 type Resource = { resourceId: string; resourceName: string; selected: boolean; usedBy?: string[] };
@@ -189,6 +190,7 @@ export default function GoogleSourcesCard({ onReadyChange }: { onReadyChange?: (
     enabled: Boolean(projectId),
   });
   const data = resources.data;
+  const [expanded, setExpanded] = useState(false);
   const health = useGoogleConnection(projectId);
 
   // A changed connection or property changes what Google data the project can see.
@@ -218,6 +220,16 @@ export default function GoogleSourcesCard({ onReadyChange }: { onReadyChange?: (
     onReadyChange?.(ready);
   }, [ready, onReadyChange]);
 
+  const chosen = (type: IntegrationType) => data?.integrations.find((i) => i.integrationType === type)?.resources.find((r) => r.selected)?.resourceName ?? null;
+  const summary = data
+    ? buildGoogleCardSummary({
+        health,
+        account: data.account,
+        selected: { site: chosen("google-search-console"), property: chosen("google-analytics") },
+        ready,
+      })
+    : { mode: "full" as const };
+
   if (!projectId) return null;
   if (resources.isPending) return <Skeleton />;
   if (resources.isError || !data) {
@@ -233,45 +245,92 @@ export default function GoogleSourcesCard({ onReadyChange }: { onReadyChange?: (
 
   const { account, integrations } = data;
 
-  if (!account.connectedHere) {
+  if (summary.mode === "connect") {
     return (
-      <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4">
-        <h4 className="text-[13px] font-semibold text-gray-900">Add your Google data</h4>
-        <p className="mt-0.5 text-[12px] text-gray-500">
-          See real Search Console rankings and Analytics traffic for this project, right here.
-        </p>
-        {account.canReuse ? (
-          <div className="mt-3 space-y-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => post("/api/project/integrations/google/use-account")}
-              className="w-full rounded-lg bg-gray-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50"
+      <div className="mb-5 rounded-xl border border-gray-200 bg-white px-3 py-2.5" data-testid="google-connect-row">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <span className="min-w-0 text-[12px] text-gray-600">Google isn&apos;t connected. Connect it to see real search rankings and traffic.</span>
+          {summary.canReuse ? (
+            <span className="flex shrink-0 items-center gap-3">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => post("/api/project/integrations/google/use-account")}
+                className="rounded-lg bg-gray-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50"
+              >
+                {busy ? "Connecting…" : `Use ${account.email ?? "your connected Google account"}`}
+              </button>
+              <a href="/api/auth/google-analytics/connect?return=dashboard" className="text-[11px] text-gray-500 hover:text-gray-800 hover:underline">
+                Different account
+              </a>
+            </span>
+          ) : (
+            <a
+              href="/api/auth/google-analytics/connect?return=dashboard"
+              className="shrink-0 rounded-lg bg-gray-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-black"
             >
-              {busy ? "Connecting…" : `Use ${account.email ?? "your connected Google account"}`}
-            </button>
-            <a href="/api/auth/google-analytics/connect?return=dashboard" className="block text-center text-[12px] text-gray-500 hover:text-gray-800 hover:underline">
-              Connect a different Google account
+              Connect Google
             </a>
-          </div>
-        ) : (
-          <a
-            href="/api/auth/google-analytics/connect?return=dashboard"
-            className="mt-3 flex w-full items-center justify-center rounded-lg bg-gray-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-black"
-          >
-            Connect with Google
-          </a>
-        )}
+          )}
+        </div>
         {error && <p className="mt-2 text-[12px] text-red-600">{error}</p>}
       </div>
     );
   }
 
+  if (summary.mode === "summary" && !expanded) {
+    return (
+      <div
+        data-testid="google-summary-row"
+        className={`mb-5 rounded-xl border px-3 py-2 ${summary.tone === "warn" ? "border-amber-200 bg-amber-50" : "border-gray-200 bg-white"}`}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2 text-[12px] text-gray-700">
+            {summary.tone === "warn" ? <AlertTriangle size={14} className="shrink-0 text-amber-600" aria-hidden="true" /> : <Check size={14} className="shrink-0 text-emerald-600" aria-hidden="true" />}
+            <span className="min-w-0 truncate">
+              <span className="font-medium text-gray-900">{summary.site ?? "No Search Console site"}</span>
+              {summary.property ? <span className="text-gray-500"> · {summary.property}</span> : null}
+              <span className="text-gray-500"> · {summary.syncLabel}</span>
+            </span>
+          </div>
+          <button
+            type="button"
+            aria-expanded={false}
+            aria-controls="google-data-card"
+            onClick={() => setExpanded(true)}
+            className="inline-flex shrink-0 items-center gap-1 text-[11px] text-gray-500 hover:text-gray-800 hover:underline"
+          >
+            Google data <ChevronDown size={12} />
+          </button>
+        </div>
+        {summary.message && (
+          <div role="alert" className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-[12px] text-amber-800">
+            <span className="min-w-0">{summary.message}</span>
+            {summary.showReconnect && <GoogleReconnectLink returnTo="dashboard" />}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4">
+    <div id="google-data-card" className="mb-5 rounded-xl border border-gray-200 bg-white p-4">
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <h4 className="text-[13px] font-semibold text-gray-900">Google data for {project?.name ?? "this project"}</h4>
-        {account.email && <span className="truncate text-[11px] text-gray-500">{account.email}</span>}
+        <span className="flex min-w-0 items-baseline gap-3">
+          {account.email && <span className="truncate text-[11px] text-gray-500">{account.email}</span>}
+          {summary.mode === "summary" && (
+            <button
+              type="button"
+              aria-expanded={true}
+              aria-controls="google-data-card"
+              onClick={() => setExpanded(false)}
+              className="shrink-0 text-[11px] text-gray-500 hover:text-gray-800 hover:underline"
+            >
+              Hide
+            </button>
+          )}
+        </span>
       </div>
       {health.showReconnect && (
         <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">

@@ -1,6 +1,6 @@
 export type LogLine =
-  | { type: "muted-link"; text: string }
-  | { type: "divider"; text: string }
-  | { type: "cmd"; text: string }
-  | { type: "done"; text: string }
-  | { type: "error"; text: string };
+  | { type: "muted-link"; text: string; at?: number }
+  | { type: "divider"; text: string; at?: number }
+  | { type: "cmd"; text: string; at?: number }
+  | { type: "done"; text: string; at?: number }
+  | { type: "error"; text: string; at?: number };
