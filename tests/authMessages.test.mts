@@ -1,17 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  EMAIL_NOT_CONFIRMED_MESSAGE,
   EMAIL_RATE_LIMIT_MESSAGE,
   GOOGLE_SIGNIN_CANCELLED_MESSAGE,
   GOOGLE_SIGNIN_FAILED_MESSAGE,
   REPEATED_SIGNUP_MESSAGE,
+  RESEND_COOLDOWN_SECONDS,
   friendlyAuthError,
   friendlyEmailSendError,
+  isEmailNotConfirmed,
   isRepeatedSignup,
   resetCodeNotice,
   cleanOtp,
   isOtpComplete,
 } from "../lib/domain/auth/authMessages.ts";
+
+// Mirrors how /login reads the callback: query params first, then the Supabase hash on top.
+function paramsFrom(query: string, hash = ""): URLSearchParams {
+  const params = new URLSearchParams(query);
+  new URLSearchParams(hash).forEach((value, key) => params.set(key, value));
+  return params;
+}
 
 test("signUp for an already-registered email has an empty identities array", () => {
   assert.equal(isRepeatedSignup({ identities: [] }), true);
@@ -103,4 +113,54 @@ test("otp: input is stripped to digits and capped at 10", () => {
   assert.equal(cleanOtp("48 29-16"), "482916");
   assert.equal(cleanOtp("12345678"), "12345678");
   assert.equal(cleanOtp("123456789012345"), "1234567890");
+});
+
+test("the callback's query error=access_denied (user cancelled Google) maps to the cancelled message", () => {
+  const params = paramsFrom("error=access_denied&error_description=User+denied+consent");
+  const out = friendlyAuthError(params.get("error"), params);
+  assert.equal(out?.message, GOOGLE_SIGNIN_CANCELLED_MESSAGE);
+  assert.equal(out?.raw, "User denied consent");
+});
+
+test("a provider error from the query keeps its error_description out of the message", () => {
+  const raw = "Unable to exchange external code";
+  const params = paramsFrom(`error=server_error&error_description=${encodeURIComponent(raw)}`);
+  const out = friendlyAuthError(params.get("error"), params);
+  assert.equal(out?.message, GOOGLE_SIGNIN_FAILED_MESSAGE);
+  assert.equal(out?.raw, raw);
+  assert.equal(out?.message.includes(raw), false);
+});
+
+test("a query otp_expired code maps to the expired message", () => {
+  const params = paramsFrom("error=access_denied&error_code=otp_expired");
+  assert.match(friendlyAuthError(params.get("error"), params)?.message ?? "", /expired/);
+});
+
+test("the hash from Supabase still wins over an older query error", () => {
+  const params = paramsFrom("error=auth", "error=access_denied&error_code=access_denied");
+  assert.equal(friendlyAuthError(params.get("error"), params)?.message, GOOGLE_SIGNIN_CANCELLED_MESSAGE);
+});
+
+test("'Email not confirmed' is detected by Supabase error code", () => {
+  assert.equal(isEmailNotConfirmed({ code: "email_not_confirmed", message: "Email not confirmed" }), true);
+});
+
+test("'Email not confirmed' is detected by message when no code is present", () => {
+  assert.equal(isEmailNotConfirmed({ message: "Email not confirmed" }), true);
+  assert.equal(isEmailNotConfirmed({ code: null, message: "email not confirmed" }), true);
+});
+
+test("other sign-in errors are not treated as unconfirmed email", () => {
+  assert.equal(isEmailNotConfirmed({ code: "invalid_credentials", message: "Invalid login credentials" }), false);
+  assert.equal(isEmailNotConfirmed({}), false);
+});
+
+test("unconfirmed-email message is friendly and points to the code", () => {
+  assert.match(EMAIL_NOT_CONFIRMED_MESSAGE, /isn't confirmed yet/);
+  assert.match(EMAIL_NOT_CONFIRMED_MESSAGE, /request a new one/);
+  assert.equal(EMAIL_NOT_CONFIRMED_MESSAGE.includes("Email not confirmed"), false);
+});
+
+test("resend cooldown is 30 seconds", () => {
+  assert.equal(RESEND_COOLDOWN_SECONDS, 30);
 });

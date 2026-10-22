@@ -57,7 +57,9 @@ for (const vp of VIEWPORTS) {
       expect(m.scrollW).toBeLessThanOrEqual(m.clientW);
       expect(m.scrollH).toBeLessThanOrEqual(m.vh);
 
-      const tabs = page.getByRole("tab");
+      // Scoped to the bottom bar: the Leads panel has its own filter tabs (All / With email / No email).
+      const bar = page.getByRole("navigation", { name: "Dashboard sections" });
+      const tabs = bar.getByRole("tab");
       await expect(tabs).toHaveCount(4);
       await expect(page.getByRole("main")).toHaveCount(1);
       await expect(page.getByRole("navigation", { name: "Dashboard sections" })).toBeVisible();
@@ -67,8 +69,8 @@ for (const vp of VIEWPORTS) {
         expect(box.width).toBeGreaterThanOrEqual(48);
       }
       await expect(tab(page, "Context")).toHaveAttribute("aria-selected", "true");
-      await expect(page.locator('[role="tab"][aria-selected="true"]')).toHaveCount(1);
-      await expect(page.locator('[role="tab"][tabindex="0"]')).toHaveCount(1);
+      await expect(bar.locator('[role="tab"][aria-selected="true"]')).toHaveCount(1);
+      await expect(bar.locator('[role="tab"][tabindex="0"]')).toHaveCount(1);
 
       // Roving tabindex + arrow keys.
       await tab(page, "Context").focus();
@@ -100,7 +102,7 @@ for (const vp of VIEWPORTS) {
 
     test("switching tabs keeps a chat draft and scroll position", async ({ page }) => {
       await open(page, "?tab=agents");
-      await expect(page.getByText("Very Long Lead Name Number 0").first()).toBeVisible();
+      await expect(page.getByText("Very Long Lead Name Number 1 With").first()).toBeVisible();
 
       const scrollTo = await page.evaluate(() => {
         const panel = document.getElementById("dash-panel-agents")!;
@@ -122,7 +124,7 @@ for (const vp of VIEWPORTS) {
       await expect(box).toHaveValue("draft that must survive");
 
       await tab(page, "Leads").click();
-      await expect(page.getByText("Very Long Lead Name Number 0").first()).toBeAttached();
+      await expect(page.getByText("Very Long Lead Name Number 1 With").first()).toBeAttached();
       const after = await page.evaluate(
         () => document.querySelector<HTMLElement>('[data-e2e-scroll="1"]')?.scrollTop ?? -1,
       );
@@ -170,6 +172,6 @@ test.describe("desktop is unchanged", () => {
   test("1100px still renders the four-column grid without a tab bar", async ({ page }) => {
     await page.goto("/dashboard");
     await expect(page.getByTestId("terminal-bar")).toBeVisible();
-    await expect(page.getByRole("tablist")).toHaveCount(0);
+    await expect(page.getByRole("navigation", { name: "Dashboard sections" })).toHaveCount(0);
   });
 });

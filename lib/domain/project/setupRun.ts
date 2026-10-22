@@ -84,6 +84,20 @@ export function summarizeDocumentRun(outcomes: DocOutcome[]): DocumentRunSummary
   return { ready, total, failed, blocked, skipped, hasProblems, text };
 }
 
+/** Which project's setup run is in flight (null when none). Only the project
+ * that started a run may end it, so creating a second project while the first
+ * run's documents are still writing cannot flip the first one's state early. */
+export function settleSetupRun(runningProjectId: string | null, finishedProjectId: string): string | null {
+  return runningProjectId === finishedProjectId ? null : runningProjectId;
+}
+
+/** True while the active project's setup run is in flight. Drives the Context
+ * "Finish setup" card (hidden), the Analytics "Auditing..." state and the
+ * disabled re-run buttons, so nothing offers to re-run work that is already running. */
+export function isSetupRunning(runningProjectId: string | null, activeProjectId: string | undefined): boolean {
+  return runningProjectId !== null && runningProjectId === activeProjectId;
+}
+
 /** Last line of setup. "Setup complete" only when nothing required went wrong. */
 export function finalSetupLine(problems: string[]): { ok: boolean; text: string } {
   if (problems.length === 0) return { ok: true, text: "Setup complete — your dashboard is ready." };
