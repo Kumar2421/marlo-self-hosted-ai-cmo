@@ -54,6 +54,21 @@ test.describe("finding drawer and audit overview", () => {
     await expect(drawer.getByText("Not measured")).toBeVisible();
   });
 
+  test("a skipped Re-check shows the server's reason, not 'verified'", async ({ page }) => {
+    const reason = "Fix pending: later AI answers still do not name you. Mark the fix as done, then re-check.";
+    const fixing = { ...lighthouseFinding, id: "finding_fixing", status: "fixing" };
+    await page.route("**/api/agents/analytics/findings", (r) =>
+      r.request().method() === "PUT" ? r.fulfill(json({ finding: fixing, skipped: true, reason })) : r.fulfill(json({ findings: [fixing] })),
+    );
+    await page.goto("/dashboard");
+    await page.getByTestId("fix-first").getByRole("button").first().click();
+    const drawer = page.getByRole("dialog");
+    await drawer.getByRole("button", { name: "Re-check" }).click();
+    await expect(drawer.getByTestId("recheck-note")).toHaveText(`Not verified yet: ${reason}`);
+    await expect(drawer.getByTestId("recheck-note")).not.toContainText(/^Verified/);
+    await expect(drawer).not.toContainText("Verification failed");
+  });
+
   test("a finding without run details has no Details disclosure", async ({ page }) => {
     const plain = { ...lighthouseFinding, id: "finding_plain", entityId: "meta-description-missing", category: "meta-description", evidence: { label: "No meta description", length: 0 } };
     await page.route("**/api/agents/analytics/findings", (r) => r.fulfill(json({ findings: [plain] })));

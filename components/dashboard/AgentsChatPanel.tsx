@@ -1,5 +1,6 @@
 "use client";
 
+import { plainError } from "@/lib/plainError";
 import { useState, useRef, useEffect } from "react";
 import { Send, Loader2, Plus, Zap, Users, Mail, FileText } from "lucide-react";
 import { useToast } from "./Toast";
@@ -273,7 +274,8 @@ export default function AgentsChatPanel() {
       setMessages((prev) => [...prev, statusMsg]);
       show(`Sent ${sent} emails`);
     } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to send emails");
+      console.error("Send emails failed", err);
+      show(plainError(err, "Failed to send emails"));
     } finally {
       setSending(false);
     }
@@ -388,7 +390,8 @@ export default function AgentsChatPanel() {
 
       setMessages((prev) => [...prev, agentMsg]);
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "Failed to reach agent";
+      console.error("Agent request failed", err);
+      const errorMsg = plainError(err, "Failed to reach agent");
       show(errorMsg);
 
       const errMsg: Message = {

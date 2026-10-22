@@ -11,7 +11,7 @@ import { fetchJson } from "@/lib/query/fetchJson";
 import { qk } from "@/lib/query/keys";
 import { useProject } from "@/lib/project-store";
 
-type FindingUpdate = { finding: Finding; verification?: { status: "verified" | "failed"; changed: boolean } };
+type FindingUpdate = { finding: Finding; verification?: { status: "verified" | "failed"; changed: boolean }; skipped?: boolean; reason?: string };
 
 /** The project's findings, cached per project, with status changes and re-checks written straight into the cache. */
 export function useFindings({ enabled = true }: { enabled?: boolean } = {}) {
