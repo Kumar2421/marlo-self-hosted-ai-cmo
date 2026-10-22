@@ -1,5 +1,6 @@
+import { GROUNDING_RULES } from "./grounding.ts";
 import type { LlmDriver, CompletionResult } from "@/lib/llm";
-import { buildWebSearchTool } from "@/lib/domain/shared/webSearchTool";
+import { buildWebSearchTool } from "../shared/webSearchTool.ts";
 
 export type ContentStrategyRequest = {
   projectName: string;
@@ -29,7 +30,14 @@ export type ContentStrategyRequest = {
  * from Competitor Analysis.
  */
 export class ContentStrategyGenerator {
-  constructor(private driver: LlmDriver, private apiKey: string, private baseUrl?: string) {}
+  private driver: LlmDriver;
+  private apiKey: string;
+  private baseUrl?: string;
+  constructor(driver: LlmDriver, apiKey: string, baseUrl?: string) {
+    this.driver = driver;
+    this.apiKey = apiKey;
+    this.baseUrl = baseUrl;
+  }
 
   async generate(req: ContentStrategyRequest): Promise<CompletionResult> {
     const hasWebSearch = !!req.tavilyApiKey;
@@ -46,7 +54,9 @@ trends the source material doesn't support.${
       hasWebSearch
         ? " You have a web_search tool — use it to find what's actually being discussed in this niche right now (recent posts, questions, trends) before writing the Topic Backlog, instead of guessing."
         : " You don't have web access this time, so base the Topic Backlog only on the product/competitor context below — say so plainly rather than inventing 'trending' topics you can't verify."
-    }`;
+    }
+
+${GROUNDING_RULES}`;
 
     const context = `Product: ${req.projectName} (${req.url})
 Meta title: ${req.metaTitle || "(none found)"}

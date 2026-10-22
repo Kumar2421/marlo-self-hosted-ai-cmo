@@ -3,6 +3,8 @@
  * prerequisite, and how to word the final summary. No fetches, no React, so the
  * rules are testable and the setup log never claims success it did not get. */
 
+import { countUnverifiedClaims } from "../documents/grounding.ts";
+
 export type DocKey =
   | "product-info"
   | "marketing-strategy"
@@ -44,7 +46,7 @@ const DANGLING_WORDS = new Set(["and", "or", "the", "of", "to", "with", "a", "an
  * ends without an error, so the only evidence is the text itself. Conservative:
  * rejecting a good document only costs a retry, saving a truncated one
  * destroys a good document. */
-export function assessGeneratedDocument(text: string): { ok: true } | { ok: false; reason: string } {
+export function assessGeneratedDocument(text: string): { ok: true; unverifiedClaims?: number } | { ok: false; reason: string } {
   const t = text.trim();
   if (!t) return { ok: false, reason: "the model returned nothing" };
   if (t.length < 200) return { ok: false, reason: "the response was too short to be a full document" };
@@ -54,7 +56,10 @@ export function assessGeneratedDocument(text: string): { ok: true } | { ok: fals
   if (/[,:;(–—-]$/.test(lastLine)) return { ok: false, reason: "the response was cut off mid-sentence" };
   const lastWord = lastLine.split(/\s+/).pop()?.toLowerCase() ?? "";
   if (DANGLING_WORDS.has(lastWord)) return { ok: false, reason: "the response was cut off mid-sentence" };
-  return { ok: true };
+  // The generator routes append a visible note when they flagged likely
+  // fabricated claims; surface the count so the status log can say so.
+  const unverifiedClaims = countUnverifiedClaims(t);
+  return unverifiedClaims > 0 ? { ok: true, unverifiedClaims } : { ok: true };
 }
 
 export type DocumentRunSummary = {
@@ -102,4 +107,9 @@ export function isSetupRunning(runningProjectId: string | null, activeProjectId:
 export function finalSetupLine(problems: string[]): { ok: boolean; text: string } {
   if (problems.length === 0) return { ok: true, text: "Setup complete — your dashboard is ready." };
   return { ok: false, text: `Setup finished with problems: ${problems.join("; ")}. Open Context to finish setup.` };
+}
+
+/** Status Log wording for a document that was written but had claims flagged. */
+export function unverifiedClaimsLogLine(title: string, count: number): string {
+  return `${title} written with ${count} unverified claim${count === 1 ? "" : "s"} flagged — review before use.`;
 }
