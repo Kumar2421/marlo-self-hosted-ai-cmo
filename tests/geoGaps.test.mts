@@ -258,7 +258,7 @@ test("sync: a fixed finding whose later answers still miss goes to failed; an op
 
 test("catalogue: the Findings tab recommendation names who and where", () => {
   const [g] = derive([run({ competitors: ["HubSpot"], sources: ["https://g2.com/a"] })]);
-  const entry = catalogEntry({ entityType: "prompt", entityId: g.entityId, url: g.url, evidence: { ...g.evidence, title: g.title }, source: "geo", category: "geo_gap" });
+  const entry = catalogEntry({ entityId: g.entityId, evidence: { ...g.evidence, title: g.title }, source: "geo", category: "geo_gap" });
   assert.match(entry!.summary, /HubSpot/);
   assert.match(entry!.action, /g2\.com/);
 });
