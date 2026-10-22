@@ -56,7 +56,7 @@ async function measure(page: Page): Promise<Metrics> {
 /** Visible panels: the four grid columns on desktop, the two shown tabpanels on tablet. */
 async function panelBoxes(page: Page) {
   return page.evaluate(() => {
-    const shown = [...document.querySelectorAll<HTMLElement>('[role="tabpanel"]:not([hidden])')];
+    const shown = [...document.querySelectorAll<HTMLElement>('section[role="tabpanel"]:not([hidden])')];
     const grid = [...document.querySelectorAll<HTMLElement>("div")].find((d) => d.style.gridTemplateColumns);
     const panels = shown.length ? shown : [...(grid?.children ?? [])];
     return panels.map((p) => {
@@ -69,7 +69,7 @@ async function panelBoxes(page: Page) {
 /** Header/tab-bar children that run past their panel, and tab bars that have to scroll. */
 async function clippedHeaders(page: Page) {
   return page.evaluate(() => {
-    const shown = [...document.querySelectorAll<HTMLElement>('[role="tabpanel"]:not([hidden])')];
+    const shown = [...document.querySelectorAll<HTMLElement>('section[role="tabpanel"]:not([hidden])')];
     const grid = [...document.querySelectorAll<HTMLElement>("div")].find((d) => d.style.gridTemplateColumns);
     const panels = (shown.length ? shown : [...(grid?.children ?? [])]) as HTMLElement[];
     const bad: string[] = [];

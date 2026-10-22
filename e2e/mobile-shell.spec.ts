@@ -87,8 +87,8 @@ for (const vp of VIEWPORTS) {
       await expect(tab(page, "Chat")).toHaveAttribute("aria-selected", "true");
 
       // Visible panes: 1 on phone, 2 on tablet; the rest are hidden + inert.
-      await expect(page.locator('[role="tabpanel"]:not([hidden])')).toHaveCount(vp.panes);
-      const hidden = page.locator('[role="tabpanel"][hidden]');
+      await expect(page.locator('section[role="tabpanel"]:not([hidden])')).toHaveCount(vp.panes);
+      const hidden = page.locator('section[role="tabpanel"][hidden]');
       await expect(hidden).toHaveCount(4 - vp.panes);
       for (const el of await hidden.all()) {
         await expect(el).toHaveAttribute("aria-hidden", "true");
@@ -153,7 +153,7 @@ for (const vp of VIEWPORTS) {
     test("panels mount lazily", async ({ page }) => {
       await open(page, "?tab=context");
       const filled = await page.evaluate(
-        () => [...document.querySelectorAll('[role="tabpanel"]')].filter((p) => p.childElementCount > 0).length,
+        () => [...document.querySelectorAll('section[role="tabpanel"]')].filter((p) => p.childElementCount > 0).length,
       );
       expect(filled).toBe(vp.panes);
     });

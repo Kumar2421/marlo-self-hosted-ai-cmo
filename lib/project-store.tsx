@@ -15,6 +15,7 @@ import {
   type DocOutcome,
 } from "./domain/project/setupRun";
 import { createClient } from "@/utils/supabase/client";
+import { fetchWithTimeout, DEFAULT_FETCH_TIMEOUT_MS } from "@/lib/query/fetchJson";
 
 export type ActiveProject = {
   id: string;
@@ -391,18 +392,19 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch("/api/project");
+      const res = await fetchWithTimeout("/api/project");
       let data = await res.json();
       // Projects exist but none is active (pointer lost/cleared): activate the
       // newest instead of leaving the user with a dashboard that reports
       // "No active project" (and, formerly, the new-user onboarding modal).
       if (!data.project && Array.isArray(data.projects) && data.projects.length > 0) {
-        const switched = await fetch("/api/project/switch", {
+        const switched = await fetchWithTimeout("/api/project/switch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: data.projects[0].id }),
+          timeoutMs: DEFAULT_FETCH_TIMEOUT_MS,
         }).catch(() => null);
-        if (switched?.ok) data = await fetch("/api/project").then((r) => r.json());
+        if (switched?.ok) data = await fetchWithTimeout("/api/project").then((r) => r.json());
       }
       setProject(data.project ?? null);
       setProjects(data.projects ?? []);
@@ -608,11 +610,20 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
       const target = projects.find((p) => p.id === id);
       if (target) log(`Switching to ${target.name}...`);
 
-      const res = await fetch("/api/project/switch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
+      // Offline or a hung server must end in a visible failure, not a Status Log stuck on "Switching to ...".
+      let res: Response;
+      try {
+        res = await fetchWithTimeout("/api/project/switch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+          timeoutMs: DEFAULT_FETCH_TIMEOUT_MS,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to switch project";
+        log(`⚠ Couldn't switch project. ${message}`);
+        throw new Error(message);
+      }
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
