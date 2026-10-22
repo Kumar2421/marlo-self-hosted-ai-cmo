@@ -6,6 +6,7 @@ import type {
   IntegrationType,
   ProjectIntegration,
 } from "./integrationTypes";
+import { chooseSelectedResourceId } from "./resourceSelection.ts";
 
 type IntegrationRow = {
   id: string;
@@ -115,6 +116,14 @@ export function replaceIntegrationResources(
   selectedResourceId?: string | null
 ): IntegrationResource[] {
   const db = getDb();
+  const previous = db
+    .prepare("SELECT resource_id FROM integration_resources WHERE integration_id = ? AND selected = 1 LIMIT 1")
+    .get(integrationId) as { resource_id: string } | undefined;
+  const keepId = chooseSelectedResourceId(
+    resources.map((resource) => resource.resourceId),
+    previous?.resource_id ?? null,
+    selectedResourceId,
+  );
   const transaction = db.transaction(() => {
     db.prepare("DELETE FROM integration_resources WHERE integration_id = ?").run(integrationId);
     const insert = db.prepare(`
@@ -131,7 +140,7 @@ export function replaceIntegrationResources(
         resource.resourceId,
         resource.resourceName,
         JSON.stringify(resource.metadata ?? {}),
-        selectedResourceId ? resource.resourceId === selectedResourceId : resources.length === 1
+        keepId !== null && resource.resourceId === keepId
       );
     });
   });
