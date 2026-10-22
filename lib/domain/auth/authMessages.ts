@@ -8,6 +8,20 @@ export const GOOGLE_SIGNIN_FAILED_MESSAGE =
   "Google sign-in didn't finish. Try again, or sign in with your email and password.";
 export const GOOGLE_SIGNIN_CANCELLED_MESSAGE = "Google sign-in was cancelled.";
 export const LINK_EXPIRED_MESSAGE = "That link has expired. Request a new code and try again.";
+export const EMAIL_NOT_CONFIRMED_MESSAGE =
+  "Your email isn't confirmed yet. Enter the code we sent you, or request a new one.";
+
+// Seconds the "Resend code" button stays disabled after each request. Supabase
+// limits how often confirmation emails go to one address, so a faster button
+// only produces errors.
+export const RESEND_COOLDOWN_SECONDS = 30;
+
+// signInWithPassword() for an account that signed up but never confirmed its
+// email. Supabase returns code "email_not_confirmed"; the message text is the
+// fallback for older responses.
+export function isEmailNotConfirmed(error: { code?: string | null; message?: string | null }): boolean {
+  return error.code === "email_not_confirmed" || /email not confirmed/i.test(error.message ?? "");
+}
 
 // resetPasswordForEmail succeeds for unknown emails by design, so the notice
 // must not claim that a code was sent to this specific address.
