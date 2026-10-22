@@ -184,6 +184,16 @@ function init(): Database.Database {
       created_at TEXT NOT NULL
     );
 
+    -- Persisted setup progress per project (self-host twin of the Supabase
+    -- project_setup_state table): steps is JSON {stepKey: {status, at, error?}}.
+    CREATE TABLE IF NOT EXISTS project_setup_state (
+      project_id  TEXT PRIMARY KEY,
+      steps       TEXT NOT NULL,
+      started_at  TEXT,
+      finished_at TEXT,
+      updated_at  TEXT NOT NULL
+    );
+
     -- Cached result of the real bounded link-reachability check (Analytics →
     -- Links tab) — an explicit, user-triggered action, not run on every audit.
     CREATE TABLE IF NOT EXISTS link_checks (

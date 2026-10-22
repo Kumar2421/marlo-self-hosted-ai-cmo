@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
 import { useTerminalLog } from "./terminal-log-store";
 import { useProviders, findProviderForModel } from "./providers-store";
 import { FEATURES } from "./features";
@@ -14,6 +14,19 @@ import {
   type DocKey,
   type DocOutcome,
 } from "./domain/project/setupRun";
+import {
+  SETUP_STEPS,
+  WAITING_PREFIX,
+  SETUP_STEP_LABELS,
+  anyFreshRunning,
+  isUnfinished,
+  nextStepsToRun,
+  summarizeSetup,
+  type SetupState,
+  type SetupStatus,
+  type SetupStepKey,
+} from "./domain/project/setupState";
+import { fetchSetupView, recordSetupStep } from "./setup-client";
 import { createClient } from "@/utils/supabase/client";
 import { fetchWithTimeout, DEFAULT_FETCH_TIMEOUT_MS } from "@/lib/query/fetchJson";
 
@@ -36,6 +49,11 @@ type Ctx = {
    * competitors, leads, and the background documents). Context hides its
    * "Finish setup" card and Analytics disables re-running the audit meanwhile. */
   setupRunning: boolean;
+  /** Persisted per-step setup progress for the active project (null until loaded, or when it cannot be read).
+   * Drives the Context "Finish setup" card. */
+  setupState: SetupState | null;
+  /** Runs one setup step again (plus the steps that were waiting on it) through the same code as first-run setup. */
+  retrySetupStep: (step: SetupStepKey) => Promise<void>;
   /** Creates a NEW project, makes it active, saves it, triggers a real SEO
    * crawl of the URL, and logs real progress lines to the shared terminal
    * log — same flow whether called from the top project switcher or
@@ -75,6 +93,10 @@ type Ctx = {
   notifyAuditChanged: () => void;
 };
 
+/** found: competitors added. none: ran fine, nothing confident. failed: errored.
+ * off: the Settings toggle disables auto-discovery. */
+type CompetitorOutcome = "found" | "none" | "failed" | "off";
+
 /** Runs right after a successful crawl during project creation — real
  * competitor discovery (see CompetitorDiscoveryAgent), gated by the Settings
  * toggle (default on) and requiring a connected model. Never throws: a
@@ -85,12 +107,12 @@ async function maybeDiscoverCompetitors(
   log: (text: string) => void,
   primaryModel: string | null,
   onAdded: () => void
-): Promise<boolean> {
+): Promise<CompetitorOutcome> {
   try {
     const settingsRes = await fetch("/api/settings");
     const settingsData = await settingsRes.json();
     const toggle = settingsData.settings?.find((s: { key: string; value: string }) => s.key === "auto_discover_competitors");
-    if (toggle?.value === "0") return false;
+    if (toggle?.value === "0") return "off";
 
     // A model is optional: a small web search based on the product finds the
     // competitors on its own, and a connected model only refines the result.
@@ -112,7 +134,7 @@ async function maybeDiscoverCompetitors(
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       log(`Couldn't auto-discover competitors (${err.error ?? "unknown error"}) — add them manually in the Context panel.`);
-      return false;
+      return "failed";
     }
 
     const data = await res.json();
@@ -123,7 +145,7 @@ async function maybeDiscoverCompetitors(
           ? "No confident competitors found yet — add some manually in the Context panel."
           : "No Tavily key connected, so I only had existing site data to go on — no confident competitors found. Add some manually, or connect Tavily in Settings for deeper discovery."
       );
-      return false;
+      return "none";
     }
 
     const names = added.map((a) => a.url.replace(/^https?:\/\//, "")).join(", ");
@@ -131,10 +153,10 @@ async function maybeDiscoverCompetitors(
       `${data.usedWebSearch ? "Searched the web and found" : "Based on your site's own content, found"} ${added.length} real competitor${added.length === 1 ? "" : "s"}: ${names}.`
     );
     onAdded();
-    return true;
+    return "found";
   } catch {
     log("Couldn't reach the competitor discovery service — add competitors manually in the Context panel.");
-    return false;
+    return "failed";
   }
 }
 
@@ -274,16 +296,32 @@ async function generateSelfSavingDocument(
   }
 }
 
-/** Runs right after a new project's crawl + competitor discovery finish —
- * generates every Context document a user would otherwise have to click
- * "Generate" for one by one (see ContextPanel.tsx's document panels). Same
- * grounding order the manual flow relies on: Product Info first, then
- * Marketing Strategy (reads Product Info), then the two competitor
- * documents (only if at least one competitor exists — both routes reject
- * otherwise, matching the manual "Add a competitor first" gate), then
- * Content Strategy (reads all three), then Design Guide (reads Marketing
- * Strategy). Each step is independent of the others failing — one document
- * erroring (e.g. a transient LLM timeout) shouldn't block the rest. */
+const DOC_STEP_TITLES: Record<DocKey, string> = {
+  "product-info": "Product Information",
+  "marketing-strategy": "Marketing Strategy",
+  "competitor-analysis": "Competitor Analysis",
+  "competitor-comparison": "Competitor Comparison",
+  "content-strategy": "Content Strategy",
+  "design-guide": "Design Guide",
+};
+const DOC_STEP_ORDER = Object.keys(DOC_STEP_TITLES) as DocKey[];
+const isDocStep = (k: SetupStepKey): k is DocKey => (DOC_STEP_ORDER as string[]).includes(k);
+
+/** How a run talks to the persisted setup state. Recording is fire-and-forget
+ * (a failure to record never breaks setup); only `claim` can stop a run, and
+ * only the resume path makes it wait for the server's answer. */
+type SetupHooks = {
+  /** Marks `step` running. False = another tab owns it, so this run must stop. */
+  claim: (step: SetupStepKey) => Promise<boolean>;
+  settle: (step: SetupStepKey, status: SetupStatus, error?: string) => void;
+};
+
+/** Generates the Context documents in `only`, in the grounding order the manual
+ * flow relies on: Product Info first, then Marketing Strategy (reads Product
+ * Info), then the two competitor documents (only if at least one competitor
+ * exists), then Content Strategy, then Design Guide. One failing document does
+ * not stop the rest, except its dependents (see blockedBy). Documents outside
+ * `only` are taken from `prior` so dependents still see a failed source. */
 async function autoGenerateContextDocuments(
   projectId: string,
   primaryModel: string | null,
@@ -294,11 +332,15 @@ async function autoGenerateContextDocuments(
   /** Problems already found earlier in setup (crawl, description...). The
    * final "Setup complete" / "Setup finished with problems" line is written
    * here because this is the last step to finish. */
-  priorProblems: string[] = []
+  priorProblems: string[],
+  only: Set<DocKey>,
+  prior: Partial<Record<SetupStepKey, SetupStatus>>,
+  hooks: SetupHooks
 ): Promise<void> {
   const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
   if (!primaryModel || !providerId) {
     log("Skipping auto-generated context documents — connect a model in Settings to enable it.");
+    for (const k of DOC_STEP_ORDER) if (only.has(k)) hooks.settle(k, "failed", "connect a model in Settings");
     const last = finalSetupLine([...priorProblems, "no documents (connect a model in Settings)"]);
     log(`⚠ ${last.text}`);
     return;
@@ -313,48 +355,66 @@ async function autoGenerateContextDocuments(
   };
 
   const outcomes: DocOutcome[] = [];
+  for (const k of DOC_STEP_ORDER) {
+    if (only.has(k)) continue;
+    const was = prior[k];
+    outcomes.push({ key: k, title: DOC_STEP_TITLES[k], status: was === "done" ? "ready" : was === "skipped" ? "skipped" : "failed" });
+  }
+  let stopped = false;
 
-  /** Runs one document unless a prerequisite failed (then it is skipped and
-   * the reason is logged), records the outcome, and bumps documentsVersion on
-   * a real save so the Context panel picks it up. */
-  const step = async (
-    key: DocKey,
-    title: string,
-    run: () => Promise<boolean>
-  ): Promise<void> => {
+  /** Runs one document unless a prerequisite failed (then it is left waiting and
+   * the reason is logged), records the outcome, and bumps documentsVersion on a
+   * real save so the Context panel picks it up. */
+  const step = async (key: DocKey, run: () => Promise<boolean>): Promise<void> => {
+    if (!only.has(key) || stopped) return;
+    const title = DOC_STEP_TITLES[key];
     const blocker = blockedBy(key, outcomes);
     if (blocker) {
       log(`Skipping ${title} — ${blocker} didn't finish, and ${title} is written from it. Retry ${blocker} in the Context panel first.`);
       outcomes.push({ key, title, status: "blocked" });
+      hooks.settle(key, "pending", `${WAITING_PREFIX}${blocker}`);
+      return;
+    }
+    if (!(await hooks.claim(key))) {
+      stopped = true;
       return;
     }
     const ok = await run();
     if (ok) onSaved();
     outcomes.push({ key, title, status: ok ? "ready" : "failed" });
+    hooks.settle(key, ok ? "done" : "failed", ok ? undefined : "generation failed");
   };
-  const generate = (key: DocKey, title: string) =>
-    step(key, title, () => generateAndSaveDocument(key, title, primaryModel, providerId, log));
+  const generate = (key: DocKey) =>
+    step(key, () => generateAndSaveDocument(key, DOC_STEP_TITLES[key], primaryModel, providerId, log));
+  /** True to carry on to the next document. */
+  const proceed = async (key: DocKey): Promise<boolean> => (only.has(key) && !stopped ? guard() : !stopped);
 
-  log("Writing your Context documents — Product Information, Marketing Strategy, Competitor Analysis, Competitor Comparison, Content Strategy, and Design Guide...");
-  await generate("product-info", "Product Information");
-  if (!(await guard())) return;
-  await generate("marketing-strategy", "Marketing Strategy");
-  if (!(await guard())) return;
+  log(`Writing your Context documents — ${DOC_STEP_ORDER.filter((k) => only.has(k)).map((k) => DOC_STEP_TITLES[k]).join(", ")}...`);
+  await generate("product-info");
+  if (!(await proceed("product-info"))) return;
+  await generate("marketing-strategy");
+  if (!(await proceed("marketing-strategy"))) return;
   if (hasCompetitors) {
-    await generate("competitor-analysis", "Competitor Analysis");
-    if (!(await guard())) return;
-    await step("competitor-comparison", "Competitor Comparison", () =>
+    await generate("competitor-analysis");
+    if (!(await proceed("competitor-analysis"))) return;
+    await step("competitor-comparison", () =>
       generateSelfSavingDocument("competitor-comparison", "Competitor Comparison", primaryModel, providerId, log)
     );
-    if (!(await guard())) return;
+    if (!(await proceed("competitor-comparison"))) return;
   } else {
-    log("Skipping Competitor Analysis and Competitor Comparison — no competitors found or added yet.");
-    outcomes.push({ key: "competitor-analysis", title: "Competitor Analysis", status: "skipped" });
-    outcomes.push({ key: "competitor-comparison", title: "Competitor Comparison", status: "skipped" });
+    for (const k of ["competitor-analysis", "competitor-comparison"] as const) {
+      if (!only.has(k)) continue;
+      outcomes.push({ key: k, title: DOC_STEP_TITLES[k], status: "skipped" });
+      hooks.settle(k, "skipped");
+    }
+    if (only.has("competitor-analysis") || only.has("competitor-comparison")) {
+      log("Skipping Competitor Analysis and Competitor Comparison — no competitors found or added yet.");
+    }
   }
-  await generate("content-strategy", "Content Strategy");
-  if (!(await guard())) return;
-  await generate("design-guide", "Design Guide");
+  await generate("content-strategy");
+  if (!(await proceed("content-strategy"))) return;
+  await generate("design-guide");
+  if (stopped) return;
 
   const summary = summarizeDocumentRun(outcomes);
   if (summary.hasProblems) log(`⚠ ${summary.text}`);
@@ -365,6 +425,167 @@ async function autoGenerateContextDocuments(
   const last = finalSetupLine(problems);
   if (last.ok) logDone(last.text);
   else log(`⚠ ${last.text}`);
+}
+
+type SetupRunCtx = {
+  project: { id: string; url: string; description: string };
+  primaryModel: string | null;
+  /** Status of every step before this run (a fresh project: all pending). */
+  prior: Record<SetupStepKey, SetupStatus>;
+  hooks: SetupHooks;
+  log: (text: string) => void;
+  logDone: (text: string) => void;
+  /** Whether the project has competitors, asked only when this run skips the competitors step. */
+  loadHasCompetitors: () => Promise<boolean>;
+  onAudit: () => void;
+  onDescription: (description: string) => void;
+  onCompetitors: () => void;
+  onLeads: () => void;
+  onDocSaved: () => void;
+};
+
+/** Runs `steps` (a subset of SETUP_STEPS, in order). Used by project creation
+ * (all steps) and by resume/retry (the missing ones). The core steps are
+ * awaited; the documents are returned as a promise so creation can leave them
+ * running in the background. Every step records its transition via hooks. */
+async function runSetupSteps(ctx: SetupRunCtx, steps: SetupStepKey[]): Promise<{ docs: Promise<void> | null }> {
+  const { project, hooks, log, logDone, primaryModel } = ctx;
+  const want = new Set(steps);
+  const problems: string[] = [];
+  let auditOk = ctx.prior.audit === "done";
+
+  if (want.has("audit")) {
+    if (!(await hooks.claim("audit"))) return { docs: null };
+    try {
+      const auditRes = await fetch("/api/agents/seo/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: project.url, quick: true }),
+      });
+      if (auditRes.ok) {
+        auditOk = true;
+        hooks.settle("audit", "done");
+        ctx.onAudit();
+        const audit = await auditRes.json().catch(() => ({}));
+        log(
+          audit.meta?.title
+            ? `Found it: "${audit.meta.title}". Context, Analytics, and agents now have real data to work from.`
+            : "Crawled the site. Context, Analytics, and agents now have real data to work from."
+        );
+      } else {
+        const err = await auditRes.json().catch(() => ({}));
+        log(`Couldn't fully crawl the site (${err.error ?? "unknown error"}) — agents will still use the URL directly.`);
+        problems.push("the site crawl failed, so there is no audit yet");
+        hooks.settle("audit", "failed", String(err.error ?? `HTTP ${auditRes.status}`));
+      }
+    } catch {
+      log("Couldn't reach the crawl service — agents will still use the URL directly.");
+      problems.push("the site crawl could not be reached, so there is no audit yet");
+      hooks.settle("audit", "failed", "crawl service unreachable");
+    }
+  }
+
+  if (!auditOk) {
+    // Everything else is written from the crawl: nothing more runs, the outcome is known now.
+    const last = finalSetupLine(problems.length ? problems : ["the site audit has not run"]);
+    log(`⚠ ${last.text}`);
+    return { docs: null };
+  }
+
+  if (want.has("description")) {
+    const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
+    if (project.description.trim()) {
+      // The user wrote their own description: never overwrite it with a generated one.
+      hooks.settle("description", "done");
+    } else if (primaryModel && providerId) {
+      if (!(await hooks.claim("description"))) return { docs: null };
+      try {
+        log("Writing a real description from what's actually on the page...");
+        const descRes = await fetch(`/api/project/${project.id}/generate-description`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: primaryModel, providerId }),
+        });
+        if (descRes.ok) {
+          const { description } = await descRes.json();
+          ctx.onDescription(description);
+          hooks.settle("description", "done");
+          logDone(`Description: "${description}"`);
+        } else {
+          const err = await descRes.json().catch(() => ({}));
+          log(`Couldn't write a description (${err.error ?? `HTTP ${descRes.status}`}) — generate it from Context, or edit it in Settings → Websites.`);
+          problems.push("no description");
+          hooks.settle("description", "failed", String(err.error ?? `HTTP ${descRes.status}`));
+        }
+      } catch {
+        // non-fatal — description stays blank, editable manually in Settings → Websites
+        log("Couldn't reach the description service — generate it from Context, or edit it in Settings → Websites.");
+        problems.push("no description");
+        hooks.settle("description", "failed", "description service unreachable");
+      }
+    } else {
+      problems.push("no description (connect a model in Settings)");
+      hooks.settle("description", "failed", "connect a model in Settings");
+    }
+  }
+
+  let hasCompetitors = false;
+  if (want.has("competitors")) {
+    if (!(await hooks.claim("competitors"))) return { docs: null };
+    const outcome = await maybeDiscoverCompetitors(project.id, log, primaryModel, ctx.onCompetitors);
+    hasCompetitors = outcome === "found";
+    hooks.settle(
+      "competitors",
+      outcome === "off" ? "skipped" : outcome === "failed" ? "failed" : "done",
+      outcome === "failed" ? "discovery failed" : undefined
+    );
+  } else if (steps.some(isDocStep)) {
+    hasCompetitors = await ctx.loadHasCompetitors();
+  }
+
+  if (want.has("leads")) {
+    // Free, platform-only baseline (up to 10 leads) -- runs on the platform's own
+    // Groq key, so it works before any LLM is connected. Self-host has none.
+    if (!FEATURES.PLATFORM_MODE) {
+      hooks.settle("leads", "skipped");
+    } else if (await hooks.claim("leads")) {
+      try {
+        log("Finding real leads to kick off outreach...");
+        const leadsRes = await fetch(`/api/project/${project.id}/generate-leads`, { method: "POST" });
+        if (leadsRes.ok) {
+          const { added, message } = await leadsRes.json();
+          if (added > 0) {
+            logDone(`Found ${added} real lead${added === 1 ? "" : "s"} — check the Leads panel.`);
+            ctx.onLeads();
+          } else {
+            log(message ? `${message} Search manually in the Leads panel, or check back tomorrow.` : "No confident leads found yet — search manually in the Leads panel, or check back tomorrow.");
+          }
+          hooks.settle("leads", "done");
+        } else {
+          log("Couldn't find leads automatically — search manually in the Leads panel.");
+          // 429 = the 24h window already ran for this project: nothing to retry.
+          hooks.settle("leads", leadsRes.status === 429 ? "done" : "failed", leadsRes.status === 429 ? undefined : `HTTP ${leadsRes.status}`);
+        }
+      } catch {
+        // non-fatal -- leads can always be found manually in the Leads panel
+        log("Couldn't reach the lead finder — search manually in the Leads panel.");
+        hooks.settle("leads", "failed", "lead finder unreachable");
+      }
+    } else {
+      return { docs: null };
+    }
+  }
+
+  const docSteps = new Set(steps.filter(isDocStep));
+  if (docSteps.size === 0) {
+    const last = finalSetupLine(problems);
+    if (last.ok) logDone(last.text);
+    else log(`⚠ ${last.text}`);
+    return { docs: null };
+  }
+  return {
+    docs: autoGenerateContextDocuments(project.id, primaryModel, hasCompetitors, log, logDone, ctx.onDocSaved, problems, docSteps, ctx.prior, hooks),
+  };
 }
 
 const ProjectCtx = createContext<Ctx | null>(null);
@@ -385,8 +606,17 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
   const [leadsVersion, setLeadsVersion] = useState(0);
   /** Project whose setup run is in flight. See settleSetupRun / isSetupRunning. */
   const [setupRunningId, setSetupRunningId] = useState<string | null>(null);
+  const projectRef = useRef<ActiveProject | null>(null);
+  const primaryModelRef = useRef<string | null>(null);
+  /** Project whose setup this TAB is running (synchronous twin of setupRunningId). */
+  const runningHere = useRef<string | null>(null);
+  /** Project the auto-resume check already ran for in this tab (reset when it is worth re-checking). */
+  const attemptedFor = useRef<string | null>(null);
+  const remoteRef = useRef(false);
+  const lastDoneRef = useRef(-1);
+  const [setupInfo, setSetupInfo] = useState<{ projectId: string; state: SetupState; remote: boolean } | null>(null);
   const { log, logDone } = useTerminalLog();
-  const { primaryModel } = useProviders();
+  const { primaryModel, loading: providersLoading } = useProviders();
 
   const notifyAuditChanged = useCallback(() => setAuditVersion((v) => v + 1), []);
 
@@ -438,6 +668,10 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
         setProject(null);
         setProjects([]);
         setSetupRunningId(null);
+        setSetupInfo(null);
+        runningHere.current = null;
+        attemptedFor.current = null;
+        remoteRef.current = false;
       }
     });
     return () => {
@@ -445,6 +679,147 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
       authListener.subscription.unsubscribe();
     };
   }, [refresh]);
+
+  // ---- Persisted setup state: resume after a reload or a closed tab -------------------------
+
+  useEffect(() => {
+    projectRef.current = project;
+    primaryModelRef.current = primaryModel;
+  }, [project, primaryModel]);
+
+  /** Re-reads the persisted state. `remote` = a step is running that this tab does not own. */
+  const reloadSetup = useCallback(async (projectId: string) => {
+    const view = await fetchSetupView(projectId);
+    if (!view || projectRef.current?.id !== projectId) return null;
+    const now = new Date(view.serverTime);
+    const remote = runningHere.current !== projectId && anyFreshRunning(view.state, now);
+    const wasRemote = remoteRef.current;
+    if (wasRemote && !remote) attemptedFor.current = null; // the other tab finished or died: worth re-checking
+    remoteRef.current = remote;
+    const done = view.summary.done;
+    if ((wasRemote || remote) && done !== lastDoneRef.current) {
+      // Another tab is writing: pick up what it saved.
+      setAuditVersion((v) => v + 1);
+      setCompetitorsVersion((v) => v + 1);
+      setDocumentsVersion((v) => v + 1);
+      setLeadsVersion((v) => v + 1);
+      if (view.state.steps.description.status === "done") void refresh();
+    }
+    lastDoneRef.current = done;
+    setSetupInfo({ projectId, state: view.state, remote });
+    return view;
+  }, [refresh]);
+
+  const buildRunCtx = useCallback(
+    (p: { id: string; url: string; description: string }, prior: Record<SetupStepKey, SetupStatus>, awaitClaims: boolean): SetupRunCtx => ({
+      project: p,
+      primaryModel: primaryModelRef.current,
+      prior,
+      hooks: {
+        // Recording never blocks the chain: only a resume waits for the server's answer to a claim, so two tabs cannot both run a step.
+        claim: async (step) => {
+          const recorded = recordSetupStep(p.id, step, "running");
+          return awaitClaims ? (await recorded) !== "conflict" : true;
+        },
+        settle: (step, status, error) => {
+          void recordSetupStep(p.id, step, status, error);
+        },
+      },
+      log,
+      logDone,
+      loadHasCompetitors: async () => {
+        try {
+          const res = await fetch("/api/project/competitors");
+          const body = await res.json();
+          return Array.isArray(body.competitors) && body.competitors.length > 0;
+        } catch {
+          return false;
+        }
+      },
+      onAudit: () => setAuditVersion((v) => v + 1),
+      onDescription: (description) => {
+        setProject((prev) => (prev && prev.id === p.id ? { ...prev, description } : prev));
+        setProjects((prev) => prev.map((x) => (x.id === p.id ? { ...x, description } : x)));
+      },
+      onCompetitors: () => setCompetitorsVersion((v) => v + 1),
+      onLeads: () => setLeadsVersion((v) => v + 1),
+      onDocSaved: () => setDocumentsVersion((v) => v + 1),
+    }),
+    [log, logDone]
+  );
+
+  /** Runs `steps` of an existing project's setup (resume or retry) and ends in a fresh read of the state. */
+  const runSetupFor = useCallback(
+    async (proj: ActiveProject, state: SetupState, steps: SetupStepKey[], intro: string) => {
+      if (runningHere.current || steps.length === 0) return;
+      runningHere.current = proj.id;
+      setSetupRunningId(proj.id);
+      log(intro);
+      try {
+        const prior = Object.fromEntries(SETUP_STEPS.map((k) => [k, state.steps[k].status])) as Record<SetupStepKey, SetupStatus>;
+        const { docs } = await runSetupSteps(buildRunCtx(proj, prior, true), steps);
+        if (docs) await docs;
+      } catch {
+        log("⚠ Setup stopped unexpectedly. Open Context to finish setup.");
+      } finally {
+        runningHere.current = null;
+        setSetupRunningId((cur) => settleSetupRun(cur, proj.id));
+        void reloadSetup(proj.id);
+      }
+    },
+    [buildRunCtx, log, reloadSetup]
+  );
+
+  // On load and project switch: if this project's setup was started and not finished (tab closed,
+  // reload), run only what is missing. A step another tab is running, fresher than STALE_RUNNING_MS,
+  // is never re-run: this tab just shows "Setup is running" and polls (below).
+  useEffect(() => {
+    const proj = project;
+    if (!proj || providersLoading) return;
+    if (runningHere.current || attemptedFor.current === proj.id) return;
+    attemptedFor.current = proj.id;
+    void (async () => {
+      const view = await reloadSetup(proj.id);
+      if (!view || projectRef.current?.id !== proj.id) return;
+      const now = new Date(view.serverTime);
+      if (anyFreshRunning(view.state, now) || !isUnfinished(view.state, now)) return;
+      const steps = nextStepsToRun(view.state, now);
+      const s = summarizeSetup(view.state, now);
+      await runSetupFor(proj, view.state, steps, `Resuming setup (${s.done} of ${s.total} done)...`);
+    })();
+  }, [project, providersLoading, setupRunningId, setupInfo?.remote, reloadSetup, runSetupFor]);
+
+  const remoteRunning = Boolean(setupInfo && setupInfo.projectId === project?.id && setupInfo.remote);
+  useEffect(() => {
+    if (!remoteRunning || !project) return;
+    const id = project.id;
+    log("Setup is running in another tab — I'll show its progress here.");
+    const timer = setInterval(() => void reloadSetup(id), 5000);
+    return () => clearInterval(timer);
+  }, [remoteRunning, project, log, reloadSetup]);
+
+  /** Card "Retry"/"Run": runs one step (and the steps that were waiting on it) through the same code as setup. */
+  const retrySetupStep = useCallback(
+    async (key: SetupStepKey) => {
+      const proj = projectRef.current;
+      if (!proj || runningHere.current) return;
+      const view = await fetchSetupView(proj.id);
+      if (!view) {
+        log("⚠ Couldn't read setup progress. Try again in a moment.");
+        return;
+      }
+      const now = new Date(view.serverTime);
+      if (anyFreshRunning(view.state, now)) {
+        log("Setup is already running — I'll show its progress here.");
+        void reloadSetup(proj.id);
+        return;
+      }
+      const next: SetupState = { ...view.state, steps: { ...view.state.steps, [key]: { status: "pending", at: view.state.updatedAt } } };
+      const queue = view.state.startedAt ? nextStepsToRun(next, now) : [key];
+      await runSetupFor(proj, next, queue.includes(key) ? queue : [key, ...queue], `Retrying ${SETUP_STEP_LABELS[key]}...`);
+    },
+    [log, reloadSetup, runSetupFor]
+  );
 
   const createProject = useCallback(
     async (input: { name: string; url: string; category?: string; description?: string }) => {
@@ -465,144 +840,49 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
       }
 
       const data = await res.json();
-      setProject(data.project);
-      setProjects((prev) => [data.project, ...prev.filter((p) => p.id !== data.project.id)]);
-      setSetupRunningId(data.project.id);
+      const created: ActiveProject = data.project;
+      // Set before the state updates below render, so the resume check never mistakes this live run for an abandoned one.
+      runningHere.current = created.id;
+      attemptedFor.current = created.id;
+      setProject(created);
+      setProjects((prev) => [created, ...prev.filter((p) => p.id !== created.id)]);
+      setSetupRunningId(created.id);
 
       log("Starting my deep dive — crawling your pages for SEO, content, and growth signals.");
 
-      // Everything required that did not work, in plain words. Drives the
-      // final line: "Setup complete" only when this stays empty.
-      const problems: string[] = [];
-      let crawlSucceeded = false;
-      try {
-        const auditRes = await fetch("/api/agents/seo/audit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: data.project.url, quick: true }),
-        });
+      const prior = Object.fromEntries(SETUP_STEPS.map((k) => [k, "pending"])) as Record<SetupStepKey, SetupStatus>;
+      const finish = () => {
+        runningHere.current = runningHere.current === created.id ? null : runningHere.current;
+        setSetupRunningId((cur) => settleSetupRun(cur, created.id));
+        void reloadSetup(created.id);
+      };
 
-        if (auditRes.ok) {
-          crawlSucceeded = true;
-          setAuditVersion((v) => v + 1);
-          const audit = await auditRes.json();
-          log(
-            audit.meta?.title
-              ? `Found it: "${audit.meta.title}". Context, Analytics, and agents now have real data to work from.`
-              : "Crawled the site. Context, Analytics, and agents now have real data to work from."
-          );
-        } else {
-          const err = await auditRes.json().catch(() => ({}));
-          log(`Couldn't fully crawl the site (${err.error ?? "unknown error"}) — agents will still use the URL directly.`);
-          problems.push("the site crawl failed, so there is no audit yet");
-        }
+      let docs: Promise<void> | null = null;
+      try {
+        ({ docs } = await runSetupSteps(buildRunCtx(created, prior, false), [...SETUP_STEPS]));
       } catch {
-        log("Couldn't reach the crawl service — agents will still use the URL directly.");
-        problems.push("the site crawl could not be reached, so there is no audit yet");
+        log("⚠ Setup finished with problems: something went wrong while setting up. Open Context to finish setup.");
       }
 
-      if (crawlSucceeded) {
-        const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
-        if (input.description?.trim()) {
-          // The user wrote their own description: never overwrite it with a generated one.
-        } else if (primaryModel && providerId) {
-          try {
-            log("Writing a real description from what's actually on the page...");
-            const descRes = await fetch(`/api/project/${data.project.id}/generate-description`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ model: primaryModel, providerId }),
-            });
-            if (descRes.ok) {
-              const { description } = await descRes.json();
-              setProject((prev) => (prev && prev.id === data.project.id ? { ...prev, description } : prev));
-              setProjects((prev) => prev.map((p) => (p.id === data.project.id ? { ...p, description } : p)));
-              logDone(`Description: "${description}"`);
-            } else {
-              const err = await descRes.json().catch(() => ({}));
-              log(`Couldn't write a description (${err.error ?? `HTTP ${descRes.status}`}) — generate it from Context, or edit it in Settings → Websites.`);
-              problems.push("no description");
-            }
-          } catch {
-            // non-fatal — description stays blank, editable manually in Settings → Websites
-            log("Couldn't reach the description service — generate it from Context, or edit it in Settings → Websites.");
-            problems.push("no description");
-          }
-        } else {
-          problems.push("no description (connect a model in Settings)");
-        }
-
-        const hasCompetitors = await maybeDiscoverCompetitors(
-          data.project.id,
-          log,
-          primaryModel,
-          () => setCompetitorsVersion((v) => v + 1)
-        );
-
-        // Free, platform-only baseline (up to 10 leads) -- runs on the
-        // platform's own Groq key, not whatever LLM the user has connected,
-        // so it works even before they've set up LLM Providers at all.
-        // Self-host has no equivalent; this never runs there.
-        if (FEATURES.PLATFORM_MODE) {
-          try {
-            log("Finding real leads to kick off outreach...");
-            const leadsRes = await fetch(`/api/project/${data.project.id}/generate-leads`, { method: "POST" });
-            if (leadsRes.ok) {
-              const { added, message } = await leadsRes.json();
-              if (added > 0) {
-                logDone(`Found ${added} real lead${added === 1 ? "" : "s"} — check the Leads panel.`);
-                setLeadsVersion((v) => v + 1);
-              } else {
-                log(message ? `${message} Search manually in the Leads panel, or check back tomorrow.` : "No confident leads found yet — search manually in the Leads panel, or check back tomorrow.");
-              }
-            } else {
-              log("Couldn't find leads automatically — search manually in the Leads panel.");
-            }
-          } catch {
-            // non-fatal -- leads can always be found manually in the Leads panel
-            log("Couldn't reach the lead finder — search manually in the Leads panel.");
-          }
-        }
-
-        // Deliberately NOT awaited. Six documents generate sequentially and
-        // each route allows up to 60s (maxDuration), so awaiting here can
-        // hold OnboardingModal's spinner for minutes before the user ever
-        // sees the dashboard — the modal only calls onDone() after
-        // createProject resolves. The terminal log streams progress as each
-        // document lands, and the Context panel fills in behind it.
-        //
-        // Errors are already handled per-document inside
-        // autoGenerateContextDocuments (each logs and moves on), so the
-        // catch here only covers an unexpected throw in the orchestration
-        // itself — without it that would surface as an unhandled rejection.
-        void autoGenerateContextDocuments(
-          data.project.id,
-          primaryModel,
-          hasCompetitors,
-          log,
-          logDone,
-          () => setDocumentsVersion((v) => v + 1),
-          problems
-        )
+      if (docs) {
+        // Deliberately NOT awaited. Six documents generate sequentially and each route allows up to 60s
+        // (maxDuration), so awaiting here would hold OnboardingModal's spinner for minutes before the user
+        // sees the dashboard. The terminal log streams progress and the Context panel fills in behind it.
+        // Errors are handled per document; the catch only covers an unexpected throw in the orchestration.
+        void docs
           .catch(() => {
             log("⚠ Setup finished with problems: couldn't finish writing your context documents. Open Context to finish setup.");
           })
-          .finally(() => setSetupRunningId((cur) => settleSetupRun(cur, data.project.id)));
-        // The final "Setup complete" / "Setup finished with problems" line is
-        // written by autoGenerateContextDocuments once the documents settle:
-        // saying "complete" here would be a claim about work still running.
+          .finally(finish);
+        // The final "Setup complete" / "Setup finished with problems" line is written by the documents
+        // step once it settles: saying "complete" here would be a claim about work still running.
         log("Core setup done — documents are being written in the background.");
         return;
       }
-
-      // Documents will not run (crawl failed): nothing is still in flight, so
-      // the outcome is known now.
-      setSetupRunningId((cur) => settleSetupRun(cur, data.project.id));
-      const last = finalSetupLine(problems);
-      if (last.ok) logDone(last.text);
-      else log(`⚠ ${last.text}`);
+      // Documents will not run (crawl failed): nothing is still in flight, so the outcome is known now.
+      finish();
     },
-    [log, logDone, primaryModel]
+    [log, buildRunCtx, reloadSetup]
   );
 
   const switchProject = useCallback(
@@ -669,7 +949,7 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
 
   return (
     <ProjectCtx.Provider
-      value={{ project, projects, loading, setupRunning: isSetupRunning(setupRunningId, project?.id), createProject, switchProject, updateProject, deleteProject, competitorsVersion, auditVersion, documentsVersion, leadsVersion, notifyAuditChanged }}
+      value={{ project, projects, loading, setupRunning: isSetupRunning(setupRunningId, project?.id) || remoteRunning, setupState: setupInfo && setupInfo.projectId === project?.id ? setupInfo.state : null, retrySetupStep, createProject, switchProject, updateProject, deleteProject, competitorsVersion, auditVersion, documentsVersion, leadsVersion, notifyAuditChanged }}
     >
       {children}
     </ProjectCtx.Provider>
