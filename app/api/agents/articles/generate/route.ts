@@ -7,7 +7,7 @@ import { getActiveProjectContextSupabase } from "@/lib/domain/shared/getActivePr
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
-import { chargeCredits, InsufficientCreditsError } from "@/lib/credits";
+import { spendCredits, withRefund, isFailedResponse, InsufficientCreditsError, type CreditTicket } from "@/lib/credits";
 import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
     let apiKey = "";
     let baseUrl: string | undefined;
     let chargedCredits = false;
+    let ticket: CreditTicket | null = null;
 
     if (conn?.api_key_secret_id) {
       const { data: secret } = await db.rpc("vault_get_secret", { p_id: conn.api_key_secret_id });
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
       // Closed-source: platform-provided key, metered via credits. Never
       // available in self-host builds (GROQ_API_KEY/MISTRAL_API_KEY unset there).
       try {
-        await chargeCredits(user.id, "article_generate", { model });
+        ticket = await spendCredits(user.id, "article_generate", { model });
         chargedCredits = true;
       } catch (err) {
         if (err instanceof InsufficientCreditsError) {
@@ -88,29 +89,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `${providerId} isn't connected yet.` }, { status: 422 });
     }
 
-    try {
-      const generator = new ArticleGenerator(driver, apiKey, baseUrl);
-      const result = await generator.generate({
-        topic,
-        keywords,
-        brandVoice,
-        model,
-        project: await getActiveProjectContextSupabase(db, user.id),
-      });
-
-      if (result.stream) {
-        return new NextResponse(result.stream, {
-          headers: { "Content-Type": "text/plain; charset=utf-8" },
+    // Refund the charge if generation throws or ends in an error response.
+    return await withRefund(ticket, async () => {
+      try {
+        const generator = new ArticleGenerator(driver, apiKey, baseUrl);
+        const result = await generator.generate({
+          topic,
+          keywords,
+          brandVoice,
+          model,
+          project: await getActiveProjectContextSupabase(db, user.id),
         });
-      }
 
-      return NextResponse.json({ text: result.text });
-    } catch (err) {
-      // Note: credits already charged if platform key was used — no refund
-      // path yet on generation failure. Follow-up, not blocking for this slice.
-      const raw = err instanceof Error ? err.message : String(err);
-      return NextResponse.json({ error: raw, chargedCredits }, { status: 502 });
-    }
+        if (result.stream) {
+          return new NextResponse(result.stream, {
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
+          });
+        }
+
+        return NextResponse.json({ text: result.text });
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err);
+        return NextResponse.json({ error: raw, chargedCredits }, { status: 502 });
+      }
+    }, isFailedResponse);
   }
 
   const db = getDb();

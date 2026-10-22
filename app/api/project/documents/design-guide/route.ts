@@ -7,7 +7,7 @@ import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
-import { chargeCredits, InsufficientCreditsError } from "@/lib/credits";
+import { spendCredits, withRefund, isFailedResponse, InsufficientCreditsError, type CreditTicket } from "@/lib/credits";
 import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
@@ -133,6 +133,7 @@ export async function POST(req: NextRequest) {
     let apiKey = "";
     let baseUrl: string | undefined;
     let chargedCredits = false;
+    let ticket: CreditTicket | null = null;
 
     if (conn?.api_key_secret_id) {
       const { data: secret } = await db.rpc("vault_get_secret", { p_id: conn.api_key_secret_id });
@@ -140,7 +141,7 @@ export async function POST(req: NextRequest) {
       baseUrl = conn.base_url ?? undefined;
     } else if (PLATFORM_PROVIDER_KEYS[providerId]) {
       try {
-        await chargeCredits(user.id, "design_guide", { projectId: activeId, model });
+        ticket = await spendCredits(user.id, "design_guide", { projectId: activeId, model });
         chargedCredits = true;
       } catch (err) {
         if (err instanceof InsufficientCreditsError) {
@@ -153,53 +154,56 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `${providerId} isn't connected yet.` }, { status: 422 });
     }
 
-    try {
-      const generator = new DesignGuideGenerator(driver, apiKey, baseUrl);
-      const result = await generator.generate({
-        projectName: project.name,
-        url: project.url,
-        themeColor: design.themeColor,
-        fonts: design.fonts ?? [],
-        logoUrl: design.logoUrl,
-        faviconUrl: design.faviconUrl,
-        ogImageUrl,
-        marketingStrategy: marketingStrategyRow?.content,
-        model,
-      });
+    // Refund the charge if generation throws or ends in an error response.
+    return await withRefund(ticket, async () => {
+      try {
+        const generator = new DesignGuideGenerator(driver, apiKey, baseUrl);
+        const result = await generator.generate({
+          projectName: project.name,
+          url: project.url,
+          themeColor: design.themeColor,
+          fonts: design.fonts ?? [],
+          logoUrl: design.logoUrl,
+          faviconUrl: design.faviconUrl,
+          ogImageUrl,
+          marketingStrategy: marketingStrategyRow?.content,
+          model,
+        });
 
-      if (!result.stream) {
-        const now = new Date().toISOString();
-        const { data: existing } = await db
-          .from("project_documents")
-          .select("created_at")
-          .eq("user_id", user.id)
-          .eq("project_id", activeId)
-          .eq("doc_type", DOC_TYPE)
-          .maybeSingle();
+        if (!result.stream) {
+          const now = new Date().toISOString();
+          const { data: existing } = await db
+            .from("project_documents")
+            .select("created_at")
+            .eq("user_id", user.id)
+            .eq("project_id", activeId)
+            .eq("doc_type", DOC_TYPE)
+            .maybeSingle();
 
-        const { error } = await db.from("project_documents").upsert(
-          {
-            user_id: user.id,
-            project_id: activeId,
-            doc_type: DOC_TYPE,
-            status: "ready",
-            content: result.text ?? "",
-            created_at: existing?.created_at ?? now,
-            updated_at: now,
-          },
-          { onConflict: "project_id,doc_type" }
-        );
-        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-        return NextResponse.json({ text: result.text });
+          const { error } = await db.from("project_documents").upsert(
+            {
+              user_id: user.id,
+              project_id: activeId,
+              doc_type: DOC_TYPE,
+              status: "ready",
+              content: result.text ?? "",
+              created_at: existing?.created_at ?? now,
+              updated_at: now,
+            },
+            { onConflict: "project_id,doc_type" }
+          );
+          if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+          return NextResponse.json({ text: result.text });
+        }
+
+        return new NextResponse(result.stream, {
+          headers: { "Content-Type": "text/plain; charset=utf-8" },
+        });
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err);
+        return NextResponse.json({ error: raw, chargedCredits }, { status: 502 });
       }
-
-      return new NextResponse(result.stream, {
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
-      });
-    } catch (err) {
-      const raw = err instanceof Error ? err.message : String(err);
-      return NextResponse.json({ error: raw, chargedCredits }, { status: 502 });
-    }
+    }, isFailedResponse);
   }
 
   const db = getDb();

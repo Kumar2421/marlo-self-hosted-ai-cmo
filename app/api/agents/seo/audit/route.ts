@@ -4,7 +4,7 @@ import { SEOAgent } from "@/lib/domain/seo/SEOAgent";
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
-import { chargeCredits, InsufficientCreditsError } from "@/lib/credits";
+import { spendCredits, withRefund, isFailedResponse, InsufficientCreditsError, type CreditTicket } from "@/lib/credits";
 import { upsertFinding as upsertFindingSupabase } from "@/lib/domain/findings/findingStoreSupabase";
 import { upsertFinding } from "@/lib/domain/findings/findingStore";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
@@ -50,9 +50,12 @@ export async function POST(req: NextRequest) {
     if (!project?.url) return NextResponse.json({ error: "Active project not found." }, { status: 404 });
 
     // Credit-metered — charge before running the crawl so a user out of
-    // credits doesn't pay for the (potentially slow) real crawl work.
+    // credits doesn't pay for the (potentially slow) real crawl work. The
+    // audit that runs while a user's first project is being set up is free
+    // (decided server-side in spendCredits). A failed audit is refunded.
+    let ticket: CreditTicket;
     try {
-      await chargeCredits(user.id, "seo_audit", { projectId });
+      ticket = await spendCredits(user.id, "seo_audit", { projectId });
     } catch (err) {
       if (err instanceof InsufficientCreditsError) {
         return NextResponse.json({ error: "Out of credits. Upgrade to run another SEO audit." }, { status: 402 });
@@ -60,32 +63,31 @@ export async function POST(req: NextRequest) {
       throw err;
     }
 
-    try {
-      const pageSpeedApiKey = (await resolvePlatformApiKey(db, user.id, "pagespeed_api_key")) || process.env.PAGESPEED_API_KEY || undefined;
+    return await withRefund(ticket, async () => {
+      try {
+        const pageSpeedApiKey = (await resolvePlatformApiKey(db, user.id, "pagespeed_api_key")) || process.env.PAGESPEED_API_KEY || undefined;
 
-      // No PageSpeed key means this audit would produce the exact same
-      // result as the public /audit crawl for this URL — reuse it instead
-      // of crawling again if the user just came through that funnel.
-      const auditResult = (!pageSpeedApiKey && takeCachedPublicAudit(url))
-        || await new SEOAgent(pageSpeedApiKey).audit(url);
+        // No PageSpeed key means this audit would produce the exact same
+        // result as the public /audit crawl for this URL — reuse it instead
+        // of crawling again if the user just came through that funnel.
+        const auditResult = (!pageSpeedApiKey && takeCachedPublicAudit(url))
+          || await new SEOAgent(pageSpeedApiKey).audit(url);
 
-      const createdAt = new Date().toISOString();
-      const { error } = await db.from("seo_audits").upsert(
-        { user_id: user.id, project_id: projectId, url, payload: auditResult, created_at: createdAt },
-        { onConflict: "project_id,url" }
-      );
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        const createdAt = new Date().toISOString();
+        const { error } = await db.from("seo_audits").upsert(
+          { user_id: user.id, project_id: projectId, url, payload: auditResult, created_at: createdAt },
+          { onConflict: "project_id,url" }
+        );
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-      await saveAuditFindings((input) => upsertFindingSupabase(db, user.id, input), auditFindingInputs(projectId, auditResult));
+        await saveAuditFindings((input) => upsertFindingSupabase(db, user.id, input), auditFindingInputs(projectId, auditResult));
 
-      return NextResponse.json(auditResult);
-    } catch (err) {
-      // Note: credits already charged — no refund path yet on audit
-      // failure. Follow-up, not blocking for this slice (same tradeoff as
-      // the articles/generate route).
-      const raw = err instanceof Error ? err.message : String(err);
-      return NextResponse.json({ error: raw }, { status: 500 });
-    }
+        return NextResponse.json(auditResult);
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err);
+        return NextResponse.json({ error: raw }, { status: 500 });
+      }
+    }, isFailedResponse);
   }
 
   try {
