@@ -66,9 +66,11 @@ export default function LeadProfileSearch({
           className="flex min-h-9 min-w-0 flex-1 items-center gap-1.5 text-left text-[12px] text-gray-700"
         >
           <Target size={13} className="shrink-0 text-gray-400" />
-          <span className="truncate font-medium text-gray-900">{summary ?? describeProfile(profile)}</span>
-          <span className="shrink-0 text-gray-400">·</span>
-          <span className="shrink-0 text-gray-500 hover:text-gray-900 hover:underline">Edit</span>
+          <span className="min-w-0 line-clamp-2 break-words font-medium leading-4 text-gray-900">
+            {summary ?? describeProfile(profile)}
+            <span className="font-normal text-gray-400"> · </span>
+            <span className="font-normal text-gray-500 hover:text-gray-900 hover:underline">Edit</span>
+          </span>
         </button>
         <button
           type="button"

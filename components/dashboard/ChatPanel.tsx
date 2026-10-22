@@ -44,14 +44,14 @@ function ModelSelector() {
   const active = primaryModel && connectedModels.some((m) => m.model === primaryModel) ? primaryModel : null;
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50"
+        className="flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50"
       >
-        <Cpu size={12} className="text-gray-400" />
-        {active ?? (connectedModels.length ? "Select model" : "No model connected")}
-        <ChevronDown size={11} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        <Cpu size={12} className="shrink-0 text-gray-400" />
+        <span className="min-w-0 truncate">{active ?? (connectedModels.length ? "Select model" : "No model connected")}</span>
+        <ChevronDown size={11} className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
@@ -208,10 +208,10 @@ export default function ChatPanel({
 
       <div className="dash-panel-header">
         <div className="dash-title">
-          <Search size={13} className="text-gray-400" />
-          {project?.name ?? "Chat"} 
+          <Search size={13} className="shrink-0 text-gray-400" />
+          <span className="min-w-0 truncate">{project?.name ?? "Chat"}</span>
         </div>
-        <div className="flex items-center gap-3 text-gray-400">
+        <div className="flex shrink-0 items-center gap-3 text-gray-400">
           <span className="h-1.5 w-1.5 rounded-full bg-[#00ab92]" />
           <button title="New chat" aria-label="New chat" onClick={resetChat} className="hover:text-gray-700">
             <Plus size={14} />
@@ -317,7 +317,7 @@ export default function ChatPanel({
             className="mb-3 w-full bg-transparent text-[13px] text-gray-800 placeholder:text-gray-400 focus:outline-none"
           />
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 text-gray-400">
+            <div className="flex min-w-0 items-center gap-3 text-gray-400">
               <ModelSelector />
               <button type="button" disabled title="Coming soon" aria-label="Attach file (coming soon)" className="cursor-not-allowed opacity-40">
                 <Paperclip size={15} />

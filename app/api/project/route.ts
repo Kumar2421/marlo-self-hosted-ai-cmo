@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getActiveProjectId, setActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import { assertPublicHttpUrl } from "@/lib/domain/seo/SEOAgent";
-import { checkUrlReachable } from "@/lib/domain/shared/checkUrlReachable";
+import { probeUrl } from "@/lib/domain/shared/checkUrlReachable";
+import { classifyReachability } from "@/lib/domain/shared/urlReachability";
 import { FEATURES } from "@/lib/features";
 import { canCreateProject } from "@/lib/entitlements";
 import { createClient } from "@/utils/supabase/server";
@@ -85,16 +86,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Invalid URL" }, { status: 400 });
   }
 
-  const { reachable, status } = await checkUrlReachable(validated.toString());
-  if (!reachable) {
-    return NextResponse.json(
-      {
-        error: status
-          ? `This URL responded with HTTP ${status} — check it's correct and publicly accessible before adding it.`
-          : "Couldn't reach this URL — check it's correct, publicly accessible, and not behind a login.",
-      },
-      { status: 422 }
-    );
+  // Lenient on purpose: bot-protected, rate-limited or briefly-down sites still get a project (the audit
+  // reports what it can). Only addresses that are clearly wrong are rejected.
+  const probe = await probeUrl(validated.toString());
+  const reachability = classifyReachability(probe);
+  if (reachability.verdict === "unreachable") {
+    return NextResponse.json({ error: reachability.message }, { status: 422 });
+  }
+  if (reachability.verdict === "unverified") {
+    console.warn("[project] URL could not be fully verified, creating anyway:", probe.status ?? probe.errorCode);
   }
 
   const name = body.name.trim();

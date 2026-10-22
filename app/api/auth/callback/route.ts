@@ -189,6 +189,20 @@ export async function GET(request: NextRequest) {
   const nextParam = request.nextUrl.searchParams.get("next");
   const base = request.nextUrl.origin;
 
+  // Google/Supabase sent an error instead of a code (for example, the user cancelled consent). Send it to
+  // /login, which maps it to a plain message. Without this the flow fell through to /dashboard and looked
+  // like nothing happened.
+  const providerError = request.nextUrl.searchParams.get("error");
+  if (!code && providerError) {
+    const target = new URL("/login", base);
+    target.searchParams.set("error", providerError);
+    for (const key of ["error_code", "error_description"]) {
+      const value = request.nextUrl.searchParams.get(key);
+      if (value) target.searchParams.set(key, value);
+    }
+    return NextResponse.redirect(target);
+  }
+
   let destination = "/dashboard";
   let hasGoogleServiceScopes = false;
   let googleProblem: string | null = null;
