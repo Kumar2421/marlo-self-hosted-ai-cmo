@@ -24,6 +24,36 @@ export function breakpointForWidth(width: number): Breakpoint {
   return "desktop";
 }
 
+/** Like parseDashboardTab but null (not the default) when the value is missing or unknown. */
+export function parseDashboardTabOrNull(value: unknown): DashboardTab | null {
+  return typeof value === "string" && (DASHBOARD_TABS as readonly string[]).includes(value) ? (value as DashboardTab) : null;
+}
+
+/** ?tab= from a query string, or null when absent/invalid (so a default can be chosen instead). */
+export function explicitTabFromSearch(search: string): DashboardTab | null {
+  return parseDashboardTabOrNull(new URLSearchParams(search).get("tab"));
+}
+
+/**
+ * Which tab the compact shell opens on. Order of precedence:
+ *  1. ?tab= in the URL (deep links, reload, back);
+ *  2. the user's last-used tab (only ever stored when they picked one);
+ *  3. a default that answers "what should I do next": Analytics (Findings) once
+ *     the project has an audit, otherwise Context, where setup is finished.
+ * `hasAudit` is null while that is not known yet; the result is then null
+ * (undecided) so the shell waits instead of flashing the wrong panel.
+ */
+export function resolveDashboardTab(input: {
+  urlTab: DashboardTab | null;
+  storedTab: DashboardTab | null;
+  hasAudit: boolean | null;
+}): DashboardTab | null {
+  if (input.urlTab) return input.urlTab;
+  if (input.storedTab) return input.storedTab;
+  if (input.hasAudit === null) return null;
+  return input.hasAudit ? "analytics" : "context";
+}
+
 /** Read ?tab= from a query string ("?tab=chat" or "tab=chat"). */
 export function tabFromSearch(search: string): DashboardTab {
   return parseDashboardTab(new URLSearchParams(search).get("tab"));
@@ -40,6 +70,9 @@ export function searchWithTab(search: string, tab: DashboardTab): string {
 export const TABLET_LEFT: readonly DashboardTab[] = ["context", "analytics"];
 export const TABLET_RIGHT: readonly DashboardTab[] = ["agents", "chat"];
 
+/** Tablet pair before the user has picked anything: Analytics (what to fix) next to Chat (ask/act). Leads stays one tap away. */
+export const DEFAULT_TABLET_RIGHT: DashboardTab = "chat";
+
 /**
  * Which panels are on screen. Mobile: only the active tab. Tablet: the active
  * tab plus the most recent choice from the other pane, so the pair is always
@@ -53,7 +86,7 @@ export function visibleTabs(
 ): DashboardTab[] {
   if (bp !== "tablet") return [active];
   const left = TABLET_LEFT.includes(active) ? active : TABLET_LEFT.includes(lastLeft) ? lastLeft : "analytics";
-  const right = TABLET_RIGHT.includes(active) ? active : TABLET_RIGHT.includes(lastRight) ? lastRight : "agents";
+  const right = TABLET_RIGHT.includes(active) ? active : TABLET_RIGHT.includes(lastRight) ? lastRight : "chat";
   return [left, right];
 }
 

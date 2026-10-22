@@ -22,6 +22,7 @@ import {
 import { user as mockUser } from "@/lib/mock-data";
 import { useTerminalLog } from "@/lib/terminal-log-store";
 import { useProject } from "@/lib/project-store";
+import { headerStatus } from "@/lib/headerStatus";
 import { useAuthUser } from "@/lib/useAuthUser";
 import { useToast } from "./Toast";
 import NotificationBell from "./notifications/NotificationBell";
@@ -353,38 +354,40 @@ export default function TerminalLog() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [lines, logOpen]);
 
-  const latest = [...lines].reverse().find((l) => l.type !== "divider");
+  // Idle renders nothing in this slot (no text, no live region), so nothing is announced to screen readers.
+  const status = headerStatus(lines);
 
   return (
     <div ref={ref} className="relative z-30 shrink-0 bg-white px-3 pb-1 pt-2">
       <nav aria-label="Workspace" data-testid="terminal-bar" className="flex h-12 shrink-0 items-center justify-between rounded-xl bg-[#110f0e] px-3">
         <div className="flex min-w-0 flex-1 items-center gap-1">
-          <GhostLoader className="mr-1 h-7 w-7" tone="light" />
+          {/* Decorative logo: its "Loading" status role must not be announced on an idle page. */}
+          <span aria-hidden="true" className="contents">
+            <GhostLoader className="mr-1 h-7 w-7" tone="light" />
+          </span>
           <ProjectSwitcher />
 
-          <button
-            onClick={() => setLogOpen((v) => !v)}
-            aria-expanded={logOpen}
-            aria-controls="terminal-log-panel"
-            title={logOpen ? "Hide agent activity" : "Show agent activity"}
-            className="ml-2 flex min-w-0 flex-1 items-center gap-2 rounded-md border-l border-white/10 py-1 pl-3 pr-1 text-left text-[13px] hover:bg-white/5"
-          >
-            <span className="hidden shrink-0 items-center gap-1.5 text-gray-400 md:flex">
-              <ScrollText size={13} />
-              Status Log
-            </span>
-            <span className="hidden shrink-0 text-gray-600 md:inline">|</span>
-            {latest ? (
-              <span className={`min-w-0 flex-1 truncate ${latest.type === "done" ? "text-[#00ab92]" : latest.type === "error" ? "text-amber-400" : "text-gray-300"}`}>
-                {latest.type === "done" && <Check size={12} className="mr-1 inline shrink-0 align-[-1px]" />}
-                {latest.type === "error" && <AlertTriangle size={12} className="mr-1 inline shrink-0 align-[-1px]" />}
-                {latest.text}
+          {status.kind !== "idle" && (
+            <button
+              onClick={() => setLogOpen((v) => !v)}
+              aria-expanded={logOpen}
+              aria-controls="terminal-log-panel"
+              title={logOpen ? "Hide agent activity" : "Show agent activity"}
+              className="ml-2 flex min-w-0 flex-1 items-center gap-2 rounded-md border-l border-white/10 py-1 pl-3 pr-1 text-left text-[13px] hover:bg-white/5"
+            >
+              <span className="hidden shrink-0 items-center gap-1.5 text-gray-400 md:flex">
+                <ScrollText size={13} aria-hidden />
+                Status Log
               </span>
-            ) : (
-              <span className="min-w-0 flex-1 truncate text-gray-500">No activity yet.</span>
-            )}
-            <ChevronDown size={13} className={`shrink-0 text-gray-400 transition-transform ${logOpen ? "rotate-180" : ""}`} />
-          </button>
+              <span className="hidden shrink-0 text-gray-600 md:inline" aria-hidden>|</span>
+              <span className={`min-w-0 flex-1 truncate ${status.kind === "done" ? "text-[#00ab92]" : status.kind === "error" ? "text-amber-400" : "text-gray-300"}`}>
+                {status.kind === "done" && <Check size={12} aria-hidden className="mr-1 inline shrink-0 align-[-1px]" />}
+                {status.kind === "error" && <AlertTriangle size={12} aria-hidden className="mr-1 inline shrink-0 align-[-1px]" />}
+                {status.text}
+              </span>
+              <ChevronDown size={13} aria-hidden className={`shrink-0 text-gray-400 transition-transform ${logOpen ? "rotate-180" : ""}`} />
+            </button>
+          )}
         </div>
 
         <div className="ml-2 flex shrink-0 items-center gap-2">

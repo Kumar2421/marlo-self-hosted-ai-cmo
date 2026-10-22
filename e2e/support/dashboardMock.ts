@@ -153,7 +153,7 @@ export async function signIn(context: BrowserContext, baseURL: string) {
 }
 
 /** Answers every /api/** call with a populated project. Unknown GETs get `{}`; nothing reaches a real backend. */
-export async function mockDashboardApi(page: Page) {
+export async function mockDashboardApi(page: Page, opts: { noAudit?: boolean } = {}) {
   await page.route("**/api/**", (route) => {
     const req = route.request();
     const path = new URL(req.url()).pathname;
@@ -164,7 +164,7 @@ export async function mockDashboardApi(page: Page) {
     if (path === "/api/project/data") {
       const empty = ["project_documents", "project_competitors", "link_checks", "geo_checks", "site_crawls", "traffic_checks", "code_fixes"];
       const data: Record<string, unknown[]> = Object.fromEntries(empty.map((k) => [k, []]));
-      data.seo_audits = [{ id: "audit_1", payload: SEO_AUDIT, created_at: NOW }];
+      data.seo_audits = opts.noAudit ? [] : [{ id: "audit_1", payload: SEO_AUDIT, created_at: NOW }];
       data.findings = FINDINGS;
       data.leads = LEADS;
       return json(route, { project: PROJECT, projectId: PROJECT.id, data });
