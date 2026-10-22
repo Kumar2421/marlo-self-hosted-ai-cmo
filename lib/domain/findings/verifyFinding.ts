@@ -62,6 +62,8 @@ export function needsPageSpeed(finding: { category: string; entityId: string }):
  */
 export function isAutoVerifiable(finding: Pick<Finding, "source" | "category" | "entityId" | "url">): boolean {
   if (finding.source === "search-console") return false;
+  // AI-answer gaps are judged from stored runs and need no page URL.
+  if (finding.source === "geo" && finding.category === "geo_gap") return true;
   if (!finding.url) return false;
   if (needsPageSpeed(finding)) return false;
   if (finding.source === "seo-audit") return true;

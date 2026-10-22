@@ -1,6 +1,7 @@
 import type { Finding } from "./findingTypes.ts";
 import { implementationOf } from "../search/actionOutcome.ts";
 import { runWithBudget } from "../../jobs/jobRunner.ts";
+import { isVanished, vanishedMark } from "./vanishedFindings.ts";
 import { isAutoVerifiable, verifyFinding, type VerifyCheckPorts, type VerifyResult } from "./verifyFinding.ts";
 import { BACKGROUND_AUDIT_TIMEOUT_MS, MIN_AUDIT_BUDGET_MS, timedCall } from "./timedAudit.ts";
 
@@ -27,10 +28,17 @@ export type AutoVerifyMarker = {
   lastCheckedAt: string;
   /** Skipped checks so far (absent in older markers). */
   skips?: number;
+  /** The evidence.vanished.at flag this finding was last checked for: a vanished finding is checked once per flag. */
+  vanishedAt?: string;
 };
 
 export type ProjectScope = { userId: string; projectId: string };
 
+/**
+ * A finding the job may check. Besides fixed findings this carries two extra kinds, both
+ * still under the same caps/backoff: geo_gap findings (status fixed or fixing) and
+ * seo-audit findings flagged evidence.vanished (any vanishable status).
+ */
 export type FixedFinding = ProjectScope & {
   finding: Finding;
   /** The saved `result` of each completed action linked to this finding. */
@@ -64,6 +72,8 @@ export type AutoVerifySummary = {
   verified: number;
   failed: number;
   skipped: number;
+  /** Vanished-flagged findings the page re-audit still reports: evidence updated, status unchanged. */
+  stillDetected: number;
   /** Eligible findings left for the next run (over the cap or out of time). */
   budgetSkipped: number;
   /** Findings whose storage step threw; isolated, the rest of the run continues. */
@@ -92,10 +102,34 @@ export function autoVerifyEvidence(
   return { ...evidence, autoVerify };
 }
 
-type Eligible = { item: FixedFinding; attempts: number; skips: number; lastCheckedAt: string | null };
+type Eligible = { item: FixedFinding; attempts: number; skips: number; lastCheckedAt: string | null; vanishedAt?: string; keepVanishedAt?: string };
+
+export type AutoVerifyKind = "fixed" | "geo_gap" | "vanished";
+
+export function autoVerifyKind(finding: Finding): AutoVerifyKind {
+  if (finding.source === "geo" && finding.category === "geo_gap") return "geo_gap";
+  if (finding.source === "seo-audit" && isVanished(finding)) return "vanished";
+  return "fixed";
+}
+
+/**
+ * Stored-rows-only gate for a geo gap, before any attempt is spent: a fixed gap needs a newer run
+ * (either verdict decides it); a gap still being fixed is only closed by a run that names the project.
+ */
+async function gapIsDecidable(ports: AutoVerifyPorts, item: FixedFinding): Promise<boolean> {
+  if (item.finding.status !== "fixed" && item.finding.status !== "fixing") return false;
+  const verdictOf = ports.checkPorts(item).geoGapVerdict;
+  if (!verdictOf) return false;
+  try {
+    const verdict = await verdictOf(item.finding);
+    return item.finding.status === "fixed" ? verdict !== "no-new-runs" : verdict === "mentioned";
+  } catch {
+    return false;
+  }
+}
 
 export async function runAutoVerify(ports: AutoVerifyPorts, now: Date, budget: JobBudget): Promise<AutoVerifySummary> {
-  const summary: AutoVerifySummary = { verified: 0, failed: 0, skipped: 0, budgetSkipped: 0, errored: 0 };
+  const summary: AutoVerifySummary = { verified: 0, failed: 0, skipped: 0, stillDetected: 0, budgetSkipped: 0, errored: 0 };
   const nowMs = now.getTime();
 
   // Only findings the verifier can check, whose change went live at least a day
@@ -104,6 +138,8 @@ export async function runAutoVerify(ports: AutoVerifyPorts, now: Date, budget: J
   // A project whose markers cannot be read is isolated: its findings are counted as errored.
   const due = (await ports.listFixedFindings()).filter((item) => {
     if (!isAutoVerifiable(item.finding)) return false;
+    // A geo gap is gated by a newer stored run and a vanished page by its flag, not by an implementation delay.
+    if (autoVerifyKind(item.finding) !== "fixed") return true;
     const implementedAt = latestImplementedAt(item.actionResults);
     return implementedAt !== null && nowMs - implementedAt >= AUTO_VERIFY_DELAY_MS;
   });
@@ -130,7 +166,15 @@ export async function runAutoVerify(ports: AutoVerifyPorts, now: Date, budget: J
     if (attempts >= AUTO_VERIFY_MAX_ATTEMPTS || skips >= AUTO_VERIFY_MAX_SKIPS) continue;
     const lastCheckedAt = marker?.lastCheckedAt ?? null;
     if (lastCheckedAt !== null && nowMs - Date.parse(lastCheckedAt) < AUTO_VERIFY_RECHECK_GAP_MS) continue;
-    eligible.push({ item, attempts, skips, lastCheckedAt });
+    const kind = autoVerifyKind(item.finding);
+    let vanishedAt: string | undefined;
+    if (kind === "vanished") {
+      // At most one automatic re-audit per vanished flag, so a still-flagged page never loops.
+      vanishedAt = vanishedMark(item.finding.evidence)?.at;
+      if (!vanishedAt || marker?.vanishedAt === vanishedAt) continue;
+    }
+    if (kind === "geo_gap" && !(await gapIsDecidable(ports, item))) continue;
+    eligible.push({ item, attempts, skips, lastCheckedAt, vanishedAt, keepVanishedAt: marker?.vanishedAt });
   }
 
   // Fair rotation: never-checked first, then the oldest check.
@@ -150,7 +194,9 @@ export async function runAutoVerify(ports: AutoVerifyPorts, now: Date, budget: J
 
   const run = await runWithBudget(
     picked,
-    async ({ item, attempts, skips }) => {
+    async ({ item, attempts, skips, vanishedAt, keepVanishedAt }) => {
+      const stamp = vanishedAt ?? keepVanishedAt;
+      const withFlag = (m: AutoVerifyMarker): AutoVerifyMarker => (stamp ? { ...m, vanishedAt: stamp } : m);
       // Stop the phase before an audit that cannot finish inside the budget.
       const left = deadline - clock();
       if (left < minAuditMs) {
@@ -166,7 +212,15 @@ export async function runAutoVerify(ports: AutoVerifyPorts, now: Date, budget: J
       // Only decided outcomes use an attempt; a skip stamps the check time and counts against the skip cap.
       if (decided === null) {
         summary.skipped += 1;
-        await ports.writeMarker(item, item.finding.id, { attempts, skips: skips + 1, lastCheckedAt: now.toISOString() });
+        await ports.writeMarker(item, item.finding.id, withFlag({ attempts, skips: skips + 1, lastCheckedAt: now.toISOString() }));
+      } else if (decided === "failed" && vanishedAt) {
+        // The re-audit still reports an issue the earlier audit missed: no status change (the user never
+        // said it was fixed), the flag is dropped and the result kept as evidence.
+        const rest = { ...item.finding.evidence };
+        delete rest.vanished;
+        await ports.saveEvidence(item, autoVerifyEvidence(rest, result));
+        summary.stillDetected += 1;
+        await ports.writeMarker(item, item.finding.id, withFlag({ attempts: attempts + 1, skips, lastCheckedAt: now.toISOString() }));
       } else {
         const evidence = autoVerifyEvidence(item.finding.evidence, result);
         if (ports.finalize) {
@@ -177,7 +231,7 @@ export async function runAutoVerify(ports: AutoVerifyPorts, now: Date, budget: J
           await ports.saveEvidence(item, evidence);
         }
         summary[decided] += 1;
-        await ports.writeMarker(item, item.finding.id, { attempts: attempts + 1, skips, lastCheckedAt: now.toISOString() });
+        await ports.writeMarker(item, item.finding.id, withFlag({ attempts: attempts + 1, skips, lastCheckedAt: now.toISOString() }));
       }
     },
     { budgetMs: budget.budgetMs, now: clock },

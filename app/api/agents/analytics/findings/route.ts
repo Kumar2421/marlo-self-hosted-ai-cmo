@@ -9,6 +9,10 @@ import { findingErrorResponse } from "@/lib/domain/findings/findingHttp";
 import { isFindingStatus, type Finding } from "@/lib/domain/findings/findingTypes";
 import { checkedDecision, decideRecheck, type RecheckDecision } from "@/lib/domain/findings/recheckDecision";
 import { checkReadiness } from "@/lib/domain/geo/geoService";
+import { storedGeoGapVerdictPort } from "@/lib/domain/geo/geoGapPort";
+import { listRuns as listGeoRuns } from "@/lib/domain/geo/geoStore";
+import { listRuns as listGeoRunsSupabase } from "@/lib/domain/geo/geoStoreSupabase";
+import type { GeoRunRow } from "@/lib/domain/geo/types";
 import {
   findExistingFinding,
   isOpportunityType,
@@ -225,6 +229,7 @@ async function recheckDecisionFor(
   finding: Finding,
   pageSpeedApiKey: string | undefined,
   latestSnapshot: () => Promise<Parameters<typeof recheckOpportunityFinding>[1]>,
+  loadGeoRuns: (sinceIso: string) => Promise<GeoRunRow[]>,
 ): Promise<RecheckDecision> {
   if (opportunityEvidenceOf(finding.evidence)) return checkedDecision(recheckOpportunityFinding(finding, await latestSnapshot()));
   if (finding.source === "search-console") {
@@ -244,6 +249,8 @@ async function recheckDecisionFor(
         return { findings: audit.findings, finalUrl: audit.finalUrl, hasPageSpeed: Boolean(audit.pageSpeed || audit.lighthouseIssues) };
       },
       runGeoReadiness: async (url) => (await checkReadiness(new URL(url).hostname)).checks,
+      // AI-answer gaps are judged from stored runs only: no provider call, no daily-cap spend.
+      geoGapVerdict: storedGeoGapVerdictPort(loadGeoRuns),
     },
     finding,
     new Date(),
@@ -291,7 +298,7 @@ export async function PUT(req: NextRequest) {
       const finding = await getFinding(repo, projectId, body.id);
       if (!finding) return NextResponse.json({ error: "Finding not found." }, { status: 404 });
       return await handlePut(repo, projectId, finding, body, async () =>
-        recheckDecisionFor(finding, await resolvePlatformPageSpeedKey(db, user.id), () => getLatestSnapshotSupabase(db, user.id, projectId)));
+        recheckDecisionFor(finding, await resolvePlatformPageSpeedKey(db, user.id), () => getLatestSnapshotSupabase(db, user.id, projectId), (since) => listGeoRunsSupabase(db, user.id, projectId, since)));
     }
 
     const projectId = getActiveProjectId();
@@ -301,7 +308,7 @@ export async function PUT(req: NextRequest) {
     if (!finding) return NextResponse.json({ error: "Finding not found." }, { status: 404 });
     return await handlePut(repo, projectId, finding, body, async () => {
       const stored = getDb().prepare("SELECT value FROM settings WHERE key = 'pagespeed_api_key'").get() as { value: string } | undefined;
-      return recheckDecisionFor(finding, stored?.value || process.env.PAGESPEED_API_KEY || undefined, async () => getLatestSnapshot(getDb(), projectId));
+      return recheckDecisionFor(finding, stored?.value || process.env.PAGESPEED_API_KEY || undefined, async () => getLatestSnapshot(getDb(), projectId), async (since) => listGeoRuns(getDb(), projectId, since));
     });
   } catch (err) {
     const { status, error } = findingErrorResponse(err, "The check could not be completed. Try again.");

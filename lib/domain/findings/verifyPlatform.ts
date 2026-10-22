@@ -2,7 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { SEOAgent } from "../seo/SEOAgent.ts";
 import { checkReadiness } from "../geo/geoService.ts";
 import { listProjectFindings, mapFinding, updateFindingStatus, upsertFinding } from "./findingStoreSupabase.ts";
-import { listFixedFindingRows } from "./fixedFindingRows.ts";
+import { listAutoVerifyCandidateRows } from "./fixedFindingRows.ts";
+import { storedGeoGapVerdictPort } from "../geo/geoGapPort.ts";
+import { listRuns as listGeoRuns } from "../geo/geoStoreSupabase.ts";
 import { MONITOR_MARKER, monitorTargetsPlatform } from "./monitorTargets.ts";
 
 export { MONITOR_MARKER, monitorTargetsPlatform };
@@ -32,8 +34,9 @@ function backgroundSeoAgent(): SEOAgent {
 }
 
 /** Fresh-check ports for one finding: the real SEO audit and GEO readiness checks. */
-export function platformCheckPorts(): VerifyCheckPorts {
+export function platformCheckPorts(geoGapVerdict?: VerifyCheckPorts["geoGapVerdict"]): VerifyCheckPorts {
   return {
+    geoGapVerdict,
     runSeoAudit: async (url) => {
       const audit = await backgroundSeoAgent().audit(url);
       return { findings: audit.findings, finalUrl: audit.finalUrl };
@@ -42,9 +45,9 @@ export function platformCheckPorts(): VerifyCheckPorts {
   };
 }
 
-/** Fixed findings with the saved results of their completed actions. */
+/** Auto-verify candidates (fixed, geo gaps being fixed, vanished-flagged) with the saved results of their completed actions. */
 async function listFixedFindings(db: ServiceDb): Promise<FixedFinding[]> {
-  const rows = await listFixedFindingRows(db);
+  const rows = await listAutoVerifyCandidateRows(db);
 
   const resultsByFinding = new Map<string, Array<Record<string, unknown> | null>>();
   for (let i = 0; i < rows.length; i += ID_CHUNK) {
@@ -84,6 +87,7 @@ async function readMarkers(db: ServiceDb, scope: ProjectScope): Promise<Map<stri
           attempts: parsed.attempts,
           lastCheckedAt: parsed.lastCheckedAt,
           skips: typeof parsed.skips === "number" ? parsed.skips : 0,
+          ...(typeof parsed.vanishedAt === "string" ? { vanishedAt: parsed.vanishedAt } : {}),
         });
       }
     } catch {
@@ -107,7 +111,8 @@ export function autoVerifyPortsPlatform(db: ServiceDb, now: Date): AutoVerifyPor
     listFixedFindings: () => listFixedFindings(db),
     readMarkers: (scope) => readMarkers(db, scope),
     writeMarker: (scope, findingId, marker) => writeDocument(db, scope, autoVerifyDocType(findingId), JSON.stringify(marker), now),
-    checkPorts: () => platformCheckPorts(),
+    // Gap verdicts read stored geo_runs for this project only; no provider call is ever made here.
+    checkPorts: (item) => platformCheckPorts(storedGeoGapVerdictPort((since) => listGeoRuns(db, item.userId, item.projectId, since))),
     finalize: async (item, status, evidence) => {
       // One guarded update prevents status/evidence drift if a write is interrupted.
       const stamp = new Date().toISOString();
@@ -116,9 +121,9 @@ export function autoVerifyPortsPlatform(db: ServiceDb, now: Date): AutoVerifyPor
         evidence,
         last_seen: stamp,
         resolved_at: status === "verified" ? stamp : null,
-      }).eq("user_id", item.userId).eq("project_id", item.projectId).eq("id", item.finding.id).eq("status", "fixed").select("id").maybeSingle();
+      }).eq("user_id", item.userId).eq("project_id", item.projectId).eq("id", item.finding.id).eq("status", item.finding.status).select("id").maybeSingle();
       if (error) throw new Error(error.message);
-      if (!data) throw new Error("Finding was not in fixed status; auto-verification result was not saved.");
+      if (!data) throw new Error("Finding changed status; auto-verification result was not saved.");
     },
     transition: async (item, status) => {
       await updateFindingStatus(db, item.userId, item.projectId, item.finding.id, status);
