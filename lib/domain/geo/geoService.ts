@@ -10,7 +10,7 @@ import { getValidPlatformGoogleToken } from "@/lib/domain/shared/getValidPlatfor
 import { resolvePlatformApiKey } from "@/lib/domain/shared/resolvePlatformApiKey";
 import { tavilySearchRaw } from "@/lib/domain/shared/webSearchTool";
 import { getDriver } from "@/lib/llm";
-import { PLATFORM_DEFAULT_MODELS, PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
+import { PLATFORM_DEFAULT_MODELS, platformKeyFor } from "@/lib/llm/platformKeys";
 import { buildReferralReportBody, parseReferralRows, type ReferralResult } from "./aiReferral";
 import { resolveGeminiDailyCap, resolveSimulatedDailyCap } from "./dailyCap";
 import { createGeminiGroundedPort, createSimulatedPort, DEFAULT_GEMINI_MODEL, type AnswerPort } from "./engines";
@@ -75,7 +75,7 @@ async function resolveKeys(ctx: GeoContext): Promise<Keys> {
     return {
       gemini: await resolvePlatformApiKey(ctx.db, ctx.userId, "gemini_api_key"),
       tavily: await resolvePlatformApiKey(ctx.db, ctx.userId, "tavily_api_key"),
-      groq: PLATFORM_PROVIDER_KEYS.groq,
+      groq: platformKeyFor("groq"),
     };
   }
   const db = getDb();

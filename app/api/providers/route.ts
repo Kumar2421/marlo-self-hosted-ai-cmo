@@ -4,7 +4,7 @@ import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 import { disconnectHostedProvider } from "@/lib/hostedConnections";
-import { PLATFORM_PROVIDER_KEYS, PLATFORM_DEFAULT_MODELS } from "@/lib/llm/platformKeys";
+import { PLATFORM_PROVIDER_KEYS, PLATFORM_DEFAULT_MODELS, hasPlatformKey, validateHostedProviderSave } from "@/lib/llm/platformKeys";
 import { assertProviderBaseUrl } from "@/lib/domain/net/providerBaseUrl";
 import { INVALID_USER_URL_MESSAGE } from "@/lib/domain/net/publicUrl";
 
@@ -53,7 +53,7 @@ export async function GET() {
     }));
 
     const platformProviders = Object.keys(PLATFORM_PROVIDER_KEYS).filter(
-      (id) => PLATFORM_PROVIDER_KEYS[id]
+      (id) => hasPlatformKey(id)
     );
 
     // Hosted platforms need a usable model on first load, but an explicit
@@ -161,6 +161,11 @@ export async function POST(req: NextRequest) {
   }
 
   if (FEATURES.PLATFORM_MODE) {
+    // SECURITY: a base URL without the user's own key would later be paired
+    // with the operator's platform key by the LLM routes. Refuse it.
+    const saveError = validateHostedProviderSave({ providerId: body.providerId, apiKey, baseUrl });
+    if (saveError) return NextResponse.json({ error: saveError }, { status: 400 });
+
     const user = await requireUser();
     if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
@@ -182,7 +187,9 @@ export async function POST(req: NextRequest) {
         base_url: baseUrl,
         key_preview: maskKey(apiKey),
         connected_at: new Date().toISOString(),
-        ...(secretId ? { api_key_secret_id: secretId } : {}),
+        // Always write the secret reference: a new key replaces it; no new key
+        // clears it, so an old stored key can never be paired with a new base URL.
+        api_key_secret_id: secretId,
       },
       { onConflict: "user_id,provider_id" }
     );
