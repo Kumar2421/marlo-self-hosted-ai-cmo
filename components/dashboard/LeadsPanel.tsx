@@ -128,7 +128,6 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
   // null = automatic: "With email" when any lead has an address, otherwise "All".
   const [filter, setFilter] = useState<LeadFilter | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [wizardDismissed, setWizardDismissed] = useState(false);
   const [googleCloudConnected, setGoogleCloudConnected] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
   const [checkingReplies, setCheckingReplies] = useState(false);
@@ -306,13 +305,13 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
     }
   }
 
-  /** Open the guided setup once, automatically, when a project has no confirmed profile. */
-  const needsProfile = !leadProfile.isLoading && !leadProfile.isError && !leadProfile.confirmed && Boolean(project);
-  const showWizard = wizardOpen || (needsProfile && mode === "person" && !wizardDismissed);
+  // The guided setup opens only when the user asks for it ("Set up lead profile" / "Edit"). It never opens by
+  // itself: a new project is still being set up and a drawer popping over it is unwanted. Until a profile is
+  // confirmed, the panel shows an inline "Tell us who you sell to" prompt with the button instead.
+  const showWizard = wizardOpen;
 
   function closeWizard() {
     setWizardOpen(false);
-    setWizardDismissed(true);
   }
 
   function confirmProfile(profile: NonNullable<typeof leadProfile.profile>) {

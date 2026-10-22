@@ -25,8 +25,10 @@ Ordered steps for running the hosted (platform) build. Variable names are in [en
 3. **Google Cloud OAuth.** Create the OAuth client and set the consent screen to **Production** for a hosted deployment. Testing status limits sign-in to listed test users. Full steps: [google-cloud-setup.md](google-cloud-setup.md).
 
 4. **GitHub App** (for "Connect GitHub" and fix PRs):
-   - Callback URL and setup URL: `/api/github/app/callback` on your deployed domain.
-   - Enable user authorization during installation. The callback exchanges a user code.
+   - Callback URL: `https://<your-domain>/api/github/app/callback`.
+   - Setup URL: the same URL, with "Redirect on update" ON.
+   - "Request user authorization (OAuth) during installation": ON.
+   - Marlo first sends the user through GitHub user authorization to find an installation they already have, because GitHub does not redirect back from the install page of an already-installed app. If none exists, it continues to the install page. If the Callback URL is not registered, GitHub rejects the authorization step. If the Setup URL or "Redirect on update" is off, users who change the app's repositories on GitHub are not sent back to Marlo and can click Connect GitHub again. If user authorization is off, installs cannot be verified and the connection fails with a plain message.
    - Repository permissions: Contents read and write, Pull requests read and write, Metadata read.
    - Set `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, and `NOTIFY_SIGNING_SECRET` (or rely on the client secret for signing).
 

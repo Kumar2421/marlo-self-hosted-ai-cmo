@@ -1,6 +1,8 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeysAfterAudit } from "./query/auditInvalidation";
 import { useTerminalLog } from "./terminal-log-store";
 import { useProviders, findProviderForModel } from "./providers-store";
 import { FEATURES } from "./features";
@@ -443,6 +445,8 @@ type SetupRunCtx = {
   loadHasCompetitors: () => Promise<boolean>;
   onAudit: () => void;
   onDescription: (description: string) => void;
+  /** The crawl found the real brand name and the server renamed the auto-named project. */
+  onRenamed?: (name: string) => void;
   onCompetitors: () => void;
   onLeads: () => void;
   onDocSaved: () => void;
@@ -471,6 +475,7 @@ async function runSetupSteps(ctx: SetupRunCtx, steps: SetupStepKey[]): Promise<{
         hooks.settle("audit", "done");
         ctx.onAudit();
         const audit = await auditRes.json().catch(() => ({}));
+        if (typeof audit.projectRenamed === "string") ctx.onRenamed?.(audit.projectRenamed);
         log(
           audit.meta?.title
             ? `Found it: "${audit.meta.title}". Context, Analytics, and agents now have real data to work from.`
@@ -623,7 +628,18 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
   const { log, logDone } = useTerminalLog();
   const { primaryModel, loading: providersLoading } = useProviders();
 
-  const notifyAuditChanged = useCallback(() => setAuditVersion((v) => v + 1), []);
+  const queryClient = useQueryClient();
+  /** The audit saved findings server-side: refetch whatever findings the client cached before that. */
+  const invalidateAfterAudit = useCallback(
+    (projectId: string | undefined) => {
+      for (const queryKey of queryKeysAfterAudit(projectId)) void queryClient.invalidateQueries({ queryKey });
+    },
+    [queryClient],
+  );
+  const notifyAuditChanged = useCallback(() => {
+    setAuditVersion((v) => v + 1);
+    invalidateAfterAudit(projectRef.current?.id);
+  }, [invalidateAfterAudit]);
 
   const refresh = useCallback(async () => {
     try {
@@ -708,6 +724,7 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
     if ((wasRemote || remote) && done !== lastDoneRef.current) {
       // Another tab is writing: pick up what it saved.
       setAuditVersion((v) => v + 1);
+      invalidateAfterAudit(projectId);
       setCompetitorsVersion((v) => v + 1);
       setDocumentsVersion((v) => v + 1);
       setLeadsVersion((v) => v + 1);
@@ -716,7 +733,7 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
     lastDoneRef.current = done;
     setSetupInfo({ projectId, state: view.state, remote });
     return view;
-  }, [refresh]);
+  }, [refresh, invalidateAfterAudit]);
 
   const buildRunCtx = useCallback(
     (p: { id: string; url: string; description: string }, prior: Record<SetupStepKey, SetupStatus>, awaitClaims: boolean): SetupRunCtx => ({
@@ -744,7 +761,14 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
           return false;
         }
       },
-      onAudit: () => setAuditVersion((v) => v + 1),
+      onAudit: () => {
+        setAuditVersion((v) => v + 1);
+        invalidateAfterAudit(p.id);
+      },
+      onRenamed: (name) => {
+        setProject((prev) => (prev && prev.id === p.id ? { ...prev, name } : prev));
+        setProjects((prev) => prev.map((x) => (x.id === p.id ? { ...x, name } : x)));
+      },
       onDescription: (description) => {
         setProject((prev) => (prev && prev.id === p.id ? { ...prev, description } : prev));
         setProjects((prev) => prev.map((x) => (x.id === p.id ? { ...x, description } : x)));
@@ -753,7 +777,7 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
       onLeads: () => setLeadsVersion((v) => v + 1),
       onDocSaved: () => setDocumentsVersion((v) => v + 1),
     }),
-    [log, logDone]
+    [log, logDone, invalidateAfterAudit]
   );
 
   /** Runs `steps` of an existing project's setup (resume or retry) and ends in a fresh read of the state. */
@@ -772,10 +796,11 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
       } finally {
         runningHere.current = null;
         setSetupRunningId((cur) => settleSetupRun(cur, proj.id));
+        invalidateAfterAudit(proj.id);
         void reloadSetup(proj.id);
       }
     },
-    [buildRunCtx, log, reloadSetup]
+    [buildRunCtx, log, reloadSetup, invalidateAfterAudit]
   );
 
   // On load and project switch: if this project's setup was started and not finished (tab closed,
@@ -862,6 +887,7 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
       const finish = () => {
         runningHere.current = runningHere.current === created.id ? null : runningHere.current;
         setSetupRunningId((cur) => settleSetupRun(cur, created.id));
+        invalidateAfterAudit(created.id);
         void reloadSetup(created.id);
       };
 
@@ -890,7 +916,7 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
       // Documents will not run (crawl failed): nothing is still in flight, so the outcome is known now.
       finish();
     },
-    [log, buildRunCtx, reloadSetup]
+    [log, buildRunCtx, reloadSetup, invalidateAfterAudit]
   );
 
   const switchProject = useCallback(

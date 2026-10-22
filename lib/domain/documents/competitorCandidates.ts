@@ -1,3 +1,5 @@
+import { isGenericLabel } from "../project/projectName.ts";
+
 export type SearchHit = { title: string; url: string; content: string };
 
 export type CompetitorCandidate = { domain: string; reason: string };
@@ -13,7 +15,25 @@ const NOT_COMPETITORS = new Set([
   "gartner.com", "crunchbase.com", "similarweb.com", "appsumo.com", "zapier.com",
   "google.com", "apple.com", "amazon.com", "play.google.com", "apps.apple.com", "chromewebstore.google.com",
   "blogspot.com", "wordpress.com", "wixsite.com", "notion.site", "ghost.io",
+  // Big generic portals / marketplaces / directories: never a competitor of a software product.
+  "redfin.com", "zillow.com", "realtor.com", "trulia.com", "yelp.com", "tripadvisor.com", "booking.com",
+  "airbnb.com", "ebay.com", "etsy.com", "walmart.com", "indeed.com", "glassdoor.com", "bing.com", "yahoo.com",
+  "microsoft.com", "nytimes.com", "bbc.com", "cnn.com", "bloomberg.com", "reuters.com", "quora.com",
+  "hubspot.com", "shopify.com", "dev.to", "hashnode.com", "angel.co", "wellfound.com", "clutch.co", "g2crowd.com",
 ]);
+
+/** Single source of truth for "this domain lists/hosts competitors but is not one". */
+export function isDeniedDomain(host: string): boolean {
+  const h = normalizeHost(host);
+  for (const blocked of NOT_COMPETITORS) {
+    if (h === blocked || h.endsWith(`.${blocked}`)) return true;
+  }
+  return false;
+}
+
+export function filterDeniedCandidates<T extends { domain: string }>(candidates: T[]): T[] {
+  return candidates.filter((c) => !isDeniedDomain(c.domain));
+}
 
 const COMPARISON_PATH = /alternative|compar|\bvs\b|versus|competitor/i;
 const DOMAIN_IN_TEXT = /\b((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|io|ai|co|app|dev|net|org|so|xyz))\b/gi;
@@ -33,23 +53,69 @@ export function normalizeHost(value: string): string {
 
 function isExcluded(host: string, ownHost: string): boolean {
   if (!host || !host.includes(".") || host === ownHost || host.endsWith(`.${ownHost}`)) return true;
-  for (const blocked of NOT_COMPETITORS) {
-    if (host === blocked || host.endsWith(`.${blocked}`)) return true;
+  return isDeniedDomain(host);
+}
+
+/** Words that carry no category meaning on their own. */
+const STOPWORDS = new Set((
+  "a an the and or of for to in on at by with from as is are be this that these those it its our your their we you they " +
+  "about into over more most best top new all any can will helps help helping provides provide offers offer using use used " +
+  "get make made makes build builds built building deliver delivers delivering enable enables empower empowers power powers " +
+  "company companies business businesses solution solutions platform platforms software service services product products " +
+  "tool tools app apps website site online digital modern leading world class based powered ai-powered team teams customers " +
+  "customer people everything one single simple easy fast better smarter way ways home welcome official page pages free"
+).split(" "));
+
+function terms(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const w of text.toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
+    if (w.length < 3 || STOPWORDS.has(w)) continue;
+    out.add(w.length > 4 ? w.replace(/(ing|ers|er|es|s)$/, "") : w);
   }
+  return out;
+}
+
+/**
+ * Whether a candidate's own title/description plausibly describes the same kind of business as the product.
+ * Conservative: with too little text on either side there is no signal, so the candidate is kept.
+ * Pure keyword overlap, no model call.
+ */
+export function isRelevantToProduct(productText: string, candidateText: string): boolean {
+  const product = terms(productText);
+  const candidate = terms(candidateText.replace(/\([^)]*\)/g, " ")); // drop "(no title found)" placeholders
+  if (product.size < 3 || candidate.size < 3) return true;
+  for (const t of candidate) if (product.has(t)) return true;
   return false;
 }
 
-/** The queries that surface real competitors: comparison and "alternatives" searches for the product. */
-export function buildDiscoveryQueries(projectName: string, metaTitle: string): string[] {
+/** The product's category in a few words: the title minus the brand, else the first sentence of the description. */
+export function productCategory(projectName: string, metaTitle: string, description = ""): string {
   const name = projectName.trim();
-  const queries = [`${name} alternatives`, `${name} competitors`, `${name} vs`, `alternatives to ${name}`];
-  // A tagline like "Marlo - AI SEO platform" carries the category; drop the brand to get "AI SEO platform".
-  const category = metaTitle
-    .replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "ig"), "")
+  const fromTitle = metaTitle
+    .replace(name ? new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "ig") : /$^/, "")
     .replace(/[|\-–—:·•]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  if (category.length >= 6 && category.length <= 80) queries.push(`best ${category} alternatives`);
+  if (fromTitle.length >= 6 && fromTitle.length <= 80) return fromTitle;
+  const sentence = description.replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s/)[0] ?? "";
+  const words = sentence.split(" ").filter(Boolean).slice(0, 12).join(" ").replace(/[.!?,;:]+$/, "");
+  return words.length >= 6 ? words : "";
+}
+
+/**
+ * The queries that surface real competitors, built from what the product DOES (category / description).
+ * Brand-name queries are only added when the name is a real brand, never a generic label like "Home".
+ */
+export function buildDiscoveryQueries(projectName: string, metaTitle: string, description = ""): string[] {
+  const name = projectName.trim();
+  const category = productCategory(name, metaTitle, description);
+  const queries: string[] = [];
+  if (category) queries.push(`best ${category} alternatives`);
+  if (name && !isGenericLabel(name)) {
+    queries.push(`${name} alternatives`, `${name} competitors`, `${name} vs`, `alternatives to ${name}`);
+  } else if (category) {
+    queries.push(`${category} competitors`, `top ${category} companies`);
+  }
   return queries.filter((q) => q.length > 0);
 }
 

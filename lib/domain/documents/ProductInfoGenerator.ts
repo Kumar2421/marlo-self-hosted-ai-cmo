@@ -1,3 +1,4 @@
+import { GROUNDING_RULES } from "./grounding.ts";
 import type { LlmDriver, CompletionResult } from "@/lib/llm";
 
 export type ProductInfoRequest = {
@@ -21,7 +22,14 @@ export type ProductInfoRequest = {
  * page (a marketing site often doesn't list pricing publicly, for example).
  */
 export class ProductInfoGenerator {
-  constructor(private driver: LlmDriver, private apiKey: string, private baseUrl?: string) {}
+  private driver: LlmDriver;
+  private apiKey: string;
+  private baseUrl?: string;
+  constructor(driver: LlmDriver, apiKey: string, baseUrl?: string) {
+    this.driver = driver;
+    this.apiKey = apiKey;
+    this.baseUrl = baseUrl;
+  }
 
   async generate(req: ProductInfoRequest): Promise<CompletionResult> {
     const system = `You are a product analyst writing an internal "Product Information" brief for
@@ -33,7 +41,9 @@ If the page doesn't state something (e.g. exact pricing, specific target
 customer segments), write "Not stated on the page" for that item instead of
 guessing or inventing plausible-sounding details. Never fabricate numbers,
 customer counts, feature lists, or pricing that isn't actually present in the
-source material.`;
+source material.
+
+${GROUNDING_RULES}`;
 
     const prompt = `Website: ${req.url}
 Meta title: ${req.metaTitle || "(none found)"}
