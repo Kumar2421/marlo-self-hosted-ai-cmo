@@ -348,7 +348,12 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
       }
       setSiteCrawlResult(data.result);
       const scored = data.result.pages.filter((p: CrawledPage) => p.pageSpeed).length;
-      logDone(`Real PageSpeed scores fetched for ${scored} of ${data.result.pages.length} pages.`);
+      if (data.result.partial) {
+        // Partial is an honest state, not an error: unmeasured pages say so on their card.
+        log(`PageSpeed measured ${scored} of ${data.result.pages.length} pages (the rest ran out of time or were too slow) — run it again to continue.`);
+      } else {
+        logDone(`Real PageSpeed scores fetched for ${scored} of ${data.result.pages.length} pages.`);
+      }
     } catch {
       log("⚠ Failed to run PageSpeed.");
       show("Failed to run PageSpeed.");
@@ -811,13 +816,22 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                 {!auditData.pageSpeed && (
                   <div className="mb-5 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-800">
                     <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                    <span>
-                      No PageSpeed API key connected, so Performance/Accessibility/Best Practices/SEO scores and
-                      Core Web Vitals aren&apos;t available — below is real data from our own crawl instead, not a
-                      substitute score. Connect a key in{" "}
-                      <span className="font-medium">Settings → API Credentials</span> for real
-                      Lighthouse scores.
-                    </span>
+                    {auditData.pageSpeedUnavailable ? (
+                      <span>
+                        PageSpeed Insights {auditData.pageSpeedUnavailable === "timeout" ? "was too slow to answer" : "did not return a result"}{" "}
+                        for this run, so Performance/Accessibility/Best Practices/SEO scores and Core Web Vitals are
+                        not measured — below is real data from our own crawl instead, not a substitute score. Re-run
+                        the audit to try again.
+                      </span>
+                    ) : (
+                      <span>
+                        No PageSpeed API key connected, so Performance/Accessibility/Best Practices/SEO scores and
+                        Core Web Vitals aren&apos;t available — below is real data from our own crawl instead, not a
+                        substitute score. Connect a key in{" "}
+                        <span className="font-medium">Settings → API Credentials</span> for real
+                        Lighthouse scores.
+                      </span>
+                    )}
                   </div>
                 )}
 

@@ -477,7 +477,7 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
         const auditRes = await fetch("/api/agents/seo/audit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: data.project.url }),
+          body: JSON.stringify({ url: data.project.url, quick: true }),
         });
 
         if (auditRes.ok) {

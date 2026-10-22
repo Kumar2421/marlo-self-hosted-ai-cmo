@@ -32,6 +32,37 @@ export type PageSpeedResult = {
   lighthouseIssues: { desktop: LighthouseIssue[]; mobile: LighthouseIssue[] };
 };
 
+/** Longest one PageSpeed Insights measurement (both attempts together) may take.
+ * PSI itself can run 15-40s on a slow page; past this we report "not measured"
+ * instead of letting one page hold a 60s serverless request hostage. */
+export const PSI_TIMEOUT_MS = 20_000;
+
+/** PSI budget for the audit that runs during project creation (P3 fix 5): if PSI
+ * is slower than this it is skipped so onboarding is not blocked. */
+export const PSI_ONBOARDING_TIMEOUT_MS = 10_000;
+
+/** Raised when PSI did not answer inside its time budget. Callers treat it as
+ * "not measured this run" (no scores, no fake 0), not as a failure to alert on. */
+export class PageSpeedTimeoutError extends Error {
+  readonly timeoutMs: number;
+  constructor(timeoutMs: number) {
+    super(`PageSpeed Insights did not respond within ${Math.round(timeoutMs / 1000)}s`);
+    this.name = "PageSpeedTimeoutError";
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+export function isPageSpeedTimeout(e: unknown): e is PageSpeedTimeoutError {
+  return e instanceof PageSpeedTimeoutError;
+}
+
+export type PageSpeedOptions = {
+  /** Total time for this measurement, retry included. Defaults to PSI_TIMEOUT_MS. */
+  timeoutMs?: number;
+  /** Injectable for tests. */
+  fetchImpl?: typeof fetch;
+};
+
 function statusFromScore(score: number | undefined): CwvStatus {
   if (typeof score !== "number") return "Unknown";
   if (score >= 0.9) return "Pass";
@@ -39,7 +70,13 @@ function statusFromScore(score: number | undefined): CwvStatus {
   return "Fail";
 }
 
-async function fetchLighthouse(url: string, apiKey: string, strategy: "desktop" | "mobile") {
+async function fetchLighthouse(
+  url: string,
+  apiKey: string,
+  strategy: "desktop" | "mobile",
+  timeoutMs: number,
+  fetchImpl: typeof fetch,
+) {
   const psiUrl = new URL("https://www.googleapis.com/pagespeedonline/v5/runPagespeed");
   psiUrl.searchParams.append("url", url);
   psiUrl.searchParams.append("strategy", strategy);
@@ -51,9 +88,20 @@ async function fetchLighthouse(url: string, apiKey: string, strategy: "desktop" 
     psiUrl.searchParams.append("category", category);
   }
 
-  const res = await fetch(psiUrl.toString());
-  if (!res.ok) throw new Error(`PSI fetch failed: HTTP ${res.status}`);
-  return parseLighthouse(await res.json());
+  // The signal covers the body read too: a response that stalls mid-stream is
+  // cut off by the same timer rather than hanging.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
+  try {
+    const res = await fetchImpl(psiUrl.toString(), { signal: controller.signal });
+    if (!res.ok) throw new Error(`PSI fetch failed: HTTP ${res.status}`);
+    return parseLighthouse(await res.json());
+  } catch (e) {
+    if (controller.signal.aborted) throw new PageSpeedTimeoutError(timeoutMs);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function categoryScore(category: { score?: unknown } | undefined): number | undefined {
@@ -115,19 +163,33 @@ export function parseLighthouse(data: any) {
 /** PSI genuinely 500s sometimes when asked to compute all 4 categories at
  * once on a slower page — confirmed for real: a page that failed with all 4
  * categories succeeded immediately when requesting just one. One retry
- * meaningfully improves real yield without hiding a persistent failure. */
-async function fetchLighthouseWithRetry(url: string, apiKey: string, strategy: "desktop" | "mobile") {
+ * meaningfully improves real yield without hiding a persistent failure.
+ * The retry shares the one deadline and never follows a timeout, so the whole
+ * measurement stays inside `timeoutMs`. */
+async function fetchLighthouseWithRetry(
+  url: string,
+  apiKey: string,
+  strategy: "desktop" | "mobile",
+  timeoutMs: number,
+  fetchImpl: typeof fetch,
+) {
+  const deadline = Date.now() + timeoutMs;
   try {
-    return await fetchLighthouse(url, apiKey, strategy);
-  } catch {
-    return await fetchLighthouse(url, apiKey, strategy);
+    return await fetchLighthouse(url, apiKey, strategy, timeoutMs, fetchImpl);
+  } catch (e) {
+    if (isPageSpeedTimeout(e)) throw e;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new PageSpeedTimeoutError(timeoutMs);
+    return await fetchLighthouse(url, apiKey, strategy, remaining, fetchImpl);
   }
 }
 
-export async function fetchPageSpeed(url: string, apiKey: string): Promise<PageSpeedResult> {
+export async function fetchPageSpeed(url: string, apiKey: string, options: PageSpeedOptions = {}): Promise<PageSpeedResult> {
+  const timeoutMs = options.timeoutMs ?? PSI_TIMEOUT_MS;
+  const fetchImpl = options.fetchImpl ?? fetch;
   const [desktopData, mobileData] = await Promise.all([
-    fetchLighthouseWithRetry(url, apiKey, "desktop"),
-    fetchLighthouseWithRetry(url, apiKey, "mobile"),
+    fetchLighthouseWithRetry(url, apiKey, "desktop", timeoutMs, fetchImpl),
+    fetchLighthouseWithRetry(url, apiKey, "mobile", timeoutMs, fetchImpl),
   ]);
 
   return {
