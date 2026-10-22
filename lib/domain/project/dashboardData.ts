@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { REAL_DOCUMENT_TYPES } from "../../document-types.ts";
 import { slimAuditRow, type DashboardDataset } from "./dashboardCache.ts";
 
 export type DatasetSpec = {
@@ -10,6 +11,8 @@ export type DatasetSpec = {
   orderColumn: string;
   /** Upper bound on rows, newest first. */
   limit: number;
+  /** When set, only rows whose doc_type is in this list are read (applied before the limit). */
+  docTypes?: readonly string[];
 };
 
 /**
@@ -29,6 +32,8 @@ export const DATASETS: Record<DashboardDataset, DatasetSpec> = {
     sqliteColumns: "doc_type, content, updated_at",
     orderColumn: "created_at",
     limit: 50,
+    // Allowlist, not a marker exclusion: cron markers share this table and are always newer.
+    docTypes: REAL_DOCUMENT_TYPES,
   },
   project_competitors: {
     columns: "id, url, created_at",
@@ -51,15 +56,18 @@ export function shapeRows(table: DashboardDataset, rows: unknown[]): unknown[] {
 
 export type DatasetQuery = PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>;
 
+type DatasetFilterable = {
+  in(column: string, values: readonly string[]): DatasetFilterable;
+  order(column: string, opts: { ascending: boolean }): {
+    limit(count: number): DatasetQuery;
+  };
+};
+
 /** The slice of a Supabase client the loader needs, so tests can fake it. */
 export type DatasetClient = {
   from(table: string): {
     select(columns: string): {
-      eq(column: string, value: string): {
-        order(column: string, opts: { ascending: boolean }): {
-          limit(count: number): DatasetQuery;
-        };
-      };
+      eq(column: string, value: string): DatasetFilterable;
     };
   };
 };
@@ -77,10 +85,9 @@ export async function loadPlatformDatasets(
   const results = await Promise.all(
     names.map((table) => {
       const spec = DATASETS[table];
-      return client
-        .from(table)
-        .select(spec.columns)
-        .eq("project_id", projectId)
+      let query = client.from(table).select(spec.columns).eq("project_id", projectId);
+      if (spec.docTypes) query = query.in("doc_type", spec.docTypes);
+      return query
         .order(spec.orderColumn, { ascending: false })
         .limit(spec.limit);
     })
