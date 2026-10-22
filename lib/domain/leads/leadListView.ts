@@ -5,6 +5,9 @@
 
 export type LeadFilter = "all" | "with" | "without";
 
+/** The filter tabs, in display order. */
+export const LEAD_FILTERS: readonly LeadFilter[] = ["all", "with", "without"];
+
 type EmailLead = { email: string | null | undefined };
 
 export type LeadCounts = { all: number; withEmail: number; noEmail: number };

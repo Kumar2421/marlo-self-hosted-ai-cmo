@@ -1,12 +1,13 @@
 "use client";
 
 import { X, ChevronsLeft, RefreshCw, Loader2, Settings } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useProviders, findProviderForModel } from "@/lib/providers-store";
 import { useToast } from "@/components/dashboard/Toast";
 import { useTerminalLog } from "@/lib/terminal-log-store";
 import { WebsiteIcon } from "@/components/shared/WebsiteIcon";
+import { useDialog } from "@/components/shared/useDialog";
 
 type Competitor = {
   id: string;
@@ -64,6 +65,8 @@ function FeatureCompare({
 
 export default function CompetitorComparisonPanel({ onClose }: { onClose: () => void }) {
   const router = useRouter();
+  const titleId = useId();
+  const panelRef = useDialog<HTMLDivElement>(true, onClose);
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -167,129 +170,139 @@ export default function CompetitorComparisonPanel({ onClose }: { onClose: () => 
   }
 
   return (
-    <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-4xl flex-col border-l border-gray-200 bg-white shadow-2xl">
-      {/* Header */}
-      <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-200 px-4">
-        <div className="text-[14px] font-semibold text-gray-900">Competitor Comparison</div>
-        <div className="flex items-center gap-3 text-gray-400">
-          {competitors.length > 0 && (
-            <button
-              onClick={handleRefresh}
-              disabled={generating}
-              title="Refresh"
-              className="hover:text-gray-700 disabled:opacity-50"
-            >
-              {generating ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
-            </button>
-          )}
-          <button onClick={onClose} title="Collapse" className="hover:text-gray-700">
-            <ChevronsLeft size={16} />
-          </button>
-          <button onClick={onClose} title="Close" className="hover:text-gray-700">
-            <X size={16} />
-          </button>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="okara-scroll flex-1 overflow-y-auto p-6">
-        <div className="space-y-6">
-          {loading ? (
-            <SkeletonComparison />
-          ) : apiKeyError ? (
-            <div className="flex flex-col items-center gap-3 py-12 text-center">
-              <div className="rounded-lg bg-red-50 p-4 text-left">
-                <p className="text-[13px] font-medium text-red-900 mb-2">LLM Provider Not Connected</p>
-                <p className="text-[12px] text-red-700 mb-3">{apiKeyError}</p>
-              </div>
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-gray-900/20" onClick={onClose} aria-hidden="true" />
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="relative flex h-full w-full max-w-4xl flex-col border-l border-gray-200 bg-white shadow-2xl outline-none"
+      >
+        {/* Header */}
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-200 px-4">
+          <div id={titleId} className="text-[14px] font-semibold text-gray-900">Competitor Comparison</div>
+          <div className="flex items-center gap-3 text-gray-400">
+            {competitors.length > 0 && (
               <button
-                onClick={() => router.push("/settings?tab=providers")}
-                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-medium text-white hover:bg-blue-700"
-              >
-                <Settings size={14} />
-                Open Settings
-              </button>
-            </div>
-          ) : competitors.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-12 text-center">
-              <p className="text-[14px] font-medium text-gray-900">No comparison yet</p>
-              <p className="max-w-xs text-[13px] text-gray-500">
-                Generate a comparison from your competitors — we'll extract pricing and key
-                features from their websites.
-              </p>
-              <button
-                onClick={handleGenerate}
+                onClick={handleRefresh}
                 disabled={generating}
-                className="mt-2 flex items-center gap-2 rounded-lg bg-[#111111] px-4 py-2 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50"
+                title="Refresh"
+                className="hover:text-gray-700 disabled:opacity-50"
               >
-                {generating ? <Loader2 size={14} className="animate-spin" /> : null}
-                {generating ? "Generating..." : "Generate Comparison"}
+                {generating ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
               </button>
-            </div>
-          ) : (
-            <>
-              {/* Overview */}
-              <div>
-                <h2 className="mb-2 text-[14px] font-semibold text-gray-900">How you stack up</h2>
-                <p className="text-[13px] text-gray-600">
-                  Side-by-side comparison of pricing and core features. Green checkmarks show features you
-                  have; dashes show gaps.
-                </p>
-              </div>
+            )}
+            <button onClick={onClose} title="Collapse" className="hover:text-gray-700">
+              <ChevronsLeft size={16} />
+            </button>
+            <button onClick={onClose} title="Close" className="hover:text-gray-700">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
 
-              {/* Comparison Grid */}
-              <div className="space-y-4">
-                {/* Our Product (Highlighted) */}
-                <div className="rounded-lg border-2 border-blue-500 bg-blue-50 p-4">
-                  <div className="mb-3">
-                    <h3 className="text-[13px] font-semibold text-blue-900">{OUR_PRODUCT.name}</h3>
-                    <p className="text-[12px] font-semibold text-green-700">{OUR_PRODUCT.startingPrice}</p>
-                  </div>
-                  <FeatureCompare
-                    ourFeatures={OUR_PRODUCT.features}
-                    competitorFeatures={competitors.flatMap((c) => c.features)}
-                  />
+        {/* Content */}
+        <div className="okara-scroll flex-1 overflow-y-auto p-6">
+          <div className="space-y-6">
+            {loading ? (
+              <SkeletonComparison />
+            ) : apiKeyError ? (
+              <div className="flex flex-col items-center gap-3 py-12 text-center">
+                <div className="rounded-lg bg-red-50 p-4 text-left">
+                  <p className="text-[13px] font-medium text-red-900 mb-2">LLM Provider Not Connected</p>
+                  <p className="text-[12px] text-red-700 mb-3">{apiKeyError}</p>
+                </div>
+                <button
+                  onClick={() => router.push("/settings?tab=providers")}
+                  className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-medium text-white hover:bg-blue-700"
+                >
+                  <Settings size={14} />
+                  Open Settings
+                </button>
+              </div>
+            ) : competitors.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 py-12 text-center">
+                <p className="text-[14px] font-medium text-gray-900">No comparison yet</p>
+                <p className="max-w-xs text-[13px] text-gray-500">
+                  Generate a comparison from your competitors — we&apos;ll extract pricing and key
+                  features from their websites.
+                </p>
+                <button
+                  onClick={handleGenerate}
+                  disabled={generating}
+                  className="mt-2 flex items-center gap-2 rounded-lg bg-[#111111] px-4 py-2 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50"
+                >
+                  {generating ? <Loader2 size={14} className="animate-spin" /> : null}
+                  {generating ? "Generating..." : "Generate Comparison"}
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* Overview */}
+                <div>
+                  <h2 className="mb-2 text-[14px] font-semibold text-gray-900">How you stack up</h2>
+                  <p className="text-[13px] text-gray-600">
+                    Side-by-side comparison of pricing and core features. Green checkmarks show features you
+                    have; dashes show gaps.
+                  </p>
                 </div>
 
-                {/* Competitors */}
-                {competitors.map((competitor) => (
-                  <div key={competitor.id} className="rounded-lg border border-gray-200 bg-white p-4">
-                    <div className="mb-3 flex items-center gap-2">
-                      <WebsiteIcon url={competitor.url} size={7} />
-                      <div>
-                        <h3 className="text-[13px] font-semibold text-gray-900">{competitor.name}</h3>
-                        <p className="text-[12px] text-gray-600">{competitor.startingPrice}</p>
-                      </div>
+                {/* Comparison Grid */}
+                <div className="space-y-4">
+                  {/* Our Product (Highlighted) */}
+                  <div className="rounded-lg border-2 border-blue-500 bg-blue-50 p-4">
+                    <div className="mb-3">
+                      <h3 className="text-[13px] font-semibold text-blue-900">{OUR_PRODUCT.name}</h3>
+                      <p className="text-[12px] font-semibold text-green-700">{OUR_PRODUCT.startingPrice}</p>
                     </div>
                     <FeatureCompare
                       ourFeatures={OUR_PRODUCT.features}
-                      competitorFeatures={competitor.features}
+                      competitorFeatures={competitors.flatMap((c) => c.features)}
                     />
                   </div>
-                ))}
-              </div>
 
-              {/* Insights */}
-              <div className="rounded-lg bg-gray-50 p-4">
-                <h3 className="mb-2 text-[13px] font-semibold text-gray-900">Why Marlo wins</h3>
-                <ul className="space-y-1.5 text-[12px] text-gray-700">
-                  <li>
-                    <strong>Cheaper or free</strong> — Free tier + affordable plans vs $99-120/month
-                    competitors
-                  </li>
-                  <li>
-                    <strong>Lead generation + email automation</strong> — Competitors focus on SEO only
-                  </li>
-                  <li>
-                    <strong>Code-first fixes</strong> — Auto-generate GitHub PRs for SEO issues (unique)
-                  </li>
-                  <li>
-                    <strong>All-in-one</strong> — SEO + leads + email vs juggling 3+ tools
-                  </li>
-                </ul>
-              </div>
-            </>
-          )}
+                  {/* Competitors */}
+                  {competitors.map((competitor) => (
+                    <div key={competitor.id} className="rounded-lg border border-gray-200 bg-white p-4">
+                      <div className="mb-3 flex items-center gap-2">
+                        <WebsiteIcon url={competitor.url} size={7} />
+                        <div>
+                          <h3 className="text-[13px] font-semibold text-gray-900">{competitor.name}</h3>
+                          <p className="text-[12px] text-gray-600">{competitor.startingPrice}</p>
+                        </div>
+                      </div>
+                      <FeatureCompare
+                        ourFeatures={OUR_PRODUCT.features}
+                        competitorFeatures={competitor.features}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Insights */}
+                <div className="rounded-lg bg-gray-50 p-4">
+                  <h3 className="mb-2 text-[13px] font-semibold text-gray-900">Why Marlo wins</h3>
+                  <ul className="space-y-1.5 text-[12px] text-gray-700">
+                    <li>
+                      <strong>Cheaper or free</strong> — Free tier + affordable plans vs $99-120/month
+                      competitors
+                    </li>
+                    <li>
+                      <strong>Lead generation + email automation</strong> — Competitors focus on SEO only
+                    </li>
+                    <li>
+                      <strong>Code-first fixes</strong> — Auto-generate GitHub PRs for SEO issues (unique)
+                    </li>
+                    <li>
+                      <strong>All-in-one</strong> — SEO + leads + email vs juggling 3+ tools
+                    </li>
+                  </ul>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>

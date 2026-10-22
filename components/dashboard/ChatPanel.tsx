@@ -314,6 +314,7 @@ export default function ChatPanel({
               }
             }}
             placeholder="Ask me anything..."
+            aria-label="Message to Marlo"
             className="mb-3 w-full bg-transparent text-[13px] text-gray-800 placeholder:text-gray-400 focus:outline-none"
           />
           <div className="flex items-center justify-between">
@@ -329,6 +330,7 @@ export default function ChatPanel({
             <button
               onClick={send}
               disabled={!input.trim() || sending}
+              aria-label="Send message"
               className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 text-gray-500 enabled:hover:bg-gray-200 disabled:opacity-40"
             >
               <ArrowUp size={14} />
