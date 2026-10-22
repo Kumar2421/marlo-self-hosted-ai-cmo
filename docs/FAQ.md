@@ -50,7 +50,7 @@ On hosted, yes. Row-level security and ownership checks on project routes keep e
 
 ### Where did `okara-alternative` go?
 
-That was this repository's old name. The repository is now `Kumar2421/marlo`, and GitHub redirects the old URL. Marlo is inspired by Okara but is not affiliated with it. Some internal names, such as the SQLite file `data/okara.db`, still use the old name.
+That was this repository's old name. The repository is now `Kumar2421/okara-alternative`, and GitHub redirects the old URL. Marlo is inspired by Okara but is not affiliated with it. Some internal names, such as the SQLite file `data/okara.db`, still use the old name.
 
 ### How do I report a security issue?
 

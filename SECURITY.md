@@ -4,7 +4,7 @@
 
 Please report security issues **privately**.
 
-1. **Preferred:** use GitHub private vulnerability reporting. On [github.com/Kumar2421/marlo](https://github.com/Kumar2421/marlo), go to **Security → Report a vulnerability**.
+1. **Preferred:** use GitHub private vulnerability reporting. On [github.com/Kumar2421/okara-alternative](https://github.com/Kumar2421/okara-alternative), go to **Security → Report a vulnerability**.
 2. **If that option is not available:** email `<security contact: to be added by the maintainer>`. If you cannot reach that address, open a GitHub issue that asks for a private channel, **without any details** of the issue.
 
 Include the affected URL or route, steps to reproduce, the impact you observed, and the commit or deployment you tested. Please don't access other users' data, degrade the hosted service, or run automated scanners against `app.marlo.mlforge.in`. Test against your own self-hosted instance when you can.
