@@ -13,6 +13,7 @@ import { takeCachedPublicAudit } from "@/lib/domain/seo/publicAuditCache";
 import { auditFindingInputs, saveAuditFindings } from "@/lib/domain/findings/auditFindings";
 import { flagVanishedFindings } from "@/lib/domain/findings/vanishedFindings";
 import { sqliteVanishPorts, supabaseVanishPorts } from "@/lib/domain/findings/findingRepositories";
+import { decideAutoRename } from "@/lib/domain/project/projectName";
 import { resolvePlatformApiKey } from "@/lib/domain/shared/resolvePlatformApiKey";
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
 
     const { data: project } = await db
       .from("projects")
-      .select("url")
+      .select("name, url")
       .eq("id", projectId)
       .eq("owner_id", user.id)
       .maybeSingle();
@@ -91,7 +92,13 @@ export async function POST(req: NextRequest) {
         await saveAuditFindings((input) => upsertFindingSupabase(db, user.id, input), auditFindingInputs(projectId, auditResult));
         await flagVanishedFindings(supabaseVanishPorts(db, user.id), projectId, auditResult, createdAt);
 
-        return NextResponse.json(auditResult);
+        // The URL alone gave a placeholder name; the crawl knows the real brand. Only an auto-derived name is replaced.
+        const renamed = decideAutoRename(project.name, project.url, auditResult);
+        if (renamed) {
+          await db.from("projects").update({ name: renamed, updated_at: createdAt }).eq("id", projectId).eq("owner_id", user.id).eq("name", project.name);
+        }
+
+        return NextResponse.json(renamed ? { ...auditResult, projectRenamed: renamed } : auditResult);
       } catch (err) {
         const raw = err instanceof Error ? err.message : String(err);
         return NextResponse.json({ error: raw }, { status: 500 });
@@ -126,7 +133,14 @@ export async function POST(req: NextRequest) {
         created_at = excluded.created_at
     `).run(url, JSON.stringify(auditResult), createdAt);
 
-    return NextResponse.json(auditResult);
+    // The URL alone gave a placeholder name; the crawl knows the real brand. Only an auto-derived name is replaced.
+    const row = db.prepare("SELECT name, url FROM projects WHERE id = ?").get(activeProjectId) as { name: string; url: string } | undefined;
+    const renamed = row ? decideAutoRename(row.name, row.url, auditResult) : null;
+    if (renamed) {
+      db.prepare("UPDATE projects SET name = ?, updated_at = ? WHERE id = ? AND name = ?").run(renamed, createdAt, activeProjectId, row!.name);
+    }
+
+    return NextResponse.json(renamed ? { ...auditResult, projectRenamed: renamed } : auditResult);
   } catch (err) {
     const raw = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: raw }, { status: 500 });
