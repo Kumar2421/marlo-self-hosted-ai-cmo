@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { useDialog } from "./useDialog";
 
 const WIDTHS = {
   md: "max-w-xl",
@@ -31,23 +32,7 @@ type SidePanelProps = {
  */
 export default function SidePanel({ open, onClose, title, subtitle, width = "lg", toolbar, footer, children }: SidePanelProps) {
   const titleId = useId();
-  const panelRef = useRef<HTMLDivElement>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    returnFocusRef.current = document.activeElement as HTMLElement | null;
-    panelRef.current?.focus();
-
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      returnFocusRef.current?.focus?.();
-    };
-  }, [open, onClose]);
+  const panelRef = useDialog<HTMLDivElement>(open, onClose);
 
   if (!open) return null;
 

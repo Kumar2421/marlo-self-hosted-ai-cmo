@@ -86,6 +86,7 @@ function CompactShell({ bp }: { bp: "mobile" | "tablet" }) {
 
   return (
     <div className="flex h-dvh flex-col bg-white">
+      <h1 className="sr-only">Marlo dashboard</h1>
       <TerminalLog />
       <main
         className={`grid min-h-0 flex-1 overflow-hidden ${bp === "tablet" ? "grid-cols-2" : "grid-cols-1"}`}
@@ -150,8 +151,9 @@ export default function DashboardPage() {
       <SocialPanelProvider>
       <OnboardingGate>
         <div className="flex h-dvh flex-col bg-white">
+          <h1 className="sr-only">Marlo dashboard</h1>
           <TerminalLog />
-          <div className="grid min-h-0 flex-1 overflow-hidden" style={{ gridTemplateColumns: cols, gridTemplateRows: "minmax(0, 1fr)" }}>
+          <div role="main" className="grid min-h-0 flex-1 overflow-hidden" style={{ gridTemplateColumns: cols, gridTemplateRows: "minmax(0, 1fr)" }}>
             <ContextPanel open={contextOpen} onToggle={() => setContextOpen((v) => !v)} />
             <Suspense fallback={null}>
               <AnalyticsPanel open={analyticsOpen} onToggle={() => setAnalyticsOpen((v) => !v)} />

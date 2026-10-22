@@ -18,8 +18,9 @@ import BusinessResults, { type BusinessSearchError } from "./leads/BusinessResul
 import type { BusinessLead } from "./leads/BusinessLeadCard";
 import { SkeletonCard } from "@/components/shared/Skeleton";
 import { FEATURES } from "@/lib/features";
+import { nextTabIndex } from "@/lib/tabKeys";
 import type { LeadSearchTarget } from "@/lib/domain/leads/leadProfile";
-import { countLeads, defaultFilter, filterLabel, filterLeads, profileSummary, type LeadFilter } from "@/lib/domain/leads/leadListView";
+import { LEAD_FILTERS, countLeads, defaultFilter, filterLabel, filterLeads, profileSummary, type LeadFilter } from "@/lib/domain/leads/leadListView";
 import {
   sortByFitScore,
   suggestCategory,
@@ -148,6 +149,14 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
   const leadCounts = countLeads(personLeads);
   const activeFilter = filter ?? defaultFilter(personLeads);
   const visibleLeads = filterLeads(personLeads, activeFilter);
+  // Arrow/Home/End move between the filter tabs (roving tabindex), per the WAI-ARIA tabs pattern.
+  const onFilterKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const next = nextTabIndex(e.key, LEAD_FILTERS.indexOf(activeFilter), LEAD_FILTERS.length);
+    if (next === null) return;
+    e.preventDefault();
+    setFilter(LEAD_FILTERS[next]);
+    document.getElementById(`leads-filter-${LEAD_FILTERS[next]}`)?.focus();
+  };
   const profileExpanded = profileOpen ?? personLeads.length === 0;
   const businessById = new Map(businessLeads.map((l) => [l.id, l]));
   const resultIdSet = new Set(bizResultIds);
@@ -692,13 +701,21 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
           </div>
         ) : (
           <>
-            <div className="@container flex items-center gap-1 overflow-x-auto border-b border-gray-100 px-3 py-2" role="tablist" aria-label="Filter leads by email">
-              {(["all", "with", "without"] as const).map((value) => (
+            <div
+              className="@container flex items-center gap-1 overflow-x-auto border-b border-gray-100 px-3 py-2"
+              role="tablist"
+              aria-label="Filter leads by email"
+              onKeyDown={onFilterKeyDown}
+            >
+              {LEAD_FILTERS.map((value) => (
                 <button
                   key={value}
+                  id={`leads-filter-${value}`}
                   type="button"
                   role="tab"
                   aria-selected={activeFilter === value}
+                  aria-controls="leads-filter-panel"
+                  tabIndex={activeFilter === value ? 0 : -1}
                   onClick={() => setFilter(value)}
                   className={`min-h-8 shrink-0 rounded-md px-2 text-[12px] @[19rem]:px-2.5 font-medium ${
                     activeFilter === value ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
@@ -709,14 +726,14 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
               ))}
             </div>
             {visibleLeads.length === 0 ? (
-              <p className="px-4 py-6 text-center text-[12px] text-gray-500">
+              <p id="leads-filter-panel" role="tabpanel" aria-labelledby={`leads-filter-${activeFilter}`} className="px-4 py-6 text-center text-[12px] text-gray-500">
                 {activeFilter === "with" ? "No leads with an email yet. " : "No leads without an email. "}
                 <button type="button" onClick={() => setFilter("all")} className="font-medium text-gray-800 underline underline-offset-2">
                   Show all {leadCounts.all}
                 </button>
               </p>
             ) : (
-              <div className="divide-y divide-gray-100">
+              <div id="leads-filter-panel" role="tabpanel" aria-labelledby={`leads-filter-${activeFilter}`} className="divide-y divide-gray-100">
                 {visibleLeads.map((lead) => {
                   const source = websiteHref(lead.source_url);
                   const meta = [lead.title, lead.company].filter(Boolean).join(" · ") || lead.email || "";

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useId } from "react";
 import { FileText, Copy, Pencil, Download, ChevronsLeft, X, Loader2, RefreshCw } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { useProviders, findProviderForModel } from "@/lib/providers-store";
 import { useToast } from "@/components/dashboard/Toast";
 import { useTerminalLog } from "@/lib/terminal-log-store";
 import { assessGeneratedDocument } from "@/lib/domain/project/setupRun";
+import { useDialog } from "@/components/shared/useDialog";
 
 // No Tailwind Typography plugin in this project (nothing else here uses
 // `prose`), so style each markdown element explicitly instead of relying on
@@ -69,6 +70,7 @@ export default function DocumentPanel({ title, apiPath, downloadName, onClose }:
   const { primaryModel } = useProviders();
   const { show } = useToast();
   const { log, logDone } = useTerminalLog();
+  const titleId = useId();
 
   const base = `/api/project/documents/${apiPath}`;
 
@@ -224,6 +226,9 @@ export default function DocumentPanel({ title, apiPath, downloadName, onClose }:
     onClose();
   }
 
+  // Esc, focus-in and focus-return, same as the Findings drawer. Esc goes through handleClose so unsaved edits still ask first.
+  const panelRef = useDialog<HTMLDivElement>(true, handleClose);
+
   function handleCopy() {
     if (content) navigator.clipboard?.writeText(content);
     show("Copied to clipboard.");
@@ -241,124 +246,134 @@ export default function DocumentPanel({ title, apiPath, downloadName, onClose }:
   }
 
   return (
-    <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col border-l border-gray-200 bg-white shadow-2xl">
-      <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-200 px-4">
-        <div className="flex items-center gap-2 text-[14px] font-semibold text-gray-900">
-          <FileText size={16} className="text-gray-500" />
-          {title}
-        </div>
-        <div className="flex items-center gap-3 text-gray-400">
-          {content && (
-            <>
-              <button onClick={handleCopy} title="Copy" className="hover:text-gray-700">
-                <Copy size={15} />
-              </button>
-              <button
-                onClick={() => {
-                  setDraft(content);
-                  setEditing((v) => !v);
-                }}
-                title="Edit"
-                className={editing ? "text-gray-900" : "hover:text-gray-700"}
-              >
-                <Pencil size={15} />
-              </button>
-              <button onClick={handleDownload} title="Download" className="hover:text-gray-700">
-                <Download size={15} />
-              </button>
-            </>
-          )}
-          <button onClick={handleClose} title="Collapse" className="hover:text-gray-700">
-            <ChevronsLeft size={16} />
-          </button>
-          <button onClick={handleClose} title="Close" className="hover:text-gray-700">
-            <X size={16} />
-          </button>
-        </div>
-      </div>
-
-      <div className="okara-scroll flex-1 overflow-y-auto p-6">
-        {loading ? (
-          <div className="flex items-center gap-2 text-[13px] text-gray-400">
-            <Loader2 size={14} className="animate-spin" /> Loading...
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-gray-900/20" onClick={handleClose} aria-hidden="true" />
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="relative flex h-full w-full max-w-2xl flex-col border-l border-gray-200 bg-white shadow-2xl outline-none"
+      >
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-200 px-4">
+          <div id={titleId} className="flex items-center gap-2 text-[14px] font-semibold text-gray-900">
+            <FileText size={16} className="text-gray-500" />
+            {title}
           </div>
-        ) : editing ? (
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            className="h-full min-h-[60vh] w-full resize-none rounded-lg border border-gray-200 p-3 font-mono text-[13px] text-gray-800 outline-none focus:border-black"
-          />
-        ) : loadError && !content ? (
-          <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 text-center">
-            <FileText size={28} className="text-gray-300" />
-            <p className="text-[14px] font-medium text-gray-900">Couldn&apos;t load {title}</p>
-            <p className="max-w-xs text-[13px] text-gray-500">{loadError}</p>
-            <button
-              onClick={loadExisting}
-              className="mt-2 flex items-center gap-2 rounded-lg bg-[#111111] px-4 py-2 text-[13px] font-medium text-white hover:bg-black"
-            >
-              <RefreshCw size={14} /> Retry
+          <div className="flex items-center gap-3 text-gray-400">
+            {content && (
+              <>
+                <button onClick={handleCopy} title="Copy" className="hover:text-gray-700">
+                  <Copy size={15} />
+                </button>
+                <button
+                  onClick={() => {
+                    setDraft(content);
+                    setEditing((v) => !v);
+                  }}
+                  title="Edit"
+                  className={editing ? "text-gray-900" : "hover:text-gray-700"}
+                >
+                  <Pencil size={15} />
+                </button>
+                <button onClick={handleDownload} title="Download" className="hover:text-gray-700">
+                  <Download size={15} />
+                </button>
+              </>
+            )}
+            <button onClick={handleClose} title="Collapse" className="hover:text-gray-700">
+              <ChevronsLeft size={16} />
+            </button>
+            <button onClick={handleClose} title="Close" className="hover:text-gray-700">
+              <X size={16} />
             </button>
           </div>
-        ) : shown ? (
-          <article className="max-w-none text-[13px] leading-relaxed text-gray-700">
-            <ReactMarkdown components={MARKDOWN_COMPONENTS}>{shown}</ReactMarkdown>
-          </article>
-        ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-            <FileText size={28} className="text-gray-300" />
-            <p className="text-[14px] font-medium text-gray-900">No {title} yet</p>
-            <p className="max-w-xs text-[13px] text-gray-500">
-              Generate this from your crawled website — grounded in what&apos;s actually
-              there, not guesses.
+        </div>
+
+        <div className="okara-scroll flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <div className="flex items-center gap-2 text-[13px] text-gray-400">
+              <Loader2 size={14} className="animate-spin" /> Loading...
+            </div>
+          ) : editing ? (
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              className="h-full min-h-[60vh] w-full resize-none rounded-lg border border-gray-200 p-3 font-mono text-[13px] text-gray-800 outline-none focus:border-black"
+            />
+          ) : loadError && !content ? (
+            <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 text-center">
+              <FileText size={28} className="text-gray-300" />
+              <p className="text-[14px] font-medium text-gray-900">Couldn&apos;t load {title}</p>
+              <p className="max-w-xs text-[13px] text-gray-500">{loadError}</p>
+              <button
+                onClick={loadExisting}
+                className="mt-2 flex items-center gap-2 rounded-lg bg-[#111111] px-4 py-2 text-[13px] font-medium text-white hover:bg-black"
+              >
+                <RefreshCw size={14} /> Retry
+              </button>
+            </div>
+          ) : shown ? (
+            <article className="max-w-none text-[13px] leading-relaxed text-gray-700">
+              <ReactMarkdown components={MARKDOWN_COMPONENTS}>{shown}</ReactMarkdown>
+            </article>
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+              <FileText size={28} className="text-gray-300" />
+              <p className="text-[14px] font-medium text-gray-900">No {title} yet</p>
+              <p className="max-w-xs text-[13px] text-gray-500">
+                Generate this from your crawled website — grounded in what&apos;s actually
+                there, not guesses.
+              </p>
+              <button
+                onClick={handleGenerate}
+                disabled={generating}
+                className="mt-2 flex items-center gap-2 rounded-lg bg-[#111111] px-4 py-2 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50"
+              >
+                {generating ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                {generating ? "Generating..." : `Generate ${title}`}
+              </button>
+            </div>
+          )}
+
+          {generating && shown && (
+            <p className="mt-3 flex items-center gap-1.5 text-[12px] text-gray-400">
+              <Loader2 size={11} className="animate-spin" /> Writing...
             </p>
+          )}
+        </div>
+
+        {editing && (
+          <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 p-3">
+            <button
+              onClick={() => setEditing(false)}
+              className="rounded-lg px-4 py-2 text-[13px] font-medium text-gray-600 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveEdit}
+              className="rounded-lg bg-[#111111] px-4 py-2 text-[13px] font-medium text-white hover:bg-black"
+            >
+              Save
+            </button>
+          </div>
+        )}
+
+        {!editing && content && (
+          <div className="flex shrink-0 items-center justify-between border-t border-gray-200 px-4 py-2.5 text-[11px] text-gray-400">
+            <span>Generated from your crawled website — regenerate anytime.</span>
             <button
               onClick={handleGenerate}
               disabled={generating}
-              className="mt-2 flex items-center gap-2 rounded-lg bg-[#111111] px-4 py-2 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50"
+              className="flex items-center gap-1 text-gray-500 hover:text-gray-800 disabled:opacity-50"
             >
-              {generating ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-              {generating ? "Generating..." : `Generate ${title}`}
+              <RefreshCw size={11} className={generating ? "animate-spin" : ""} /> Regenerate
             </button>
           </div>
         )}
-
-        {generating && shown && (
-          <p className="mt-3 flex items-center gap-1.5 text-[12px] text-gray-400">
-            <Loader2 size={11} className="animate-spin" /> Writing...
-          </p>
-        )}
       </div>
-
-      {editing && (
-        <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 p-3">
-          <button
-            onClick={() => setEditing(false)}
-            className="rounded-lg px-4 py-2 text-[13px] font-medium text-gray-600 hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSaveEdit}
-            className="rounded-lg bg-[#111111] px-4 py-2 text-[13px] font-medium text-white hover:bg-black"
-          >
-            Save
-          </button>
-        </div>
-      )}
-
-      {!editing && content && (
-        <div className="flex shrink-0 items-center justify-between border-t border-gray-200 px-4 py-2.5 text-[11px] text-gray-400">
-          <span>Generated from your crawled website — regenerate anytime.</span>
-          <button
-            onClick={handleGenerate}
-            disabled={generating}
-            className="flex items-center gap-1 text-gray-500 hover:text-gray-800 disabled:opacity-50"
-          >
-            <RefreshCw size={11} className={generating ? "animate-spin" : ""} /> Regenerate
-          </button>
-        </div>
-      )}
     </div>
   );
 }

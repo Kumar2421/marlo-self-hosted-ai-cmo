@@ -264,10 +264,11 @@ function ProjectSwitcher() {
     setSwitching(id);
     try {
       await switchProject(id);
-      setOpen(false);
     } catch (err) {
       show(err instanceof Error ? err.message : "Failed to switch project.");
     } finally {
+      // Success or failure, the menu closes and the active project stays whatever the server says it is.
+      setOpen(false);
       setSwitching(null);
     }
   }
@@ -348,7 +349,7 @@ export default function TerminalLog() {
 
   return (
     <div ref={ref} className="relative z-30 shrink-0 bg-white px-3 pb-1 pt-2">
-      <div data-testid="terminal-bar" className="flex h-12 shrink-0 items-center justify-between rounded-xl bg-[#110f0e] px-3">
+      <nav aria-label="Workspace" data-testid="terminal-bar" className="flex h-12 shrink-0 items-center justify-between rounded-xl bg-[#110f0e] px-3">
         <div className="flex min-w-0 flex-1 items-center gap-1">
           <GhostLoader className="mr-1 h-7 w-7" tone="light" />
           <ProjectSwitcher />
@@ -382,7 +383,7 @@ export default function TerminalLog() {
           <NotificationBell />
           <UserMenu />
         </div>
-      </div>
+      </nav>
 
       {logOpen && (
         <div

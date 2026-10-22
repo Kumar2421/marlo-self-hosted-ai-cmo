@@ -7,6 +7,7 @@ import CollapsedRail, { RailButton } from "./CollapsedRail";
 import { useToast } from "./Toast";
 import ScoreCircle from "./ScoreCircle";
 import FindingsWorkspace from "./FindingsWorkspace";
+import { nextTabIndex } from "@/lib/tabKeys";
 import type { SEOAuditPayload } from "@/lib/domain/seo/SEOAgent";
 import type { Finding as AnalyticsFinding } from "@/lib/domain/findings/findingTypes";
 import type { GeoCitationRow } from "@/lib/domain/geo/GEOAgent";
@@ -386,11 +387,9 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
 
   // Arrow/Home/End move between tabs (roving tabindex), per the WAI-ARIA tabs pattern.
   const onTabKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(e.key)) return;
+    const next = nextTabIndex(e.key, TABS.indexOf(tab), TABS.length);
+    if (next === null) return;
     e.preventDefault();
-    const i = TABS.indexOf(tab);
-    const next =
-      e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + TABS.length) % TABS.length;
     setTab(TABS[next]);
     document.getElementById(`analytics-tab-${TABS[next]}`)?.focus();
   };
@@ -485,6 +484,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
             role="tab"
             type="button"
             aria-selected={tab === t}
+            aria-controls="analytics-tabpanel"
             tabIndex={tab === t ? 0 : -1}
             onClick={() => setTab(t)}
             className={`min-w-fit flex-1 truncate rounded-lg px-1 py-1.5 text-center text-[11px] font-medium @[20rem]:px-1.5 @[20rem]:text-[12px] transition-colors ${tab === t ? "bg-gray-100 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}
@@ -494,7 +494,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
         ))}
       </div>
 
-      <div className="okara-scroll flex-1 overflow-y-auto p-4">
+      <div id="analytics-tabpanel" role="tabpanel" aria-labelledby={`analytics-tab-${tab}`} className="okara-scroll flex-1 overflow-y-auto p-4">
         {tab === "Findings" ? (
           <FindingsWorkspace onRunAudit={handleRunAudit} auditRunning={loading || setupRunning} />
         ) : tab === "Traffic" ? (
