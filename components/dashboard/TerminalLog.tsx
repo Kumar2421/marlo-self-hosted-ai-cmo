@@ -117,7 +117,13 @@ function UserMenu() {
                 {creditsLabel}
               </span>
               {credits.billingEnabled && (
-                <button className="rounded-full bg-[#111111] px-3 py-1 text-[11px] font-medium text-white hover:bg-black">
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    router.push("/pricing");
+                  }}
+                  className="rounded-full bg-[#111111] px-3 py-1 text-[11px] font-medium text-white hover:bg-black"
+                >
                   Upgrade
                 </button>
               )}
