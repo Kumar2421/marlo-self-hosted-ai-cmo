@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Lock, KeyRound, ArrowLeft } from "lucide-react";
 import GhostLoader from "@/components/shared/GhostLoader";
@@ -603,6 +604,11 @@ export default function LoginPage() {
                   <button type="button" onClick={toggleMode} className="font-medium text-gray-900 hover:underline">
                     {isSignUp ? "Sign In" : "Sign Up"}
                   </button>
+                </p>
+                <p className="mt-2 text-center text-sm text-black/50">
+                  <Link href="/pricing" className="font-medium text-gray-900 hover:underline">
+                    Pricing
+                  </Link>
                 </p>
               </>
             )}
