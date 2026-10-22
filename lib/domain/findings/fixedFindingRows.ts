@@ -29,6 +29,22 @@ export async function readAllRows<T>(page: (from: number, to: number) => RangeRe
 }
 
 /**
+ * The rows the auto-verify job may check: every fixed finding, plus geo-gap findings being fixed
+ * and seo-audit findings flagged evidence.vanished that are still open. The job re-filters each
+ * (status, gap/flag rules); this only bounds what it reads.
+ */
+export async function listAutoVerifyCandidateRows(db: SupabaseClient): Promise<Array<FindingRow & { user_id: string }>> {
+  type Row = FindingRow & { user_id: string };
+  const fixed = await listFixedFindingRows(db);
+  const gaps = await readAllRows<Row>((from, to) =>
+    db.from("findings").select("*").eq("source", "geo").eq("category", "geo_gap").eq("status", "fixing").order("id", { ascending: true }).range(from, to) as unknown as RangeResult<Row>);
+  const vanished = await readAllRows<Row>((from, to) =>
+    db.from("findings").select("*").eq("source", "seo-audit").in("status", ["new", "acknowledged", "fixing", "failed"]).not("evidence->vanished", "is", null).order("id", { ascending: true }).range(from, to) as unknown as RangeResult<Row>);
+  const seen = new Set<string>();
+  return [...fixed, ...gaps, ...vanished].filter((r) => (seen.has(String(r.id)) ? false : (seen.add(String(r.id)), true)));
+}
+
+/**
  * Every fixed finding, read in ranges. One unpaged query would silently stop at
  * the server's row cap. Ordered by id so consecutive ranges never repeat or skip
  * a row. The cursor advances by the rows actually returned, so a server that

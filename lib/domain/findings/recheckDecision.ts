@@ -16,7 +16,7 @@ export type RecheckDecision =
   | { kind: "skipped"; reason: string }
   | { kind: "checked"; outcome: "verified" | "failed"; result: FindingRecheckResult };
 
-type RecheckFinding = Pick<Finding, "source" | "category" | "entityId" | "url" | "severity">;
+type RecheckFinding = Pick<Finding, "source" | "category" | "entityId" | "url" | "severity"> & Partial<Pick<Finding, "evidence" | "firstSeen" | "status" | "recommendation">>;
 
 /** A decision from a check that has already produced a FindingRecheckResult (search snapshots, the search-console page audit). */
 export function checkedDecision(result: FindingRecheckResult): RecheckDecision {
@@ -41,11 +41,26 @@ export async function decideRecheck(
       readiness = await ports.runGeoReadiness(url);
       return readiness;
     },
+    geoGapVerdict: ports.geoGapVerdict,
   };
 
   const verdict = await verifyFinding(capturing, finding, now, options);
   if (verdict.outcome === "skipped") return { kind: "skipped", reason: verdict.reason };
   const issueDetected = verdict.outcome === "failed";
+
+  if (finding.source === "geo" && finding.category === "geo_gap") {
+    // S8 rules: later answers naming the project verify the gap at any open status; later answers
+    // that still miss fail it only when the user said it was fixed, otherwise the fix is still pending.
+    if (issueDetected && finding.status !== "fixed") {
+      return { kind: "skipped", reason: "Fix pending: later AI answers still do not name you. Mark the fix as done, then re-check." };
+    }
+    const evidence = { ...(finding.evidence ?? {}), verification: { outcome: verdict.outcome, reason: verdict.reason, checkedAt: verdict.checkedAt } };
+    return {
+      kind: "checked",
+      outcome: verdict.outcome,
+      result: { issueDetected, severity: finding.severity, recommendation: finding.recommendation ?? "", evidence },
+    };
+  }
 
   if (finding.source === "seo-audit" && seoFindings) {
     const reconciled = reconcileSeoAuditRecheck(finding.entityId, seoFindings, finding.severity);
