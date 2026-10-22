@@ -28,6 +28,9 @@ import SearchHistoryBar from "@/components/dashboard/search/SearchHistoryBar";
 import SearchOverviewPanel from "@/components/dashboard/search/SearchOverviewPanel";
 import SearchInsightsSection from "@/components/dashboard/search/SearchInsightsSection";
 import GeoVisibility from "@/components/dashboard/geo/GeoVisibility";
+import GoogleReconnectLink from "@/components/settings/GoogleReconnectLink";
+import { buildTrafficView } from "@/lib/domain/analytics/trafficView";
+import { RECONNECT_TEXT } from "@/lib/domain/integrations/googleHealthView";
 
 const TABS = ["SEO", "Links", "Technical", "GEO", "Traffic", "Findings"] as const;
 type Tab = (typeof TABS)[number];
@@ -65,7 +68,11 @@ type TrafficResult = {
   topQueries: TrafficQuery[];
   opportunities: TrafficOpportunity[];
   search?: SearchInsights | null;
-  totals: { clicks: number; impressions: number; ctr: number; position: number };
+  /** Null when Google failed or has no data: read `status` / `needs_reconnect`, never assume numbers. */
+  totals: { clicks: number; impressions: number; ctr: number; position: number } | null;
+  status?: "ok" | "no_data" | "error" | "not_connected";
+  reason?: string | null;
+  needs_reconnect?: boolean;
   gscError: string | null;
   ga4: { sessions: number; activeUsers: number; screenPageViews: number } | null;
   ga4Error: string | null;
@@ -187,7 +194,10 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
       log("Fetching real Search Console + Analytics data...");
       try {
         const data = await fetchJson<TrafficResult>("/api/agents/analytics/traffic");
-        logDone(`Traffic data loaded — ${data.totals.clicks} clicks over the last 28 days.`);
+        const view = buildTrafficView(data);
+        if (view.kind === "cards" && data.totals) logDone(`Traffic data loaded — ${data.totals.clicks.toLocaleString("en-US")} clicks over the last 28 days.`);
+        else if (view.kind === "error") logDone(`⚠ ${view.message}`);
+        else log(`Traffic: ${view.message}`);
         return data;
       } catch (err) {
         logDone(`⚠ ${err instanceof Error ? err.message : "Failed to load Traffic data."}`);
@@ -196,6 +206,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
     },
   });
   const trafficResult = trafficQuery.data ?? null;
+  const trafficView = buildTrafficView(trafficResult);
   const trafficLoading = trafficQuery.isFetching && !trafficQuery.data;
   const trafficError = trafficQuery.error instanceof Error ? trafficQuery.error.message : null;
   const trafficNeedsSetup = trafficQuery.error instanceof ApiError && trafficQuery.error.status >= 400 && trafficQuery.error.status < 500;
@@ -546,16 +557,22 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
               </div>
             ) : trafficResult ? (
               <>
-                {trafficResult.gscError && (
-                  <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-800">
-                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                    <span>Search Console: {trafficResult.gscError}</span>
-                  </div>
-                )}
-                {!trafficResult.site && !trafficResult.gscError && (
-                  <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-800">
-                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                    <span>No verified Search Console site found on this Google account.</span>
+                {trafficView.kind !== "cards" && (
+                  <div
+                    role={trafficView.kind === "error" ? "alert" : undefined}
+                    className={`mb-4 rounded-xl border px-3 py-2.5 text-[12px] ${trafficView.kind === "error" || trafficView.kind === "not_connected" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-gray-200 bg-gray-50 text-gray-600"}`}
+                  >
+                    <div className="flex items-start gap-2">
+                      {trafficView.kind !== "no_data" && <AlertTriangle size={14} className="mt-0.5 shrink-0" />}
+                      <span>
+                        {trafficView.showReconnect ? RECONNECT_TEXT : trafficView.message}
+                      </span>
+                    </div>
+                    {trafficView.showReconnect && (
+                      <div className="mt-2">
+                        <GoogleReconnectLink returnTo="dashboard" />
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -583,20 +600,16 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
 
                 <SearchHistoryBar />
 
-                <div className="mb-5 grid grid-cols-3 gap-3">
-                  <div className="rounded-lg border border-gray-200 bg-white p-3">
-                    <div className="mb-1 text-[11px] uppercase text-gray-500">Total Clicks</div>
-                    <div className="text-lg font-semibold text-gray-900">{trafficResult.totals.clicks.toLocaleString()}</div>
+                {trafficView.kind === "cards" && (
+                  <div className="mb-5 grid grid-cols-3 gap-3">
+                    {trafficView.cards.filter((c) => c.key !== "impressions").map((c) => (
+                      <div key={c.key} className="rounded-lg border border-gray-200 bg-white p-3">
+                        <div className="mb-1 text-[11px] uppercase text-gray-500">{c.label}</div>
+                        <div className="text-lg font-semibold text-gray-900">{c.value}</div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="rounded-lg border border-gray-200 bg-white p-3">
-                    <div className="mb-1 text-[11px] uppercase text-gray-500">Click Rate</div>
-                    <div className="text-lg font-semibold text-gray-900">{(trafficResult.totals.ctr * 100).toFixed(1)}%</div>
-                  </div>
-                  <div className="rounded-lg border border-gray-200 bg-white p-3">
-                    <div className="mb-1 text-[11px] uppercase text-gray-500">Avg. Position</div>
-                    <div className="text-lg font-semibold text-gray-900">{trafficResult.totals.position.toFixed(1)}</div>
-                  </div>
-                </div>
+                )}
 
                 {trafficResult.ga4 && (
                   <div className="mb-5 grid grid-cols-3 gap-3">
@@ -780,7 +793,8 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                   totals={trafficResult?.totals ?? null}
                   ga4={trafficResult?.ga4 ?? null}
                   loading={trafficLoading}
-                  error={trafficError}
+                  error={trafficError ?? (trafficView.kind === "error" ? trafficView.message : null)}
+                  showReconnect={trafficView.showReconnect}
                   onViewTraffic={() => setTab("Traffic")}
                   onRetry={retryTraffic}
                 />
@@ -815,7 +829,8 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                     totals={trafficResult?.totals ?? null}
                     ga4={trafficResult?.ga4 ?? null}
                     loading={trafficLoading}
-                    error={trafficError}
+                    error={trafficError ?? (trafficView.kind === "error" ? trafficView.message : null)}
+                  showReconnect={trafficView.showReconnect}
                     onViewTraffic={() => setTab("Traffic")}
                     onRetry={retryTraffic}
                   />
