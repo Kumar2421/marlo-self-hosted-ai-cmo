@@ -18,6 +18,7 @@ import {
 import { signPayload, verifyPayload } from "../lib/domain/github/signedPayload.ts";
 import {
   completeInstall,
+  handleInstallCallback,
   listSelectableRepos,
   disconnectGithubApp,
   resolveGithubAccess,
@@ -235,4 +236,101 @@ test("a stored repo outside the allowlist (legacy link) gets no token", async ()
   const fake = githubFake();
   assert.equal((await resolveGithubAccess({ cfg, store: legacy.port, fetch: fake.f }, "p1")).status, "no_repo");
   assert.ok(!fake.calls.some((c) => c.includes("/access_tokens")));
+});
+
+// ---- existing installation discovery ----
+
+const CALLBACK = "https://app.example/api/github/app/callback";
+const stateFor = (returnTo = "/dashboard?finding=f1", now?: number) =>
+  createInstallState(cfg, { userId: "u1", projectId: "p1", returnTo }, now);
+
+test("start goes through user authorization when a callback URL is known, else the install page", () => {
+  const a = startInstall(cfg, { userId: "u1", projectId: "p1", callbackUrl: CALLBACK });
+  assert.ok(a.ok);
+  const url = new URL(a.ok ? a.url : "");
+  assert.equal(url.origin + url.pathname, "https://github.com/login/oauth/authorize");
+  assert.equal(url.searchParams.get("client_id"), "Iv.test");
+  assert.equal(url.searchParams.get("redirect_uri"), CALLBACK);
+  assert.ok(verifyInstallState(cfg, url.searchParams.get("state")));
+  const b = startInstall(cfg, { userId: "u1", projectId: "p1" });
+  assert.match(b.ok ? b.url : "", /^https:\/\/github\.com\/apps\/my-app\/installations\/new\?state=/);
+});
+
+test("callback with code only: an existing installation is stored and the user returns connected", async () => {
+  const { port, data } = memoryStore();
+  const { f } = githubFake({ userInstallations: [172692387] });
+  const out = await handleInstallCallback({ cfg, store: port, fetch: f }, { userId: "u1", state: stateFor(), installationId: null, code: "c", callbackUrl: CALLBACK });
+  assert.deepEqual(out, { kind: "connected", returnTo: "/dashboard?finding=f1" });
+  assert.equal(data.get("p1")?.installationId, 172692387);
+  assert.deepEqual(data.get("p1")?.allowedRepos, ["acme/site", "acme/blog"]);
+});
+
+test("callback with code only and no installation sends the user to the install page with the same state", async () => {
+  const { port, data } = memoryStore();
+  const { f } = githubFake({ userInstallations: [] });
+  const state = stateFor();
+  const out = await handleInstallCallback({ cfg, store: port, fetch: f }, { userId: "u1", state, installationId: null, code: "c", callbackUrl: CALLBACK });
+  assert.deepEqual(out, { kind: "redirect", url: installUrl("my-app", state) });
+  assert.equal(data.size, 0);
+});
+
+test("several installations: the project's current one is kept, else the first", async () => {
+  const link: GithubAppLink = { installationId: 8, allowedRepos: ["acme/site"], repoFullName: "acme/site", connectedAt: "x" };
+  const { port, data } = memoryStore({ p1: link });
+  const { f } = githubFake({ userInstallations: [5, 8] });
+  await handleInstallCallback({ cfg, store: port, fetch: f }, { userId: "u1", state: stateFor(), installationId: null, code: "c", callbackUrl: CALLBACK });
+  assert.equal(data.get("p1")?.installationId, 8);
+  assert.equal(data.get("p1")?.repoFullName, "acme/site");
+  const fresh = memoryStore();
+  await handleInstallCallback({ cfg, store: fresh.port, fetch: f }, { userId: "u1", state: stateFor(), installationId: null, code: "c", callbackUrl: CALLBACK });
+  assert.equal(fresh.data.get("p1")?.installationId, 5);
+});
+
+test("a foreign installation_id in the query is rejected and nothing is stored", async () => {
+  const { port, data } = memoryStore();
+  const { f } = githubFake({ userInstallations: [42] });
+  const out = await handleInstallCallback({ cfg, store: port, fetch: f }, { userId: "u1", state: stateFor(), installationId: "999", code: "c", callbackUrl: CALLBACK });
+  assert.equal(out.kind, "error");
+  assert.equal(out.kind === "error" ? out.returnTo : "", "/dashboard?finding=f1");
+  assert.equal(data.size, 0);
+});
+
+test("callback: expired, forged and other-user state are rejected", async () => {
+  const { port, data } = memoryStore();
+  const { f } = githubFake({ userInstallations: [42] });
+  const deps = { cfg, store: port, fetch: f };
+  const old = stateFor("/x", Date.now() - 16 * 60 * 1000);
+  for (const state of [old, "forged.value", null]) {
+    const out = await handleInstallCallback(deps, { userId: "u1", state, installationId: null, code: "c", callbackUrl: CALLBACK });
+    assert.equal(out.kind, "error");
+  }
+  const other = await handleInstallCallback(deps, { userId: "u2", state: stateFor(), installationId: null, code: "c", callbackUrl: CALLBACK });
+  assert.equal(other.kind, "error");
+  assert.equal(data.size, 0);
+});
+
+test("setup_action=update with installation_id and code connects like an install", async () => {
+  const { port, data } = memoryStore();
+  const { f } = githubFake({ userInstallations: [42] });
+  const out = await handleInstallCallback({ cfg, store: port, fetch: f }, { userId: "u1", state: stateFor(), installationId: "42", code: "c", callbackUrl: CALLBACK });
+  assert.equal(out.kind, "connected");
+  assert.equal(data.get("p1")?.installationId, 42);
+});
+
+test("installation_id without a code is never trusted: the user is sent through authorization first", async () => {
+  const { port, data } = memoryStore();
+  const state = stateFor();
+  const out = await handleInstallCallback({ cfg, store: port }, { userId: "u1", state, installationId: "42", code: null, callbackUrl: CALLBACK });
+  assert.deepEqual(out, { kind: "redirect", url: `https://github.com/login/oauth/authorize?client_id=Iv.test&redirect_uri=${encodeURIComponent(CALLBACK)}&state=${encodeURIComponent(state)}` });
+  assert.equal(data.size, 0);
+});
+
+test("code exchange failure returns to returnTo with a plain error", async () => {
+  const { port, data } = memoryStore();
+  const f: FetchLike = async () => json({ error: "bad_verification_code" });
+  const out = await handleInstallCallback({ cfg, store: port, fetch: f }, { userId: "u1", state: stateFor(), installationId: null, code: "bad", callbackUrl: CALLBACK });
+  assert.equal(out.kind, "error");
+  assert.equal(out.kind === "error" ? out.returnTo : "", "/dashboard?finding=f1");
+  assert.ok(out.kind === "error" && !/bad_verification_code|shh/.test(out.error));
+  assert.equal(data.size, 0);
 });

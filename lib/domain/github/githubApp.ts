@@ -60,6 +60,11 @@ export function installUrl(slug: string, state: string): string {
   return `https://github.com/apps/${encodeURIComponent(slug)}/installations/new?state=${encodeURIComponent(state)}`;
 }
 
+/** GitHub App user authorization: lets Marlo discover installations the user already has (GitHub never redirects back from an already-installed app's install page). */
+export function authorizeUrl(clientId: string, redirectUri: string, state: string): string {
+  return `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`;
+}
+
 function headers(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": API_VERSION };
 }
