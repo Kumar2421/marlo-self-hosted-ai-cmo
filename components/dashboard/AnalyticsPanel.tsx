@@ -122,7 +122,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
   const [findings, setFindings] = useState<AnalyticsFinding[]>([]);
   const [findingCreating, setFindingCreating] = useState<Record<string, boolean>>({});
   const { show } = useToast();
-  const { project, auditVersion } = useProject();
+  const { project, auditVersion, setupRunning } = useProject();
   const { log, logDone } = useTerminalLog();
   const searchParams = useSearchParams();
 
@@ -457,8 +457,8 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
           </a>
           <button
             onClick={handleRunAudit}
-            disabled={loading}
-            title="Re-run audit"
+            disabled={loading || setupRunning}
+            title={setupRunning ? "Setup is still running" : "Re-run audit"}
             className="flex shrink-0 items-center justify-center rounded-md bg-[#111111] px-2.5 py-1.5 text-white hover:bg-black disabled:opacity-70"
           >
             {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
@@ -491,7 +491,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
 
       <div className="okara-scroll flex-1 overflow-y-auto p-4">
         {tab === "Findings" ? (
-          <FindingsWorkspace onRunAudit={handleRunAudit} auditRunning={loading} />
+          <FindingsWorkspace onRunAudit={handleRunAudit} auditRunning={loading || setupRunning} />
         ) : tab === "Traffic" ? (
           <Section
             title="Traffic"
@@ -774,16 +774,16 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
               )}
             </>
           )}
-          {auditLoading && !loading ? (
+          {auditLoading && !loading && !setupRunning ? (
             <div className="space-y-4 py-2" aria-busy="true">
               <SkeletonCard rows={3} />
               <SkeletonLines rows={5} />
             </div>
           ) : (
           <div className={`flex flex-col items-center justify-center text-center text-gray-500 ${tab === "SEO" ? "py-10" : "h-full"}`}>
-             {loading ? <Loader2 className="animate-spin text-gray-400 mb-2" size={24} /> : <Search className="text-gray-300 mb-2" size={24} />}
+             {loading || setupRunning ? <Loader2 className="animate-spin text-gray-400 mb-2" size={24} /> : <Search className="text-gray-300 mb-2" size={24} />}
              <p className="text-sm">
-               {loading
+               {loading || setupRunning
                  ? "Auditing your website..."
                  : project?.url
                    ? "No audit yet — click refresh above to run one."

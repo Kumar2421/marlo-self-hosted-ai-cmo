@@ -91,7 +91,7 @@ export default function ContextPanel({
   const [discovering, setDiscovering] = useState(false);
   const { show } = useToast();
   const router = useRouter();
-  const { project, loading, competitorsVersion, documentsVersion, updateProject, notifyAuditChanged } = useProject();
+  const { project, loading, setupRunning, competitorsVersion, documentsVersion, updateProject, notifyAuditChanged } = useProject();
   const [retryingStep, setRetryingStep] = useState<SetupStepId | null>(null);
   const {
     data: dashboardData,
@@ -130,7 +130,8 @@ export default function ContextPanel({
         : [],
     [project, dashboardData, auditRows, documents, contextCompetitors],
   );
-  const showSetupCard = setupSteps.some((s) => !s.optional);
+  // Hidden while the setup run is still in flight: its steps are running, not missing.
+  const showSetupCard = !setupRunning && setupSteps.some((s) => !s.optional);
 
   useEffect(() => {
     if (contextError) {
