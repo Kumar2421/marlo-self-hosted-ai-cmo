@@ -35,9 +35,11 @@ export async function GET(request: NextRequest) {
     for (const table of names) {
       const spec = DATASETS[table];
       try {
+        const types = spec.docTypes ?? [];
+        const typeFilter = types.length > 0 ? ` AND doc_type IN (${types.map(() => "?").join(", ")})` : "";
         const rows = db
-          .prepare(`SELECT ${spec.sqliteColumns} FROM ${table} WHERE project_id = ? ORDER BY ${spec.orderColumn} DESC LIMIT ${spec.limit}`)
-          .all(context.projectId) as unknown[];
+          .prepare(`SELECT ${spec.sqliteColumns} FROM ${table} WHERE project_id = ?${typeFilter} ORDER BY ${spec.orderColumn} DESC LIMIT ${spec.limit}`)
+          .all(context.projectId, ...types) as unknown[];
         data[table] = shapeRows(table, rows);
       } catch {
         data[table] = [];
