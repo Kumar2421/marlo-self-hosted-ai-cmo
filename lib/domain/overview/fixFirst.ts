@@ -77,7 +77,7 @@ export function buildFixFirstView(input: FixFirstInput): FixFirstView {
   const items: FixFirstItem[] = list.slice(0, FIX_FIRST_MAX).map((g) => ({
     findingId: g.findingId,
     sentence: g.count > 1 ? `${plainSentence(g.action.title)} (${g.count} ${g.pages ? "pages" : "items"})` : plainSentence(g.action.title),
-    button: g.action.kind === "verify_fix" ? "Check" : g.action.cta.label === COPY.fixFinding.ctaFixable ? "Fix this" : "Open",
+    button: g.action.cta.label === COPY.vanished.cta ? COPY.vanished.cta : g.action.kind === "verify_fix" ? "Check" : g.action.cta.label === COPY.fixFinding.ctaFixable ? "Fix this" : "Open",
     count: g.count,
   }));
   if (items.length > 0) return { kind: "actions", items, moreCount: Math.max(0, list.length - items.length) };

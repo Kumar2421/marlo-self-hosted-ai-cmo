@@ -46,6 +46,11 @@ export const COPY = {
     why: "A quick check confirms the problem is really gone before you move on.",
     cta: "Check the fix",
   },
+  vanished: {
+    title: (label: string) => `No longer detected, re-check to confirm: ${label}`,
+    why: "The last audit did not report this issue. A re-check confirms it is really gone.",
+    cta: "Re-check",
+  },
   connect: {
     gsc: {
       title: "Connect Google Search Console",

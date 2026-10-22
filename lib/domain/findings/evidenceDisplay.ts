@@ -16,7 +16,7 @@ import { lighthouseScoreLabel } from "../seo/lighthouseAudits.ts";
 export type EvidenceRow = { key: string; label: string; value: unknown };
 
 /** Evidence keys shown elsewhere (the title, the callout, the auto-verification line), not as raw rows. */
-const HIDDEN_AUDIT_EVIDENCE_KEYS = new Set(["label", "whyItMatters", "autoVerify", "regression"]);
+const HIDDEN_AUDIT_EVIDENCE_KEYS = new Set(["label", "whyItMatters", "autoVerify", "regression", "vanished"]);
 
 /**
  * The auto-verification line for the detail panel, from the evidence the

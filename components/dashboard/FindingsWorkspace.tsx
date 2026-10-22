@@ -10,6 +10,7 @@ import SidePanel from "@/components/shared/SidePanel";
 import { SkeletonCard, SkeletonStats } from "@/components/shared/Skeleton";
 import FindingDetail, { STATUS_LABEL, severityClass, statusClass } from "./findings/FindingDetail";
 import { useFindings } from "./findings/useFindings";
+import { isVanished, vanishedNote } from "@/lib/domain/findings/vanishedFindings";
 
 const STATUS_ACTION: Partial<Record<FindingStatus, { next: FindingStatus; label: string }>> = {
   new: { next: "acknowledged", label: "Acknowledge" },
@@ -211,6 +212,7 @@ export default function FindingsWorkspace({
                       {pagePath(finding.url)}
                     </span>
                   </span>
+                  {vanishedNote(finding) && <span data-testid="finding-vanished" className="mt-1 block text-[11px] text-gray-500">{vanishedNote(finding)}</span>}
                   {index < 3 && <span className="mt-1 block text-[11px] text-gray-500">Why it is up here: {explainPriority(finding)}</span>}
                 </span>
                 <ChevronRight size={14} className="mt-1 shrink-0 text-gray-300" />
@@ -242,7 +244,7 @@ export default function FindingsWorkspace({
           )
         }
         footer={
-          selected && (primary || CAN_RECHECK.has(selected.status)) ? (
+          selected && (primary || CAN_RECHECK.has(selected.status) || isVanished(selected)) ? (
             <div className="flex flex-wrap gap-2">
               {primary && (
                 <button
@@ -254,7 +256,7 @@ export default function FindingsWorkspace({
                   {update.isPending && !update.variables?.body.action ? <Loader2 size={13} className="inline animate-spin" /> : primary.label}
                 </button>
               )}
-              {CAN_RECHECK.has(selected.status) && (
+              {(CAN_RECHECK.has(selected.status) || isVanished(selected)) && (
                 <button
                   type="button"
                   disabled={update.isPending}

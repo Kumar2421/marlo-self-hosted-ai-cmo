@@ -5,6 +5,7 @@
  */
 import { classifyFinding } from "../codefix/fixCatalog.ts";
 import { findingTitle } from "../findings/findingDisplay.ts";
+import { isVanished } from "../findings/vanishedFindings.ts";
 import type { Finding } from "../findings/findingTypes.ts";
 import { COPY } from "./copy.ts";
 
@@ -65,6 +66,8 @@ const SEVERITY_POINTS = { critical: 60, warning: 40, info: 20 } as const;
 const STATUS_POINTS: Partial<Record<Finding["status"], number>> = { new: 15, failed: 12, acknowledged: 8, fixing: 5 };
 const IMPACT_BY_SEVERITY = { critical: "high", warning: "medium", info: "low" } as const;
 const FIXABLE_BONUS = 10;
+/** Below the lowest possible fix_finding score (info 20 + fixing 5). */
+const VANISHED_SCORE = 10;
 const PR_BASE = 150;
 const KIND_ORDER: Record<NextActionKind, number> = {
   review_pr: 0,
@@ -113,6 +116,22 @@ function rankFinding(f: RankFinding, nowMs: number, hasPendingAction: boolean): 
       cta: { label: COPY.verifyFix.cta, target },
       score: 70 + Math.min(waiting, 7),
       reasons: ["marked fixed but not yet confirmed", ...(waiting > 0 ? [`waiting ${waiting}d`] : [])],
+    };
+  }
+
+  // The last audit stopped reporting this issue: the work left is a quick re-check, not a fix, so it
+  // ranks below every real fix (and is never a top action) but still shows until it is verified.
+  if (isVanished({ status: f.status, evidence: f.evidence ?? {} })) {
+    return {
+      id: `finding:${f.id}`,
+      kind: "verify_fix",
+      title: COPY.vanished.title(label),
+      why: COPY.vanished.why,
+      impact: "low",
+      effort: "minutes",
+      cta: { label: COPY.vanished.cta, target },
+      score: VANISHED_SCORE,
+      reasons: ["no longer reported by the last audit"],
     };
   }
 
