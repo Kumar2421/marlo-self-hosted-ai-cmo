@@ -9,6 +9,9 @@ import { getPlatformConfig } from "@/lib/domain/social/platforms";
 import { isNoSubredditError } from "@/lib/domain/social/errorDetection";
 import { useSocialDraftList, useSocialDraftActions, type AnyDraft, type SocialPlatform, type DraftView } from "./useSocialDrafts";
 import DraftPreviewCard from "./DraftPreviewCard";
+import { useLockedFeature } from "@/components/plan/usePlan";
+import { LockedLine } from "@/components/plan/LockedLine";
+import type { FeatureId } from "@/lib/domain/plans/planMatrix";
 
 const BTN = "inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-[12px] font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50";
 const BTN_PRIMARY = "inline-flex items-center gap-1.5 rounded-lg bg-[#111111] px-3 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-50";
@@ -206,7 +209,7 @@ function DraftDetail({ draft, platform, onClose, onChange }: { draft: AnyDraft; 
   );
 }
 
-export default function SocialWriterPanel({ platform, onClose }: { platform: SocialPlatform; onClose: () => void }) {
+function UnlockedSocialWriterPanel({ platform, onClose }: { platform: SocialPlatform; onClose: () => void }) {
   const { show } = useToast();
   const [view, setView] = useState<DraftView>("current");
   const [selected, setSelected] = useState<AnyDraft | null>(null);
@@ -335,5 +338,19 @@ function XIcon({ size = 14 }: { size?: number }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
     </svg>
+  );
+}
+
+const PLATFORM_FEATURE: Record<SocialPlatform, FeatureId> = { x: "x_drafts", linkedin: "linkedin_drafts", reddit: "reddit_drafts" };
+
+/** Plan gate: when the network's drafts are locked (enforcement on) the panel is one LockedLine; otherwise unchanged. */
+export default function SocialWriterPanel({ platform, onClose }: { platform: SocialPlatform; onClose: () => void }) {
+  const lock = useLockedFeature(PLATFORM_FEATURE[platform]);
+  if (!lock.locked) return <UnlockedSocialWriterPanel platform={platform} onClose={onClose} />;
+  const config = getPlatformConfig(platform);
+  return (
+    <SidePanel open onClose={onClose} width="md" title={`${config.name} Writer`} subtitle="Post drafts written from your product info">
+      <LockedLine label={lock.label} minPlan={lock.minPlan} hint="Drafts are written from your product info. You review each one before anything is posted." />
+    </SidePanel>
   );
 }

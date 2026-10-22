@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Zap, Lock } from "lucide-react";
 import { creditsDisplay } from "@/lib/credits-display";
+import { PlanBadge } from "@/components/plan/PlanBadge";
 
 type UsageEvent = {
   id: string;
@@ -79,6 +80,9 @@ export default function CreditsPage() {
     <div className="min-w-0 max-w-3xl">
       <h1 className="text-[15px] font-semibold text-gray-900">Credits</h1>
       <p className="mb-4 text-[13px] text-gray-500">Monitor usage and manage tasks for your AI CMO.</p>
+      <div className="mb-4 empty:hidden">
+        <PlanBadge />
+      </div>
 
       <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4">
         <div className="mb-3 flex items-start justify-between gap-3">

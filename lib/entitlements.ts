@@ -210,3 +210,12 @@ export async function canFetchLeadsToday(userId: string): Promise<LimitCheck> {
     return lookupFailure();
   }
 }
+
+/**
+ * Plan and enforcement flag for a signed-in user (used by GET /api/plan).
+ * Same logic as every gate above: self-host is never enforced, a failed
+ * lookup fails closed to "free" only when enforcement is on. Never throws.
+ */
+export async function getEntitlement(userId: string): Promise<{ plan: Plan; enforced: boolean }> {
+  return loadEntitlement(userId);
+}
