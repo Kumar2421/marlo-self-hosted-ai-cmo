@@ -18,6 +18,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, fetchJson } from "@/lib/query/fetchJson";
 import { SkeletonCard, SkeletonLines, SkeletonStats } from "@/components/shared/Skeleton";
 import { qk } from "@/lib/query/keys";
+import { useFindings } from "@/components/dashboard/findings/useFindings";
+import { countFindings, findingCountSentence, stripInlineCode } from "@/lib/domain/findings/findingDisplay";
+import { encodingLabel, lastAuditedLabel } from "@/lib/domain/seo/auditDisplay";
+import { lighthouseScoreLabel } from "@/lib/domain/seo/lighthouseAudits";
 import GoogleSourcesCard from "@/components/dashboard/search/GoogleSourcesCard";
 import GoogleSummary from "@/components/dashboard/search/GoogleSummary";
 import SearchHistoryBar from "@/components/dashboard/search/SearchHistoryBar";
@@ -137,18 +141,22 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
     queryKey: auditKey,
     enabled: open && Boolean(project?.url),
     queryFn: async (): Promise<SEOAuditPayload | null> => {
-      const data = await fetchJson<{ payload?: SEOAuditPayload | string | null }>(
+      const data = await fetchJson<{ payload?: SEOAuditPayload | string | null; created_at?: string | null }>(
         `/api/agents/seo/audit?url=${encodeURIComponent(project?.url ?? "")}`,
       );
       // Platform mode: `payload` is a Postgres jsonb column, already parsed. Self-host: SQLite
       // stores TEXT that needs JSON.parse(). Parsing unconditionally broke every platform audit load.
       if (!data.payload) return null;
-      return typeof data.payload === "string" ? JSON.parse(data.payload) : data.payload;
+      const payload: SEOAuditPayload = typeof data.payload === "string" ? JSON.parse(data.payload) : data.payload;
+      return data.created_at ? { ...payload, auditedAt: data.created_at } : payload;
     },
   });
   const auditData = auditQuery.data ?? null;
-  const auditErrors = auditData?.findings?.filter((f) => f.severity === "Error").length ?? 0;
-  const auditWarnings = auditData?.findings?.filter((f) => f.severity === "Warning").length ?? 0;
+  // The overview's finding numbers come from the stored findings, the same list and the same counting as the
+  // Findings tab, so the two can never disagree (fixed and verified findings are not "needs attention").
+  const storedFindings = useFindings({ enabled: open }).list;
+  const findingCounts = storedFindings.data ? countFindings(storedFindings.data) : null;
+  const auditedLabel = lastAuditedLabel(auditData?.auditedAt);
   const auditLoading = auditQuery.isPending && open && Boolean(project?.url);
   const setAuditData = (value: SEOAuditPayload | null) => queryClient.setQueryData(auditKey, value);
 
@@ -410,7 +418,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
       });
       if (res.ok) {
         const data = await res.json();
-        setAuditData(data);
+        setAuditData({ ...data, auditedAt: new Date().toISOString() });
         window.dispatchEvent(new CustomEvent("marlo:findings-updated"));
         show("SEO Audit completed!");
       } else {
@@ -839,18 +847,22 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                   title="Audit overview"
                   subtitle="A simple view of what the audit found and where to start."
                 >
-                  {(auditData.findings?.length ?? 0) > 0 && (
-                    <p className="mb-3 text-[12px] font-medium text-gray-800">
-                      {auditData.findings.length} {auditData.findings.length === 1 ? "finding needs" : "findings need"} review
-                      {auditErrors + auditWarnings > 0 &&
-                        `: ${[auditErrors > 0 && `${auditErrors} ${auditErrors === 1 ? "error" : "errors"}`, auditWarnings > 0 && `${auditWarnings} ${auditWarnings === 1 ? "warning" : "warnings"}`].filter(Boolean).join(", ")}`}
+                  {findingCounts && (findingCounts.needsAttention > 0 || findingCounts.awaitingVerification > 0) && (
+                    <p className="mb-1 text-[12px] font-medium text-gray-800">
+                      {findingCountSentence(findingCounts)}
                     </p>
                   )}
+                  {findingCounts && findingCounts.awaitingVerification > 0 && (
+                    <p className="mb-1 text-[11px] text-gray-500">
+                      {findingCounts.awaitingVerification} fixed and waiting for Marlo to re-check.
+                    </p>
+                  )}
+                  {auditedLabel && <p className="mb-3 text-[11px] text-gray-500">{auditedLabel}</p>}
                   <div className="grid grid-cols-[repeat(auto-fit,minmax(88px,1fr))] gap-2">
                     <button onClick={() => setTab("Findings")} className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
                       <div className="truncate text-[10px] uppercase tracking-wide text-gray-400">Findings</div>
-                      <div className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{auditData.findings?.length ?? 0}</div>
-                      <div className="mt-0.5 text-[11px] text-gray-500">Needs review</div>
+                      <div className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{findingCounts ? findingCounts.needsAttention : "—"}</div>
+                      <div className="mt-0.5 text-[11px] text-gray-500">Needs attention</div>
                     </button>
                     <button onClick={() => setTab("Findings")} className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
                       <div className="truncate text-[10px] uppercase tracking-wide text-gray-400">Lighthouse</div>
@@ -863,7 +875,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                       <div className="mt-0.5 text-[11px] text-gray-500">Detected on page</div>
                     </button>
                   </div>
-                  {(auditData.findings?.length ?? 0) > 0 && (
+                  {(findingCounts?.needsAttention ?? 0) > 0 && (
                     <button onClick={() => setTab("Findings")} className="mt-3 flex w-full items-center justify-between rounded-xl bg-[#111111] px-3 py-2.5 text-[12px] font-medium text-white hover:bg-black">
                       <span>See findings and recommended next steps</span>
                       <ChevronRight size={14} />
@@ -935,11 +947,11 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                           {auditData.lighthouseIssues[device].map((issue) => (
                             <div key={issue.id} className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white p-2.5">
                               <div className="min-w-0">
-                                <div className="text-[12px] font-medium text-gray-800">{issue.title}</div>
+                                <div className="text-[12px] font-medium text-gray-800">{stripInlineCode(issue.title)}</div>
                                 <div className="mt-0.5 text-[10px] uppercase tracking-wide text-gray-400">{issue.mode}</div>
                               </div>
                               <div className="shrink-0 text-right">
-                                <div className="text-[12px] font-semibold text-gray-900">{issue.score === null ? "N/A" : `${Math.round(issue.score * 100)}`}</div>
+                                <div className="text-[12px] font-semibold text-gray-900">{lighthouseScoreLabel(issue.score)}</div>
                                 {issue.displayValue && <div className="text-[10px] text-gray-500">{issue.displayValue}</div>}
                               </div>
                             </div>
@@ -1163,6 +1175,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
             {tab === "Technical" && (
               <>
                 <Section title="On-Page Overview" subtitle="Server configuration and page characteristics">
+                  {auditedLabel && <p className="-mt-2 mb-3 text-[11px] text-gray-500">{auditedLabel}</p>}
                   <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                     <div className="mb-4 flex items-center gap-4">
                       <ScoreCircle value={auditData.technical.onPageScore} label="On-Page" size={64} />
@@ -1175,7 +1188,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                       {[
                         ["Server", auditData.technical.server ?? "Not disclosed"],
                         ["Status", String(auditData.technical.status)],
-                        ["Encoding", auditData.technical.encoding ?? "None"],
+                        ["Encoding", encodingLabel(auditData.technical.encoding)],
                         ["Page Size", `${(auditData.technical.pageSizeBytes / 1024).toFixed(1)} KB`],
                         ["DOM Size", `${auditData.technical.domSize} elements`],
                         ["Cacheable", auditData.technical.cacheable ? "Yes" : "No"],
