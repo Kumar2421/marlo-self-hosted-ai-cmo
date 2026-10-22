@@ -47,7 +47,7 @@ export const READMEFIX_LEADS = PEOPLE.map(([name, title, company, location], i) 
 
 type F = { entityId: string; category: string; source?: string; severity: "info" | "warning" | "critical"; label: string; rec: string; status?: string; pages: string[]; evidence?: Record<string, unknown> };
 const SPEC: F[] = [
-  { entityId: "meta-description-missing", category: "meta-description", severity: "critical", label: "Meta description is missing", rec: "Add a meta description between 120 and 160 characters that says what the page offers.", pages: ["/pricing", "/features", "/blog/late-payment-guide", "/about"], evidence: { length: 0 } },
+  { entityId: "meta-description-missing", category: "meta-description", severity: "critical", label: "Meta description is missing", rec: "Add a meta description between 120 and 160 characters that says what the page offers.", pages: ["/pricing", "/features", "/blog/late-payment-guide", "/about"], evidence: { metaDescription: "Missing", pagesAffected: 4, whyItMatters: "Search engines and AI tools use the meta description to summarise a page. Without one they guess, and the snippet is often poor." } },
   { entityId: "canonical-missing", category: "canonical", severity: "warning", label: "Canonical link is missing", rec: "Add a rel=canonical tag that points to the preferred URL of the page.", pages: ["/", "/features"] },
   { entityId: "robots-ai", category: "ai-readiness", source: "geo", severity: "warning", label: "AI crawlers are blocked in robots.txt", rec: "Allow GPTBot and ClaudeBot in robots.txt so AI tools can read your pages.", pages: ["/robots.txt"] },
   { entityId: "lighthouse-button-name", category: "accessibility", severity: "warning", label: "Buttons do not have an accessible name", rec: "Give every button a text label or an aria-label.", pages: ["/"], evidence: { auditId: "button-name", device: "mobile", mode: "diagnostic", score: null, displayValue: "3 elements" } },
@@ -72,6 +72,24 @@ export const README_FINDINGS = SPEC.flatMap((s, si) =>
     resolvedAt: s.status === "verified" ? T0 : null,
   })),
 );
+
+const mr = (method: "gemini-grounded" | "simulated", rate: number, trend: "up" | "down" | "flat" | "new", competitors: string[]) => ({
+  method, runs: 3, mentionRate: rate, citedRate: rate / 2, trend, previousRate: null, previousDate: null, competitors, lastRunAt: T0,
+});
+export const README_GEO_OVERVIEW = {
+  project: { name: "Acme Invoice", domain: "acme.example.test" },
+  prompts: [
+    { prompt: "What is the best invoicing software for freelancers?", source: "gsc", active: true, gap: { method: "gemini-grounded", open: true, tracked: false, findingStatus: null }, methods: [mr("gemini-grounded", 1 / 3, "down", ["Fakturo", "Billwise"]), mr("simulated", 1 / 3, "flat", ["Fakturo"])] },
+    { prompt: "Which invoice app handles recurring billing for small agencies?", source: "gsc", active: true, gap: null, methods: [mr("gemini-grounded", 1, "up", []), mr("simulated", 2 / 3, "flat", ["Billwise"])] },
+    { prompt: "How do I stop clients paying invoices late?", source: "manual", active: true, gap: { method: "gemini-grounded", open: false, tracked: true, findingStatus: "acknowledged" }, methods: [mr("gemini-grounded", 0, "flat", ["Fakturo", "Paylane"])] },
+  ],
+  capabilities: { geminiAvailable: true, simulatedAvailable: true, geminiDailyCap: 20, geminiUsedToday: 0, simulatedDailyCap: 20, simulatedUsedToday: 0 },
+  lastRunAt: T0,
+};
+
+/** Findings with the first group already being fixed (so the drawer has Re-check) for the drawer shot and the demo. */
+export const README_FINDINGS_FIXING = README_FINDINGS.map((f) => (f.entityId === "meta-description-missing" ? { ...f, status: "fixing" } : f));
+export const README_RECHECK_REASON = "The live page still has no meta description. Publish the change, then re-check.";
 
 const days = Array.from({ length: 28 }, (_, i) => {
   const d = new Date(Date.UTC(2025, 11, 4 + i));
@@ -123,6 +141,14 @@ export async function mockReadmeApi(page: Page) {
       if (path === "/api/agents/leads/search") return json(route, { leads: READMEFIX_LEADS });
       if (path === "/api/agents/analytics/findings") return json(route, { findings: README_FINDINGS });
       if (path === "/api/agents/analytics/traffic") return json(route, README_TRAFFIC);
+      if (path === "/api/geo/overview") return json(route, README_GEO_OVERVIEW);
+      if (path === "/api/agents/analytics/findings/recommendations") {
+        return json(route, {
+          recommendations: [
+            { id: "rec_meta", findingId: "finding_0_0", type: "seo_issue", title: "Write a meta description for /pricing", summary: "Describe the plans in one sentence of 120 to 160 characters, for example: Simple invoicing for freelancers. Free to start, upgrade when you need reminders.", priority: "high", target: { url: "https://acme.example.test/pricing" }, evidence: {}, implementation: { kind: "manual", description: "Add the text to the page's meta description tag." } },
+          ],
+        });
+      }
       if (path === "/api/agents/automation") return json(route, { settings: { mode: "off" } });
       if (path === "/api/search/overview") {
         const rows = (k: number) => README_TRAFFIC.topQueries.map((r) => ({ clicks: Math.round(r.clicks * k), impressions: Math.round(r.impressions * k), position: r.position }));

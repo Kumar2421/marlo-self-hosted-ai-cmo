@@ -35,7 +35,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { chromium, type BrowserContext, type Page } from "@playwright/test";
+import { chromium, type Page } from "@playwright/test";
 import sharp from "sharp";
 
 process.env.E2E_SUPABASE_URL ||= "http://localhost:54330";
@@ -45,7 +45,7 @@ const BASE = process.env.E2E_BASE_URL || "http://localhost:3100";
 const { mockDashboardApi, serveLottieWasmLocally, signIn } = await import("../../e2e/support/dashboardMock.ts");
 const settings = await import("../../e2e/support/settingsMock.ts");
 const { ALL_DONE, mockSetupApi, stateOf } = await import("../../e2e/support/setupResumeMock.ts");
-const { mockReadmeApi, README_FINDINGS } = await import("../../e2e/support/readmeFixtures.ts");
+const { mockReadmeApi, README_FINDINGS_FIXING, README_RECHECK_REASON } = await import("../../e2e/support/readmeFixtures.ts");
 
 const OUT = join(process.cwd(), "docs", "images");
 const TMP = join(process.cwd(), "test-results", "docs-screenshots");
@@ -84,7 +84,7 @@ async function open(name: string, width: number, height: number, extra: { video?
     // Mock gaps and dev noise that do not reflect the app: social drafts routes, aborted lottie fetch, HMR.
     if (m.type() === "error" && !/Query data cannot be undefined|ghost-loader\.lottie|favicon|Failed to load resource/.test(t)) problems.push(`[${name}] console: ${t}`);
   });
-  page.on("pageerror", (e) => problems.push(`[${name}] pageerror: ${e.message}`));
+  page.on("pageerror", (e) => problems.push(`[${name}] pageerror: ${e.message} ${(e.stack || "").slice(0, 300)}`));
   await signIn(context, BASE);
   await serveLottieWasmLocally(page);
   return { context, page };
@@ -159,7 +159,7 @@ if (wanted("logo")) {
 }
 
 // ---------------------------------------------------------------- dashboard shots (1440x900)
-if (["hero-dashboard", "findings", "finding-drawer", "geo", "traffic"].some(wanted)) {
+if (["hero-dashboard", "findings", "traffic"].some(wanted)) {
   const { context, page } = await dashboard("dashboard", 1440, 900);
   {
     // First request compiles the dashboard in the dev server.
@@ -177,25 +177,6 @@ if (["hero-dashboard", "findings", "finding-drawer", "geo", "traffic"].some(want
       await waitSettled(page);
       await shot("findings", page);
     }
-    if (wanted("finding-drawer")) {
-      await panel.getByRole("tab", { name: "Findings", exact: true }).click();
-      await panel.getByTestId("fix-first").getByRole("button", { name: /^(Open|Fix this)$/ }).first().click();
-      await page.getByRole("dialog").waitFor();
-      await waitSettled(page);
-      await shot("finding-drawer", page);
-      await page.keyboard.press("Escape");
-      await page.getByRole("dialog").waitFor({ state: "hidden" }).catch(() => {});
-    }
-    if (wanted("geo")) {
-      await panel.getByRole("tab", { name: "GEO", exact: true }).click();
-      const gap = panel.getByRole("button", { name: "Track as a fix" }).first();
-      await gap.waitFor();
-      // Scroll the AI readiness block to the top of the panel so the gap and its button are in frame.
-      await panel.getByText("Readiness score for").evaluate((el) => el.closest("div[class*='overflow-hidden']")!.scrollIntoView({ block: "start" }));
-      await panel.getByText("AI readiness", { exact: true }).evaluate((el) => el.scrollIntoView({ block: "start" }));
-      await waitSettled(page);
-      await shot("geo", page);
-    }
     if (wanted("traffic")) {
       await panel.getByRole("tab", { name: "Traffic", exact: true }).click();
       await page.getByText("Acme Invoice (demo)").first().waitFor({ timeout: 30_000 }).catch(() => {});
@@ -203,6 +184,40 @@ if (["hero-dashboard", "findings", "finding-drawer", "geo", "traffic"].some(want
       await shot("traffic", page);
     }
   }
+  await context.close();
+}
+
+// ---------------------------------------------------------------- finding drawer (being fixed, after a Re-check)
+if (wanted("finding-drawer")) {
+  const { context, page } = await dashboard("finding-drawer", 1440, 900);
+  await page.route("**/api/agents/analytics/findings", (r) =>
+    r.request().method() === "PUT"
+      ? r.fulfill(json({ finding: README_FINDINGS_FIXING[0], skipped: true, reason: README_RECHECK_REASON }))
+      : r.fulfill(json({ findings: README_FINDINGS_FIXING })),
+  );
+  await gotoReady(page, "/dashboard", () => page.waitForSelector('[data-testid="fix-first"][data-state="actions"]', { timeout: 60_000 }));
+  await analytics(page).getByTestId("fix-first").getByRole("button", { name: /^(Open|Fix this)$/ }).first().click();
+  const drawer = page.getByRole("dialog");
+  await drawer.waitFor();
+  await drawer.getByText("Write a meta description for /pricing").waitFor({ timeout: 30_000 });
+  await drawer.getByRole("button", { name: "Re-check" }).click();
+  await drawer.getByTestId("recheck-note").waitFor();
+  await waitSettled(page);
+  await shot("finding-drawer", page);
+  await context.close();
+}
+
+// ---------------------------------------------------------------- GEO: tracked questions (taller viewport)
+if (wanted("geo")) {
+  const { context, page } = await dashboard("geo", 1440, 1200);
+  await gotoReady(page, "/dashboard", () => page.waitForSelector('[data-testid="fix-first"][data-state="actions"]', { timeout: 60_000 }));
+  const panel = analytics(page);
+  await panel.getByRole("tab", { name: "GEO", exact: true }).click();
+  await panel.getByRole("button", { name: "Track as a fix" }).first().waitFor();
+  // Put the "Questions we track" block at the top of the panel so every row and its gap button are in frame.
+  await panel.getByText("Questions we track", { exact: true }).evaluate((el) => el.scrollIntoView({ block: "start" }));
+  await waitSettled(page);
+  await shot("geo", page);
   await context.close();
 }
 
@@ -280,8 +295,8 @@ async function demo() {
   const { context, page } = await dashboard("demo", W, H, { video: true });
   // The first finding group is "being fixed", so its drawer has a Re-check button; the server's
   // answer to the re-check is "not verified yet" with a reason (the honest outcome the demo shows).
-  const reason = "The live page still has no meta description. Publish the change, then re-check.";
-  const findings = README_FINDINGS.map((f) => (f.entityId === "meta-description-missing" ? { ...f, status: "fixing" } : f));
+  const reason = README_RECHECK_REASON;
+  const findings = README_FINDINGS_FIXING;
   await page.route("**/api/agents/analytics/findings", (r) =>
     r.request().method() === "PUT"
       ? r.fulfill(json({ finding: findings[0], skipped: true, reason }))
@@ -326,9 +341,9 @@ async function demo() {
   const geoTab = panel.getByRole("tab", { name: "GEO", exact: true });
   await glide(geoTab);
   await geoTab.click();
-  const track = panel.getByRole("button", { name: "Track as a fix" }).first();
+  const track = panel.getByRole("button", { name: "Track as a fix" }).last(); // the tracked question that misses the brand
   await track.waitFor();
-  await panel.getByText("AI readiness", { exact: true }).evaluate((el) => el.scrollIntoView({ block: "start" }));
+  await panel.getByText("Questions we track", { exact: true }).evaluate((el) => el.scrollIntoView({ block: "start" }));
   await page.waitForTimeout(1500);
   await glide(track);
   await track.click();
