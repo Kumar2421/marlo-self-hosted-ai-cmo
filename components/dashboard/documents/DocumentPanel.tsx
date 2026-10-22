@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { FileText, Copy, Pencil, Download, ChevronsLeft, X, Loader2, RefreshCw } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { useProviders, findProviderForModel } from "@/lib/providers-store";
 import { useToast } from "@/components/dashboard/Toast";
 import { useTerminalLog } from "@/lib/terminal-log-store";
 import { assessGeneratedDocument } from "@/lib/domain/project/setupRun";
+import { splitMarkdownTables, type TableAlign } from "@/lib/markdown-tables";
 
 // No Tailwind Typography plugin in this project (nothing else here uses
 // `prose`), so style each markdown element explicitly instead of relying on
@@ -40,6 +41,65 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   td: ({ children }) => <td className="border-b border-gray-100 px-3 py-2 align-top text-gray-700">{children}</td>,
 };
+
+// Cell text can carry inline markdown (bold, links) but not block wrappers.
+const CELL_COMPONENTS: Components = {
+  ...MARKDOWN_COMPONENTS,
+  p: ({ children }) => <>{children}</>,
+};
+
+/** GFM pipe tables. Pure parsing lives in lib/markdown-tables; this only draws them. */
+function MarkdownTable({ header, align, rows }: { header: string[]; align: TableAlign[]; rows: string[][] }) {
+  const alignClass = (c: number) =>
+    align[c] === "right" ? "text-right" : align[c] === "center" ? "text-center" : "text-left";
+  return (
+    <div className="mb-3 overflow-x-auto rounded-lg border border-gray-200">
+      <table className="w-full border-collapse text-[13px]">
+        <thead className="bg-gray-50">
+          <tr>
+            {header.map((cell, c) => (
+              <th
+                key={c}
+                scope="col"
+                className={`border-b border-gray-200 px-3 py-2 text-[11px] font-semibold text-gray-500 ${alignClass(c)}`}
+              >
+                <ReactMarkdown components={CELL_COMPONENTS}>{cell}</ReactMarkdown>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, r) => (
+            <tr key={r}>
+              {row.map((cell, c) => (
+                <td key={c} className={`border-b border-gray-100 px-3 py-2 align-top text-gray-700 ${alignClass(c)}`}>
+                  <ReactMarkdown components={CELL_COMPONENTS}>{cell}</ReactMarkdown>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DocumentBody({ source }: { source: string }) {
+  const segments = useMemo(() => splitMarkdownTables(source), [source]);
+  return (
+    <>
+      {segments.map((seg, i) =>
+        seg.kind === "table" ? (
+          <MarkdownTable key={i} header={seg.header} align={seg.align} rows={seg.rows} />
+        ) : (
+          <ReactMarkdown key={i} components={MARKDOWN_COMPONENTS}>
+            {seg.text}
+          </ReactMarkdown>
+        )
+      )}
+    </>
+  );
+}
 
 export type DocumentPanelProps = {
   /** Display title in the panel header + empty/generate-button copy. */
@@ -302,7 +362,7 @@ export default function DocumentPanel({ title, apiPath, downloadName, onClose }:
           </div>
         ) : shown ? (
           <article className="max-w-none text-[13px] leading-relaxed text-gray-700">
-            <ReactMarkdown components={MARKDOWN_COMPONENTS}>{shown}</ReactMarkdown>
+            <DocumentBody source={shown} />
           </article>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
