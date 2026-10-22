@@ -11,7 +11,11 @@ import { assertPublicHttpUrlResolved, type LookupFn } from "../net/ssrf.ts";
 
 export type JinaReadResult = { title: string; description: string; url: string; content: string };
 
-const JINA_TIMEOUT_MS = 35_000;
+/** Hard cap on one Jina render (was 35s). Past this the page simply has no
+ * rendered fallback ("not available"), which callers already handle. Jina's own
+ * X-Timeout render wait must stay below this so it can answer before we abort. */
+export const JINA_TIMEOUT_MS = 15_000;
+const JINA_RENDER_WAIT_SECONDS = 12;
 
 export async function jinaRead(url: string, lookup?: LookupFn): Promise<JinaReadResult | null> {
   // The target is handed to a third party, so it must pass the public-address check (DNS included)
@@ -29,7 +33,7 @@ export async function jinaRead(url: string, lookup?: LookupFn): Promise<JinaRead
         Accept: "application/json",
         "X-Engine": "browser",
         "X-Wait-For-Selector": "body",
-        "X-Timeout": "25",
+        "X-Timeout": String(JINA_RENDER_WAIT_SECONDS),
         // Without this, Jina can serve a stale cached snapshot taken before
         // the SPA finished hydrating — confirmed for real against a live
         // site: cached response had empty content with a warning telling us

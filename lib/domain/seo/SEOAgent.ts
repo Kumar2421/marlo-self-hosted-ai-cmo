@@ -3,7 +3,7 @@ import { jinaRead, extractMarkdownLinks } from "@/lib/domain/shared/jinaReader";
 import { assertPublicHostLiteral } from "@/lib/domain/net/ssrf";
 import { SafeFetchError } from "../net/safeFetch.ts";
 import { extractTitle } from "@/lib/domain/seo/extractTitle";
-import { fetchPageSpeed, type CwvSnapshot, type LighthouseIssue, type PageSpeedResult } from "@/lib/domain/seo/pageSpeedInsights";
+import { fetchPageSpeed, isPageSpeedTimeout, type CwvSnapshot, type LighthouseIssue, type PageSpeedResult } from "@/lib/domain/seo/pageSpeedInsights";
 import { checkRobotsTxt, fetchSitePage, SITE_MAX_REDIRECTS, type SitePageFetch } from "./siteFetch.ts";
 
 export type { CwvStatus, CwvMetric, CwvSnapshot } from "@/lib/domain/seo/pageSpeedInsights";
@@ -47,6 +47,9 @@ export type SEOAuditPayload = {
    * the real PSI call failed — the frontend shows a real crawl-derived
    * substitute instead of ever presenting invented Lighthouse-shaped numbers. */
   pageSpeed?: PageSpeedResult["pageSpeed"];
+  /** Set when a PageSpeed key was connected but PSI gave no result this run:
+   * "timeout" (too slow, skipped) or "error". Never a score; the UI says "not measured". */
+  pageSpeedUnavailable?: "timeout" | "error";
   coreWebVitals?: {
     desktop: CwvSnapshot;
     mobile: CwvSnapshot;
@@ -165,7 +168,9 @@ export function assertPublicHttpUrl(raw: string): URL {
 /** Crawl of the page and the robots check live in ./siteFetch.ts (guarded fetcher). */
 
 export class SEOAgent {
-  constructor(private pageSpeedApiKey?: string) {}
+  /** `pageSpeedTimeoutMs` bounds the PageSpeed step (default PSI_TIMEOUT_MS); a slow
+   * PSI is skipped as "not measured" rather than holding up the audit. */
+  constructor(private pageSpeedApiKey?: string, private options: { pageSpeedTimeoutMs?: number } = {}) {}
 
   async audit(url: string): Promise<SEOAuditPayload> {
     const issues: { label: string; level: "Warning" | "Error" }[] = [];
@@ -412,10 +417,11 @@ export class SEOAgent {
     let pageSpeedScores: SEOAuditPayload["pageSpeed"];
     let vitals: SEOAuditPayload["coreWebVitals"];
     let lighthouseIssues: SEOAuditPayload["lighthouseIssues"];
+    let pageSpeedUnavailable: SEOAuditPayload["pageSpeedUnavailable"];
 
     if (this.pageSpeedApiKey) {
       try {
-        const result = await fetchPageSpeed(url, this.pageSpeedApiKey);
+        const result = await fetchPageSpeed(url, this.pageSpeedApiKey, { timeoutMs: this.options.pageSpeedTimeoutMs });
         pageSpeedScores = result.pageSpeed;
         vitals = result.coreWebVitals;
         lighthouseIssues = result.lighthouseIssues;
@@ -450,8 +456,15 @@ export class SEOAgent {
           }
         }
       } catch (e) {
-        console.warn("Failed to fetch real PageSpeed Insights data.", e);
-        issues.push({ label: "Failed to fetch PageSpeed Insights data — Performance/CWV not available this run", level: "Warning" });
+        if (isPageSpeedTimeout(e)) {
+          // Slow PSI is skipped, not an error: scores stay undefined ("not measured").
+          pageSpeedUnavailable = "timeout";
+          issues.push({ label: "PageSpeed Insights was too slow to answer — Performance/CWV not measured this run", level: "Warning" });
+        } else {
+          pageSpeedUnavailable = "error";
+          console.warn("Failed to fetch real PageSpeed Insights data.", e);
+          issues.push({ label: "Failed to fetch PageSpeed Insights data — Performance/CWV not available this run", level: "Warning" });
+        }
       }
     }
 
@@ -607,6 +620,7 @@ export class SEOAgent {
       issues,
       findings,
       pageSpeed: pageSpeedScores,
+      pageSpeedUnavailable,
       coreWebVitals: vitals,
       lighthouseIssues,
       bodyText,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { SEOAgent } from "@/lib/domain/seo/SEOAgent";
+import { PSI_ONBOARDING_TIMEOUT_MS } from "@/lib/domain/seo/pageSpeedInsights";
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
@@ -24,6 +25,10 @@ export async function POST(req: NextRequest) {
   }
 
   const { url } = body as { url: string };
+  // The setup flow sets `quick` so a slow PageSpeed never holds up onboarding:
+  // PSI gets a short budget and is skipped as "not measured" when it overruns.
+  const quick = (body as { quick?: unknown }).quick === true;
+  const pageSpeedOptions = quick ? { pageSpeedTimeoutMs: PSI_ONBOARDING_TIMEOUT_MS } : undefined;
 
   if (FEATURES.PLATFORM_MODE) {
     const supabase = await createClient();
@@ -67,11 +72,12 @@ export async function POST(req: NextRequest) {
       try {
         const pageSpeedApiKey = (await resolvePlatformApiKey(db, user.id, "pagespeed_api_key")) || process.env.PAGESPEED_API_KEY || undefined;
 
+
         // No PageSpeed key means this audit would produce the exact same
         // result as the public /audit crawl for this URL — reuse it instead
         // of crawling again if the user just came through that funnel.
         const auditResult = (!pageSpeedApiKey && takeCachedPublicAudit(url))
-          || await new SEOAgent(pageSpeedApiKey).audit(url);
+          || await new SEOAgent(pageSpeedApiKey, pageSpeedOptions).audit(url);
 
         const createdAt = new Date().toISOString();
         const { error } = await db.from("seo_audits").upsert(
@@ -101,7 +107,7 @@ export async function POST(req: NextRequest) {
     const pageSpeedApiKey = stored?.value || process.env.PAGESPEED_API_KEY || undefined;
 
     const auditResult = (!pageSpeedApiKey && takeCachedPublicAudit(url))
-      || await new SEOAgent(pageSpeedApiKey).audit(url);
+      || await new SEOAgent(pageSpeedApiKey, pageSpeedOptions).audit(url);
 
     const createdAt = new Date().toISOString();
 

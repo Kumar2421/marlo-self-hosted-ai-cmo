@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedProjectContext } from "@/lib/domain/shared/project-context";
 import { FEATURES } from "@/lib/features";
 import { getDb } from "@/lib/db";
-import { DATASETS, etagFor, etagMatches, loadPlatformDatasets, type DatasetClient } from "@/lib/domain/project/dashboardData";
+import { DATASETS, etagFor, etagMatches, loadPlatformDatasets, shapeRows, type DatasetClient } from "@/lib/domain/project/dashboardData";
+import { parseDatasetFilter } from "@/lib/domain/project/dashboardCache";
 
 export const runtime = "nodejs";
 
@@ -12,6 +13,11 @@ export const runtime = "nodejs";
 const CACHE_CONTROL = "private, no-cache";
 
 export async function GET(request: NextRequest) {
+  // `?datasets=project_documents,...` returns just those datasets, so a saved
+  // document refreshes the documents instead of the whole payload.
+  const names = parseDatasetFilter(request.nextUrl.searchParams.get("datasets"));
+  if (!names) return NextResponse.json({ error: "Unknown dataset" }, { status: 400 });
+
   const requestedProjectId = request.nextUrl.searchParams.get("projectId");
   const result = await getAuthenticatedProjectContext(requestedProjectId);
   if ("response" in result) return result.response;
@@ -20,15 +26,19 @@ export async function GET(request: NextRequest) {
   let data: Record<string, unknown[]> = {};
 
   if (FEATURES.PLATFORM_MODE && context.supabase) {
-    // The ten dataset queries are independent, so they run concurrently.
-    const loaded = await loadPlatformDatasets(context.supabase as unknown as DatasetClient, context.projectId);
+    // The dataset queries are independent, so they run concurrently.
+    const loaded = await loadPlatformDatasets(context.supabase as unknown as DatasetClient, context.projectId, names);
     if ("error" in loaded) return NextResponse.json({ error: loaded.error }, { status: 500 });
     data = loaded.data;
   } else {
     const db = getDb();
-    for (const [table, orderColumn] of Object.entries(DATASETS)) {
+    for (const table of names) {
+      const spec = DATASETS[table];
       try {
-        data[table] = db.prepare(`SELECT * FROM ${table} WHERE project_id = ? ORDER BY ${orderColumn} DESC`).all(context.projectId) as unknown[];
+        const rows = db
+          .prepare(`SELECT ${spec.sqliteColumns} FROM ${table} WHERE project_id = ? ORDER BY ${spec.orderColumn} DESC LIMIT ${spec.limit}`)
+          .all(context.projectId) as unknown[];
+        data[table] = shapeRows(table, rows);
       } catch {
         data[table] = [];
       }

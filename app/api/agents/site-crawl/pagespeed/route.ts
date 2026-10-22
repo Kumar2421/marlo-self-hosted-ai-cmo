@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import type { CrawledPage } from "@/lib/domain/seo/SiteCrawlAgent";
 import { fetchPageSpeed } from "@/lib/domain/seo/pageSpeedInsights";
+import { measurePagesWithinBudget } from "@/lib/domain/seo/pageSpeedBatch";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import { resolvePlatformApiKey } from "@/lib/domain/shared/resolvePlatformApiKey";
 import { FEATURES } from "@/lib/features";
@@ -18,7 +19,10 @@ export const maxDuration = 60;
  * homepage's own PageSpeed check) because PSI has real rate limits and each
  * call takes 10-20s; running it automatically for every discovered page
  * would be slow and could burn through quota without the user asking for it.
- * Runs sequentially, not in parallel, for the same reason.
+ * Bounded: pages are measured in small parallel chunks against a deadline
+ * (PSI_ROUTE_BUDGET_MS) well inside maxDuration. Whatever finished is saved and
+ * returned with `partial: true` plus counts; the rest stay "not measured" and
+ * a re-run picks them up first.
  *
  * // free in platform mode for now — no credit_costs entry yet
  */
@@ -62,15 +66,9 @@ export async function POST() {
 
     const pages: CrawledPage[] = crawlRow.payload;
 
-    for (const page of pages) {
-      try {
-        const result = await fetchPageSpeed(page.url, apiKey);
-        page.pageSpeed = result.pageSpeed;
-        page.pageSpeedError = undefined;
-      } catch (e) {
-        page.pageSpeedError = e instanceof Error ? e.message : "PageSpeed fetch failed";
-      }
-    }
+    const summary = await measurePagesWithinBudget(pages, (url, timeoutMs) =>
+      fetchPageSpeed(url, apiKey, { timeoutMs })
+    );
 
     const now = new Date().toISOString();
     const { error } = await db
@@ -80,7 +78,7 @@ export async function POST() {
       .eq("project_id", projectId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    return NextResponse.json({ result: { pages, checkedAt: now } });
+    return NextResponse.json({ result: { pages, checkedAt: now, ...summary } });
   }
 
   const db = getDb();
@@ -112,15 +110,9 @@ export async function POST() {
 
   const pages: CrawledPage[] = JSON.parse(crawlRow.payload);
 
-  for (const page of pages) {
-    try {
-      const result = await fetchPageSpeed(page.url, keyRow.value);
-      page.pageSpeed = result.pageSpeed;
-      page.pageSpeedError = undefined;
-    } catch (e) {
-      page.pageSpeedError = e instanceof Error ? e.message : "PageSpeed fetch failed";
-    }
-  }
+  const summary = await measurePagesWithinBudget(pages, (url, timeoutMs) =>
+    fetchPageSpeed(url, keyRow.value, { timeoutMs })
+  );
 
   const now = new Date().toISOString();
   db.prepare("UPDATE site_crawls SET payload = ?, checked_at = ? WHERE project_id = ?").run(
@@ -129,5 +121,5 @@ export async function POST() {
     activeId
   );
 
-  return NextResponse.json({ result: { pages, checkedAt: now } });
+  return NextResponse.json({ result: { pages, checkedAt: now, ...summary } });
 }
