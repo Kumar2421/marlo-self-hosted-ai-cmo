@@ -99,7 +99,7 @@ export default function ContextPanel({
     competitors: contextCompetitors,
     loading: contextLoading,
     error: contextError,
-    refresh: refreshContext,
+    refreshDatasets,
   } = useProjectContext();
   const competitors = useMemo(
     () => selectContextPanelCompetitors(contextCompetitors),
@@ -147,15 +147,15 @@ export default function ContextPanel({
   useEffect(() => {
     if (documentsVersion === seenDocumentsVersion.current) return;
     seenDocumentsVersion.current = documentsVersion;
-    refreshContext();
-  }, [documentsVersion, refreshContext]);
+    void refreshDatasets(["project_documents"]);
+  }, [documentsVersion, refreshDatasets]);
 
   const seenCompetitorsVersion = useRef(competitorsVersion);
   useEffect(() => {
     if (competitorsVersion === seenCompetitorsVersion.current) return;
     seenCompetitorsVersion.current = competitorsVersion;
-    refreshContext();
-  }, [competitorsVersion, refreshContext]);
+    void refreshDatasets(["project_competitors"]);
+  }, [competitorsVersion, refreshDatasets]);
 
   async function handleAddCompetitor() {
     const url = newCompetitorUrl.trim();
@@ -174,7 +174,7 @@ export default function ContextPanel({
       const data = await res.json();
       setNewCompetitorUrl("");
       setAddingCompetitor(false);
-      await refreshContext();
+      await refreshDatasets(["project_competitors"]);
     } catch {
       show("Failed to add competitor.");
     }
@@ -213,7 +213,7 @@ export default function ContextPanel({
           `${data.usedWebSearch ? "Searched the web and found" : "Based on your site's own content, found"} ${added.length} real competitor${added.length === 1 ? "" : "s"}: ${names}.`
         );
         show(`Found ${added.length} competitor${added.length === 1 ? "" : "s"}.`);
-        await refreshContext();
+        await refreshDatasets(["project_competitors"]);
       }
     } catch {
       log("⚠ Couldn't reach the competitor discovery service.");
@@ -249,7 +249,7 @@ export default function ContextPanel({
           return;
         }
         notifyAuditChanged();
-        await refreshContext();
+        await refreshDatasets(["seo_audits"]);
         show("Site audit complete.");
       } else if (id === "description") {
         const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
@@ -284,10 +284,10 @@ export default function ContextPanel({
       if (!res.ok) {
         throw new Error("Failed to remove competitor");
       }
-      await refreshContext();
+      await refreshDatasets(["project_competitors"]);
     } catch {
       show("Failed to remove competitor — it may still be saved.");
-      await refreshContext();
+      await refreshDatasets(["project_competitors"]);
     }
   }
 
@@ -595,7 +595,7 @@ export default function ContextPanel({
         <ProductInfoPanel
           onClose={() => {
             setProductInfoOpen(false);
-            refreshContext();
+            void refreshDatasets(["project_documents"]);
           }}
         />
       )}
@@ -603,7 +603,7 @@ export default function ContextPanel({
         <MarketingStrategyPanel
           onClose={() => {
             setMarketingStrategyOpen(false);
-            refreshContext();
+            void refreshDatasets(["project_documents"]);
           }}
         />
       )}
@@ -611,7 +611,7 @@ export default function ContextPanel({
         <CompetitorAnalysisPanel
           onClose={() => {
             setCompetitorAnalysisOpen(false);
-            refreshContext();
+            void refreshDatasets(["project_documents"]);
           }}
         />
       )}
@@ -620,7 +620,7 @@ export default function ContextPanel({
         <ContentStrategyPanel
           onClose={() => {
             setContentStrategyOpen(false);
-            refreshContext();
+            void refreshDatasets(["project_documents"]);
           }}
         />
       )}
@@ -628,7 +628,7 @@ export default function ContextPanel({
         <DesignGuidePanel
           onClose={() => {
             setDesignGuideOpen(false);
-            refreshContext();
+            void refreshDatasets(["project_documents"]);
           }}
         />
       )}
