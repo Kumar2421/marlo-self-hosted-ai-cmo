@@ -45,6 +45,10 @@ type Ctx = {
    * first. Powers the project switcher's dropdown list. */
   projects: ActiveProject[];
   loading: boolean;
+  /** True only once GET /api/project answered successfully with a project list (possibly empty).
+   * False while loading, after a failed/unauthorized/network error, and after sign-out, so "no
+   * projects" can be trusted as "new user" only when this is true. */
+  projectsLoaded: boolean;
   /** True while the active project's setup run is in flight (crawl, description,
    * competitors, leads, and the background documents). Context hides its
    * "Finish setup" card and Analytics disables re-running the audit meanwhile. */
@@ -600,6 +604,7 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
   const [project, setProject] = useState<ActiveProject | null>(null);
   const [projects, setProjects] = useState<ActiveProject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [competitorsVersion, setCompetitorsVersion] = useState(0);
   const [auditVersion, setAuditVersion] = useState(0);
   const [documentsVersion, setDocumentsVersion] = useState(0);
@@ -638,6 +643,8 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
       }
       setProject(data.project ?? null);
       setProjects(data.projects ?? []);
+      // Only a successful answer with a real list proves "no projects"; a 401/500 body must not.
+      setProjectsLoaded(res.ok && Array.isArray(data.projects));
     } catch {
       // backend unreachable — leave project as-is, UI shows empty/setup state
     } finally {
@@ -667,6 +674,7 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
       if (event === "SIGNED_OUT") {
         setProject(null);
         setProjects([]);
+        setProjectsLoaded(false);
         setSetupRunningId(null);
         setSetupInfo(null);
         runningHere.current = null;
@@ -949,7 +957,7 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
 
   return (
     <ProjectCtx.Provider
-      value={{ project, projects, loading, setupRunning: isSetupRunning(setupRunningId, project?.id) || remoteRunning, setupState: setupInfo && setupInfo.projectId === project?.id ? setupInfo.state : null, retrySetupStep, createProject, switchProject, updateProject, deleteProject, competitorsVersion, auditVersion, documentsVersion, leadsVersion, notifyAuditChanged }}
+      value={{ project, projects, loading, projectsLoaded, setupRunning: isSetupRunning(setupRunningId, project?.id) || remoteRunning, setupState: setupInfo && setupInfo.projectId === project?.id ? setupInfo.state : null, retrySetupStep, createProject, switchProject, updateProject, deleteProject, competitorsVersion, auditVersion, documentsVersion, leadsVersion, notifyAuditChanged }}
     >
       {children}
     </ProjectCtx.Provider>

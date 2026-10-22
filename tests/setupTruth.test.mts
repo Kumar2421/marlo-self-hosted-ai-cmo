@@ -116,12 +116,11 @@ test("latestOnPageScore prefers the audit for the project url", () => {
   assert.equal(latestOnPageScore(rows, "a.com"), 88);
 });
 
-test("needsOnboarding: only when there are no projects at all (audit D8)", () => {
-  const base = { projectsCount: 0, activeProjectId: null, error: "No active project" };
-  assert.equal(needsOnboarding(base), true);
-  assert.equal(needsOnboarding({ ...base, projectsCount: 2 }), false, "has projects but none active");
+test("needsOnboarding: only when the project list loaded and is empty (audit D8)", () => {
+  const base = { projectsCount: 0, activeProjectId: null, projectsLoaded: true };
+  assert.equal(needsOnboarding(base), true, "new user: no wait for the data request");
+  assert.equal(needsOnboarding({ ...base, projectsCount: 2 }), false, "has projects but no active pointer");
   assert.equal(needsOnboarding({ ...base, activeProjectId: "p1" }), false);
   assert.equal(needsOnboarding({ ...base, loading: true }), false);
-  assert.equal(needsOnboarding({ ...base, error: "Internal error" }), false, "a real failure is not onboarding");
-  assert.equal(needsOnboarding({ ...base, error: null }), false);
+  assert.equal(needsOnboarding({ ...base, projectsLoaded: false }), false, "failed/unauthorized/signed-out list is not onboarding");
 });

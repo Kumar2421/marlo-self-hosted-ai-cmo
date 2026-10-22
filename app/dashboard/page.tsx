@@ -21,17 +21,15 @@ import { SocialPanelProvider } from "@/components/dashboard/social/SocialPanelPr
 
 const RAIL = "56px";
 
-/** First-time users with no project yet see the dashboard underneath (so
- * it's already loaded once the dialog closes) with a small onboarding
- * dialog on top — driven by the same /api/project/data fetch every panel
- * already needs, via the dashboard data provider this page already mounts.
- * Any other fetch failure (real 500, network) is left alone; only the
- * specific "no project" 404 shows the dialog. */
+/** First-time users with no project yet see the dashboard underneath with a
+ * small onboarding dialog on top. The decision comes from the project list
+ * (already loaded before this renders), so the dialog appears in the same
+ * paint as the dashboard shell instead of after /api/project/data fails.
+ * A failed project-list request (500, network) never shows it. */
 function OnboardingGate({ children }: { children: React.ReactNode }) {
-  const { data, loading, error, refresh } = useDashboardData();
-  const { projects, project } = useProject();
-  const showOnboarding =
-    !data && needsOnboarding({ projectsCount: projects.length, activeProjectId: project?.id, error, loading });
+  const { refresh } = useDashboardData();
+  const { projects, project, loading, projectsLoaded } = useProject();
+  const showOnboarding = needsOnboarding({ projectsCount: projects.length, activeProjectId: project?.id, projectsLoaded, loading });
 
   return (
     <>

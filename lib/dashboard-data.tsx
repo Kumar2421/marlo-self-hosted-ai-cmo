@@ -60,15 +60,18 @@ export async function fetchDashboardData(
  * every panel that reads it.
  */
 export function DashboardDataProvider({ children }: { children: React.ReactNode }) {
-  const { project, loading: projectLoading } = useProject();
+  const { project, projects, projectsLoaded, loading: projectLoading } = useProject();
   const projectId = project?.id;
+  const knownNoProject = projectsLoaded && projects.length === 0 && !project;
   const queryClient = useQueryClient();
 
   const query = useQuery({
     queryKey: qk.dashboardData(projectId),
     queryFn: () => fetchDashboardData(),
     // Wait for the project store so we don't fetch twice (once before the active project is known).
-    enabled: !projectLoading,
+    // Also skip when the list is known to be empty: a new user has no project, so /api/project/data
+    // can only 404. Creating the first project changes projectId, which enables the query.
+    enabled: !projectLoading && !knownNoProject,
   });
 
   const { refetch } = query;
@@ -93,12 +96,12 @@ export function DashboardDataProvider({ children }: { children: React.ReactNode 
   const value = useMemo<DashboardDataState>(
     () => ({
       data: query.data ?? null,
-      loading: projectLoading || query.isPending,
+      loading: projectLoading || (query.isPending && !knownNoProject),
       error: query.error instanceof Error ? query.error.message : null,
       refresh,
       refreshDatasets,
     }),
-    [query.data, query.isPending, query.error, projectLoading, refresh, refreshDatasets],
+    [query.data, query.isPending, query.error, projectLoading, knownNoProject, refresh, refreshDatasets],
   );
   return <DashboardDataContext.Provider value={value}>{children}</DashboardDataContext.Provider>;
 }
