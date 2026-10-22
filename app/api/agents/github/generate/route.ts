@@ -6,7 +6,7 @@ import type { SEOAuditPayload } from "@/lib/domain/seo/SEOAgent";
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
-import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
+import { platformKeyFor, resolveLlmCredential } from "@/lib/llm/platformKeys";
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
 // platform max for this route (Hobby plan caps at 60s; Pro allows more).
@@ -105,9 +105,9 @@ export async function POST(req: NextRequest) {
       const { data: secret } = await db.rpc("vault_get_secret", { p_id: conn.api_key_secret_id });
       apiKey = (secret as string) ?? "";
       baseUrl = conn.base_url ?? undefined;
-    } else if (PLATFORM_PROVIDER_KEYS[providerId]) {
+    } else if (platformKeyFor(providerId)) {
       // free in platform mode for now — no credit_costs entry yet
-      apiKey = PLATFORM_PROVIDER_KEYS[providerId]!;
+      apiKey = resolveLlmCredential({ providerId }).apiKey; // platform key: baseUrl intentionally not set
     } else {
       return NextResponse.json({ error: `${providerId} isn't connected yet.` }, { status: 422 });
     }

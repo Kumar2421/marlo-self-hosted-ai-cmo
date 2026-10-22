@@ -12,7 +12,7 @@ import { buildRedditSearchPlan, emptyRedditSettings, mergeSubreddits, type Reddi
 import { getRedditSettings } from "@/lib/domain/reddit/redditSettingsStore";
 import { getRedditSettings as getRedditSettingsSupabase } from "@/lib/domain/reddit/redditSettingsStoreSupabase";
 import { getAuthenticatedProjectContext } from "@/lib/domain/shared/project-context";
-import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
+import { platformKeyFor, resolveLlmCredential } from "@/lib/llm/platformKeys";
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
 // platform max for this route (Hobby plan caps at 60s; Pro allows more).
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
       const { data: secret } = await db.rpc("vault_get_secret", { p_id: conn.api_key_secret_id });
       apiKey = (secret as string) ?? "";
       baseUrl = conn.base_url ?? undefined;
-    } else if (PLATFORM_PROVIDER_KEYS[providerId]) {
+    } else if (platformKeyFor(providerId)) {
       // Closed-source: platform-provided key, metered via credits. Never
       // available in self-host builds (GROQ_API_KEY/MISTRAL_API_KEY unset there).
       try {
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
         }
         throw err;
       }
-      apiKey = PLATFORM_PROVIDER_KEYS[providerId]!;
+      apiKey = resolveLlmCredential({ providerId }).apiKey; // platform key: baseUrl intentionally not set
     } else {
       return NextResponse.json({ error: `${providerId} isn't connected yet.` }, { status: 422 });
     }

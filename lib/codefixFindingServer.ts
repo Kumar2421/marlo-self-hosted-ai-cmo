@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getDriver, type LlmDriver } from "@/lib/llm";
-import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
+import { resolveLlmCredential } from "@/lib/llm/platformKeys";
 import { chargeCredits, getCreditState, InsufficientCreditsError } from "@/lib/credits";
 import type { CreditState } from "@/lib/domain/x/draftGuards";
 import { FEATURES } from "@/lib/features";
@@ -179,18 +179,16 @@ export async function resolveFixRequest(opts: { findingId: string; providerId?: 
     const driver = getDriver(providerId);
     if (!driver) return fail(`${providerId} isn't wired to a real model yet.`, 501);
     const { data: conn } = await db.from("provider_connections").select("api_key_secret_id, base_url").eq("user_id", user.id).eq("provider_id", providerId).maybeSingle();
-    let apiKey = "";
+    let byokKey = "";
     if (conn?.api_key_secret_id) {
       const { data: secret } = await db.rpc("vault_get_secret", { p_id: conn.api_key_secret_id });
-      apiKey = (secret as string) ?? "";
+      byokKey = (secret as string) ?? "";
     }
-    let usesPlatformKey = false;
-    if (!apiKey) {
-      apiKey = PLATFORM_PROVIDER_KEYS[providerId] ?? "";
-      usesPlatformKey = apiKey !== "";
-    }
+    const cred = resolveLlmCredential({ providerId, byokKey, byokBaseUrl: conn?.base_url });
+    const { apiKey, baseUrl } = cred;
+    const usesPlatformKey = cred.source === "platform";
     if (!apiKey) return fail(`${providerId} isn't connected yet. Connect it in Settings → LLM Providers.`, 422);
-    llm = { driver, apiKey, baseUrl: conn?.base_url ?? undefined, usesPlatformKey };
+    llm = { driver, apiKey, baseUrl, usesPlatformKey };
   }
 
   const ctx: CodeFixContext = { projectId: project.id, projectName: project.name, projectUrl: project.url, repoFullName, githubToken };

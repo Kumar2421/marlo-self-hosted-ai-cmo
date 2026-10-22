@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { FEATURES } from "@/lib/features";
-import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
+import { platformKeyFor } from "@/lib/llm/platformKeys";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 
@@ -28,7 +28,7 @@ export async function GET() {
     .eq("key", "primaryModel")
     .maybeSingle();
 
-  const groqKey = PLATFORM_PROVIDER_KEYS.groq;
+  const groqKey = platformKeyFor("groq");
   const groqConfigured = Boolean(groqKey);
 
   let groqReachability: "not_configured" | "ok" | "unauthorized" | "error" = "not_configured";

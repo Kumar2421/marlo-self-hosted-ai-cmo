@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getDriver, type LlmDriver } from "@/lib/llm";
-import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
+import { resolveLlmCredential } from "@/lib/llm/platformKeys";
 import { chargeCredits, InsufficientCreditsError } from "@/lib/credits";
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
@@ -205,14 +205,14 @@ export async function resolveCmsRequest(findingId: string): Promise<CmsRequest |
       const driver = getDriver(providerId);
       if (!driver) return fail(`${providerId} isn't wired to a real model yet.`, 501);
       const { data: conn } = await db.from("provider_connections").select("api_key_secret_id, base_url").eq("user_id", user.id).eq("provider_id", providerId).maybeSingle();
-      let apiKey = "";
+      let byokKey = "";
       if (conn?.api_key_secret_id) {
         const { data: secret } = await db.rpc("vault_get_secret", { p_id: conn.api_key_secret_id });
-        apiKey = (secret as string) ?? "";
+        byokKey = (secret as string) ?? "";
       }
-      if (!apiKey) apiKey = PLATFORM_PROVIDER_KEYS[providerId] ?? "";
+      const { apiKey, baseUrl } = resolveLlmCredential({ providerId, byokKey, byokBaseUrl: conn?.base_url });
       if (!apiKey) return fail(`${providerId} isn't connected yet. Connect it in Settings > LLM Providers.`, 422);
-      return { driver, apiKey, baseUrl: conn?.base_url ?? undefined };
+      return { driver, apiKey, baseUrl };
     },
     charge: async (model) => {
       try {

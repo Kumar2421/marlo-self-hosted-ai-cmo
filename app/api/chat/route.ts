@@ -15,7 +15,7 @@ import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 import { chargeCredits, InsufficientCreditsError } from "@/lib/credits";
-import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
+import { platformKeyFor, resolveLlmCredential } from "@/lib/llm/platformKeys";
 import { validateChatInput } from "@/lib/domain/chat/chatLimits";
 import { checkChatProjectScope } from "@/lib/domain/chat/projectScope";
 
@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
       const { data: secret } = await db.rpc("vault_get_secret", { p_id: conn.api_key_secret_id });
       apiKey = (secret as string) ?? "";
       baseUrl = conn.base_url ?? undefined;
-    } else if (PLATFORM_PROVIDER_KEYS[providerId]) {
+    } else if (platformKeyFor(providerId)) {
       // Closed-source: platform-provided key, metered via credits — same
       // BYOK-first-then-platform-key fallback as articles/generate.
       try {
@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
         }
         throw err;
       }
-      apiKey = PLATFORM_PROVIDER_KEYS[providerId]!;
+      apiKey = resolveLlmCredential({ providerId }).apiKey; // platform key: baseUrl intentionally not set
     } else {
       return NextResponse.json(
         { error: `${providerId} isn't connected yet. Connect it in Settings → LLM Providers.` },

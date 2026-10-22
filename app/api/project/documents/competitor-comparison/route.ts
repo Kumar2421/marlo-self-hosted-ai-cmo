@@ -7,7 +7,7 @@ import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 import { spendCredits, withRefund, isFailedResponse, InsufficientCreditsError, type CreditTicket } from "@/lib/credits";
-import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
+import { platformKeyFor, resolveLlmCredential } from "@/lib/llm/platformKeys";
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
 // platform max for this route (Hobby plan caps at 60s; Pro allows more).
@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
       const { data: secret } = await db.rpc("vault_get_secret", { p_id: conn.api_key_secret_id });
       apiKey = (secret as string) ?? "";
       baseUrl = conn.base_url ?? undefined;
-    } else if (PLATFORM_PROVIDER_KEYS[providerId]) {
+    } else if (platformKeyFor(providerId)) {
       try {
         ticket = await spendCredits(user.id, "competitor_comparison", { projectId: activeId, model });
         chargedCredits = true;
@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
         }
         throw err;
       }
-      apiKey = PLATFORM_PROVIDER_KEYS[providerId]!;
+      apiKey = resolveLlmCredential({ providerId }).apiKey; // platform key: baseUrl intentionally not set
     } else {
       return NextResponse.json({
         error: `${providerId} isn't properly connected. Check Settings → LLM Providers to add your API key or base URL.`,

@@ -12,7 +12,7 @@ import { canFetchLeadsToday } from "@/lib/entitlements";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 import { chargeCredits, getCreditState, InsufficientCreditsError } from "@/lib/credits";
-import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
+import { resolveLlmCredential } from "@/lib/llm/platformKeys";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
@@ -108,12 +108,16 @@ export async function POST(req: NextRequest) {
       .eq("provider_id", providerId)
       .maybeSingle();
 
-    let providerApiKey = "";
+    let byokKey = "";
     if (providerConn?.api_key_secret_id) {
       const { data: providerSecret } = await db.rpc("vault_get_secret", { p_id: providerConn.api_key_secret_id });
-      providerApiKey = (providerSecret as string) ?? "";
+      byokKey = (providerSecret as string) ?? "";
     }
-    if (!providerApiKey) providerApiKey = PLATFORM_PROVIDER_KEYS[providerId] ?? "";
+    const { apiKey: providerApiKey, baseUrl: providerBaseUrl } = resolveLlmCredential({
+      providerId,
+      byokKey,
+      byokBaseUrl: providerConn?.base_url,
+    });
     if (!providerApiKey) {
       return NextResponse.json({ error: `${providerId} isn't connected yet.` }, { status: 422 });
     }
@@ -138,7 +142,7 @@ export async function POST(req: NextRequest) {
         return !state.billingEnabled || state.balance >= state.cost;
       },
       search: async () => {
-        const agent = new LeadsAgent(driver, providerApiKey, providerConn?.base_url ?? undefined);
+        const agent = new LeadsAgent(driver, providerApiKey, providerBaseUrl);
         const profile = body?.useProfile === true ? await getLeadProfileSupabase(db, user.id, activeId) : null;
         return agent.search({ role, companyOrIndustry, location }, tavilyKey, model, google, profile ?? undefined);
       },
