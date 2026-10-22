@@ -8,7 +8,10 @@ export async function fetchSetupView(projectId?: string): Promise<SetupView | nu
     const q = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
     const res = await fetch(`/api/project/setup${q}`, { cache: "no-store" });
     if (!res.ok) return null;
-    return (await res.json()) as SetupView;
+    const view = (await res.json().catch(() => null)) as Partial<SetupView> | null;
+    // An empty or malformed body (a stub, a proxy page, an old server) is "unreadable", never a crash further on.
+    if (!view || typeof view.serverTime !== "string" || !view.state?.steps || !view.summary) return null;
+    return view as SetupView;
   } catch {
     return null;
   }
