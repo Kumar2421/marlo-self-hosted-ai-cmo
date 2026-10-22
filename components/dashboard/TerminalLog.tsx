@@ -26,6 +26,7 @@ import { useToast } from "./Toast";
 import NotificationBell from "./notifications/NotificationBell";
 import SocialNavMenu from "./social/SocialNavMenu";
 import { useClickOutside } from "./useClickOutside";
+import { BETA_UNLIMITED_LABEL } from "@/lib/credits-display";
 
 function useCredits() {
   const [balance, setBalance] = useState<number | null>(null);
@@ -65,7 +66,7 @@ function UserMenu() {
   // spend_credits()), just never blocks — so show that honestly instead of
   // a number that means nothing yet.
   const creditsLabel =
-    credits.balance === null ? null : credits.billingEnabled ? `${credits.balance} Credits` : "Unlimited (beta)";
+    credits.balance === null ? null : credits.billingEnabled ? `${credits.balance} Credits` : BETA_UNLIMITED_LABEL;
 
   async function handleLogout() {
     setOpen(false);

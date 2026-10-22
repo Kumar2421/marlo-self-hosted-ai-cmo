@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Zap, Lock } from "lucide-react";
+import { creditsDisplay } from "@/lib/credits-display";
 
 type UsageEvent = {
   id: string;
@@ -68,7 +69,7 @@ export default function CreditsPage() {
   // granted is only real once at least one ledger grant exists (new
   // accounts always have the signup grant) — guards divide-by-zero for the
   // rare row that predates the credits system, backfilled with a grant of 0.
-  const used = Math.max(granted - balance, 0);
+  const view = creditsDisplay({ balance, granted, billingEnabled });
   const pctRemaining = granted > 0 ? balance / granted : 1;
   const status = !billingEnabled ? "Beta" : pctRemaining > 0.2 ? "Healthy" : pctRemaining > 0 ? "Low" : "Out";
   const statusColor =
@@ -84,8 +85,8 @@ export default function CreditsPage() {
           <div>
             <div className="text-[11px] uppercase tracking-wide text-gray-400">Credits used</div>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-semibold text-gray-900">{used.toLocaleString()}</span>
-              {granted > 0 && <span className="text-[13px] text-gray-400">/ {granted.toLocaleString()}</span>}
+              <span className="text-2xl font-semibold text-gray-900">{view.usedLabel}</span>
+              {view.allowanceLabel && <span className="text-[13px] text-gray-400">/ {view.allowanceLabel}</span>}
             </div>
           </div>
           <span className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium ${statusColor}`}>
@@ -93,9 +94,9 @@ export default function CreditsPage() {
           </span>
         </div>
 
-        {granted > 0 && (
+        {view.barPercent !== null && (
           <div className="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
-            <div className="h-full rounded-full bg-[#111111]" style={{ width: `${Math.min((used / granted) * 100, 100)}%` }} />
+            <div className="h-full rounded-full bg-[#111111]" style={{ width: `${view.barPercent}%` }} />
           </div>
         )}
 
@@ -103,7 +104,7 @@ export default function CreditsPage() {
           <div>
             <div className="text-[11px] text-gray-400">Credits remaining</div>
             <div className="text-[15px] font-semibold text-gray-900">
-              {billingEnabled ? balance.toLocaleString() : "Unlimited (beta)"}
+              {view.remainingLabel}
             </div>
           </div>
           <div className="pl-4">
