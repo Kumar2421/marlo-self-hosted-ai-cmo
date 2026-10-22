@@ -1,3 +1,4 @@
+import { ga4FromReport } from "@/lib/domain/analytics/trafficResult";
 import { refreshAccessToken } from "@/lib/domain/shared/googleAnalyticsOAuth";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import {
@@ -61,7 +62,7 @@ export async function fetchSearchAnalytics(
 
 export type GA4Summary = { sessions: number; activeUsers: number; screenPageViews: number };
 
-export async function fetchGA4Summary(propertyId: string, startDate: string, endDate: string): Promise<GA4Summary> {
+export async function fetchGA4Summary(propertyId: string, startDate: string, endDate: string): Promise<GA4Summary | null> {
   const accessToken = await getValidAccessToken();
   const res = await fetch(`https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`, {
     method: "POST",
@@ -75,9 +76,8 @@ export async function fetchGA4Summary(propertyId: string, startDate: string, end
     const detail = await res.text().catch(() => "");
     throw new Error(`GA4 report failed: HTTP ${res.status}${detail ? ` — ${detail.slice(0, 200)}` : ""}`);
   }
-  const data = await res.json();
-  const values: string[] = data.rows?.[0]?.metricValues?.map((m: { value: string }) => m.value) ?? ["0", "0", "0"];
-  return { sessions: Number(values[0] ?? 0), activeUsers: Number(values[1] ?? 0), screenPageViews: Number(values[2] ?? 0) };
+  // No rows means no data (or no tag), reported as null rather than 0 sessions.
+  return ga4FromReport(await res.json());
 }
 
 export function getSelectedSearchConsoleSite(projectId: string): string | null {

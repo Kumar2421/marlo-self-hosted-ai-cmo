@@ -1,3 +1,4 @@
+import { ASK_TIMEOUT_MS, codeForStatus, GeoProviderError } from "./providerError.ts";
 import type { AnswerMethod, EngineAnswer } from "./types.ts";
 
 /** A way of asking one prompt. The method it reports is what every stored row is tagged with. */
@@ -13,7 +14,7 @@ export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 
 type FetchLike = (
   url: string,
-  init: { method: string; headers: Record<string, string>; body: string },
+  init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal },
 ) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
 type GroundingResponse = {
@@ -38,25 +39,32 @@ export function parseGeminiResponse(data: unknown): EngineAnswer {
 }
 
 /** Real Gemini API with the Google Search grounding tool. */
-export function createGeminiGroundedPort(opts: { apiKey: string; model?: string; fetchImpl?: FetchLike }): AnswerPort {
+export function createGeminiGroundedPort(opts: { apiKey: string; model?: string; fetchImpl?: FetchLike; timeoutMs?: number }): AnswerPort {
   const model = opts.model || DEFAULT_GEMINI_MODEL;
   const doFetch: FetchLike = opts.fetchImpl ?? ((url, init) => fetch(url, init));
   return {
     method: "gemini-grounded",
     engine: "Gemini with Google Search",
     async ask(prompt) {
-      const res = await doFetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-        method: "POST",
-        // Key goes in a header, never the URL, so it cannot leak into logs.
-        headers: { "Content-Type": "application/json", "x-goog-api-key": opts.apiKey },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          tools: [{ google_search: {} }],
-        }),
-      });
-      if (!res.ok) throw new Error(`Gemini request failed: HTTP ${res.status}`);
+      let res: Awaited<ReturnType<FetchLike>>;
+      try {
+        res = await doFetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+          method: "POST",
+          // Key goes in a header, never the URL, so it cannot leak into logs.
+          headers: { "Content-Type": "application/json", "x-goog-api-key": opts.apiKey },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            tools: [{ google_search: {} }],
+          }),
+          signal: AbortSignal.timeout(opts.timeoutMs ?? ASK_TIMEOUT_MS),
+        });
+      } catch (err) {
+        const timedOut = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
+        throw new GeoProviderError(timedOut ? "timeout" : "network", timedOut ? "Gemini did not answer in time." : "Gemini request failed: network error.");
+      }
+      if (!res.ok) throw new GeoProviderError(codeForStatus(res.status), `Gemini request failed: HTTP ${res.status}`, res.status);
       const parsed = parseGeminiResponse(await res.json());
-      if (!parsed.answer) throw new Error("Gemini returned an empty answer.");
+      if (!parsed.answer) throw new GeoProviderError("empty", "Gemini returned an empty answer.");
       return parsed;
     },
   };

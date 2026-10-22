@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 import { FEATURES } from "@/lib/features";
-import { getConnectedEmail, listSearchConsoleSites, listGA4Properties } from "@/lib/domain/shared/googleAnalyticsOAuth";
+import { getConnectedEmail, discoverGoogleResources } from "@/lib/domain/shared/googleAnalyticsOAuth";
 import { getConnectedEmail as getGmailConnectedEmail } from "@/lib/domain/shared/gmailOAuth";
 import { fetchGrantedScopes } from "@/lib/domain/shared/googleTokenInfo";
+import { grantedServices } from "@/lib/googleOAuthScopes";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import {
   upsertProjectIntegration,
@@ -70,11 +71,14 @@ async function persistPlatformGmailTokens(
   if (error) throw new Error(error.message);
 }
 
+/** `persisted` is true only once the tokens and resources were saved; `problems` are ungranted permissions or failed listings. */
+type GoogleServicePersistResult = { persisted: boolean; problems: string[] };
+
 async function persistGoogleServiceTokensSupabase(
   userId: string,
   providerToken: string,
   providerRefreshToken: string
-) {
+): Promise<GoogleServicePersistResult> {
   const db = createServiceClient();
   const { data: setting } = await db
     .from("user_settings")
@@ -83,13 +87,10 @@ async function persistGoogleServiceTokensSupabase(
     .eq("key", "active_project_id")
     .maybeSingle();
   const projectId = setting?.value;
-  if (!projectId) return;
+  if (!projectId) return { persisted: false, problems: [] };
 
-  const [email, gscSites, ga4Properties] = await Promise.all([
-    getConnectedEmail(providerToken),
-    listSearchConsoleSites(providerToken),
-    listGA4Properties(providerToken),
-  ]);
+  const [email, granted] = await Promise.all([getConnectedEmail(providerToken), fetchGrantedScopes(providerToken)]);
+  const { gscSites, ga4Properties, gscListed, ga4Listed, problems } = await discoverGoogleResources(providerToken, granted);
   // expiresAt isn't reported on the Supabase session — treat as already
   // stale so the first real API call refreshes it rather than trusting a
   // made-up TTL.
@@ -114,35 +115,37 @@ async function persistGoogleServiceTokensSupabase(
   ]);
 
   await Promise.all([
-    replaceIntegrationResourcesSupabase(
-      db,
-      userId,
-      gsc.id,
-      gscSites.map((site) => ({ resourceType: "search_console_property", resourceId: site, resourceName: site, metadata: {} }))
-    ),
-    replaceIntegrationResourcesSupabase(
-      db,
-      userId,
-      ga4.id,
-      ga4Properties.map((property) => ({ resourceType: "ga4_property", resourceId: property.id, resourceName: property.name, metadata: {} }))
-    ),
+    gscListed
+      ? replaceIntegrationResourcesSupabase(
+          db,
+          userId,
+          gsc.id,
+          gscSites.map((site) => ({ resourceType: "search_console_property", resourceId: site, resourceName: site, metadata: {} }))
+        )
+      : null,
+    ga4Listed
+      ? replaceIntegrationResourcesSupabase(
+          db,
+          userId,
+          ga4.id,
+          ga4Properties.map((property) => ({ resourceType: "ga4_property", resourceId: property.id, resourceName: property.name, metadata: {} }))
+        )
+      : null,
   ]);
+  return { persisted: true, problems };
 }
 
 /** Self-host mirror of the above — same real project_integrations rows the
  * manual connect flow creates, just triggered by the Google sign-in's
  * provider tokens instead of a dedicated OAuth round-trip. */
-async function persistGoogleServiceTokens(providerToken: string, providerRefreshToken: string | undefined) {
-  if (!providerRefreshToken) return;
+async function persistGoogleServiceTokens(providerToken: string, providerRefreshToken: string | undefined): Promise<GoogleServicePersistResult> {
+  if (!providerRefreshToken) return { persisted: false, problems: [] };
 
   const projectId = getActiveProjectId();
-  if (!projectId) return;
+  if (!projectId) return { persisted: false, problems: [] };
 
-  const [email, gscSites, ga4Properties] = await Promise.all([
-    getConnectedEmail(providerToken),
-    listSearchConsoleSites(providerToken),
-    listGA4Properties(providerToken),
-  ]);
+  const [email, granted] = await Promise.all([getConnectedEmail(providerToken), fetchGrantedScopes(providerToken)]);
+  const { gscSites, ga4Properties, gscListed, ga4Listed, problems } = await discoverGoogleResources(providerToken, granted);
 
   const now = new Date().toISOString();
   const gsc = upsertProjectIntegration({
@@ -163,14 +166,19 @@ async function persistGoogleServiceTokens(providerToken: string, providerRefresh
   saveIntegrationSecrets(gsc.id, { accessToken: providerToken, refreshToken: providerRefreshToken, expiresAt: 0 });
   saveIntegrationSecrets(ga4.id, { accessToken: providerToken, refreshToken: providerRefreshToken, expiresAt: 0 });
 
-  replaceIntegrationResources(
-    gsc.id,
-    gscSites.map((site) => ({ resourceType: "search_console_property", resourceId: site, resourceName: site, metadata: {} }))
-  );
-  replaceIntegrationResources(
-    ga4.id,
-    ga4Properties.map((property) => ({ resourceType: "ga4_property", resourceId: property.id, resourceName: property.name, metadata: {} }))
-  );
+  if (gscListed) {
+    replaceIntegrationResources(
+      gsc.id,
+      gscSites.map((site) => ({ resourceType: "search_console_property", resourceId: site, resourceName: site, metadata: {} }))
+    );
+  }
+  if (ga4Listed) {
+    replaceIntegrationResources(
+      ga4.id,
+      ga4Properties.map((property) => ({ resourceType: "ga4_property", resourceId: property.id, resourceName: property.name, metadata: {} }))
+    );
+  }
+  return { persisted: true, problems };
 }
 
 // Exchanges the OAuth `code` Supabase redirects back with for a session.
@@ -183,6 +191,7 @@ export async function GET(request: NextRequest) {
 
   let destination = "/dashboard";
   let hasGoogleServiceScopes = false;
+  let googleProblem: string | null = null;
 
   if (code) {
     const supabase = await createClient();
@@ -191,26 +200,34 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${base}/login?error=auth`);
     }
 
-    if (data.session?.provider_token) {
-      hasGoogleServiceScopes = true;
+    // Plain sign-in (identity scopes only) also returns a provider_token, so
+    // only treat the session as a service connect when Google granted
+    // Gmail or Analytics/Search Console scopes.
+    const providerToken = data.session?.provider_token;
+    const services = providerToken
+      ? grantedServices(await fetchGrantedScopes(providerToken), !!data.session?.provider_refresh_token)
+      : { gmail: false, googleData: false };
+    if (providerToken && (services.gmail || services.googleData)) {
       try {
         if (FEATURES.PLATFORM_MODE) {
-          if (data.session.provider_refresh_token && data.user) {
-            await persistGoogleServiceTokensSupabase(
-              data.user.id,
-              data.session.provider_token,
-              data.session.provider_refresh_token
-            );
-            await persistPlatformGmailTokens(
-              data.user.id,
-              data.session.provider_token,
-              data.session.provider_refresh_token
-            );
+          if (data.session?.provider_refresh_token && data.user) {
+            if (services.googleData) {
+              const result = await persistGoogleServiceTokensSupabase(data.user.id, providerToken, data.session.provider_refresh_token);
+              hasGoogleServiceScopes = result.persisted && result.problems.length === 0;
+              if (result.problems.length > 0) googleProblem = result.problems.join(" ");
+            }
+            if (services.gmail) {
+              await persistPlatformGmailTokens(data.user.id, providerToken, data.session.provider_refresh_token);
+              if (!services.googleData) hasGoogleServiceScopes = true;
+            }
           }
-        } else {
-          await persistGoogleServiceTokens(data.session.provider_token, data.session.provider_refresh_token ?? undefined);
+        } else if (services.googleData) {
+          const result = await persistGoogleServiceTokens(providerToken, data.session?.provider_refresh_token ?? undefined);
+          hasGoogleServiceScopes = result.persisted && result.problems.length === 0;
+          if (result.problems.length > 0) googleProblem = result.problems.join(" ");
         }
       } catch (err) {
+        googleProblem = "Google connection could not be saved. Reconnect Google from Settings.";
         // Login itself succeeded — don't fail the whole sign-in over GA/GSC
         // token bookkeeping. User just sees "Connect" still showing next.
         console.error("[auth/callback] Failed to persist Google service tokens:", err);
@@ -230,6 +247,10 @@ export async function GET(request: NextRequest) {
   // feedback that anything happened.
   if (hasGoogleServiceScopes && destination === "/dashboard") {
     return NextResponse.redirect(`${base}${destination}?ga_connected=1`);
+  }
+  // Signed in, but the Google connection did not fully save: say so instead of showing "connected".
+  if (googleProblem && destination === "/dashboard") {
+    return NextResponse.redirect(`${base}${destination}?ga_error=${encodeURIComponent(googleProblem)}`);
   }
 
   return NextResponse.redirect(`${base}${destination}`);

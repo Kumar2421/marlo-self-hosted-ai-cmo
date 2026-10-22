@@ -1,8 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { refreshAccessToken } from "./googleAnalyticsOAuth";
+import { isGoogleAuthError, needsReconnect } from "./googleAuthError.ts";
 import {
   getProjectIntegration,
   getIntegrationSecrets,
+  markConnectionNeedsReconnect,
   saveIntegrationSecrets,
 } from "@/lib/domain/integrations/integrationStoreSupabase";
 
@@ -34,7 +36,16 @@ export async function getValidPlatformGoogleToken(
     return secrets.accessToken;
   }
 
-  const refreshed = await refreshAccessToken(secrets.refreshToken);
+  let refreshed;
+  try {
+    refreshed = await refreshAccessToken(secrets.refreshToken);
+  } catch (err) {
+    // A revoked or mismatched grant will not recover by itself: remember it so the cron stops retrying and the UI can say so.
+    if (isGoogleAuthError(err) && needsReconnect(err.code)) {
+      await markConnectionNeedsReconnect(db, userId, projectId, integration.integrationType, err.code);
+    }
+    throw err;
+  }
   await saveIntegrationSecrets(db, userId, integration.id, {
     accessToken: refreshed.accessToken,
     refreshToken: secrets.refreshToken,

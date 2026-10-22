@@ -5,11 +5,20 @@
  * invoke this when a real key is present, and treat a thrown error as
  * "not available this run," never as a reason to invent placeholder scores. */
 
-export type CwvStatus = "Pass" | "Warn" | "Fail";
+/** "Unknown": PSI did not return this audit, so it was not measured (never a fake Fail). */
+export type CwvStatus = "Pass" | "Warn" | "Fail" | "Unknown";
 export type CwvMetric = { value: string; status: CwvStatus };
 export type CwvSnapshot = { lcp: CwvMetric; fcp: CwvMetric; cls: CwvMetric };
 
-export type PageSpeedScores = { performance: number; accessibility: number; bestPractices: number; seo: number };
+/** A score is undefined when PSI did not return that category: "not measured", never 0. */
+export type PageSpeedScores = {
+  performance: number | undefined;
+  accessibility: number | undefined;
+  bestPractices: number | undefined;
+  seo: number | undefined;
+};
+
+export const NOT_MEASURED = "Not measured";
 export type LighthouseIssue = {
   id: string;
   title: string;
@@ -24,7 +33,7 @@ export type PageSpeedResult = {
 };
 
 function statusFromScore(score: number | undefined): CwvStatus {
-  if (score === undefined) return "Fail";
+  if (typeof score !== "number") return "Unknown";
   if (score >= 0.9) return "Pass";
   if (score >= 0.5) return "Warn";
   return "Fail";
@@ -44,8 +53,23 @@ async function fetchLighthouse(url: string, apiKey: string, strategy: "desktop" 
 
   const res = await fetch(psiUrl.toString());
   if (!res.ok) throw new Error(`PSI fetch failed: HTTP ${res.status}`);
-  const data = await res.json();
+  return parseLighthouse(await res.json());
+}
 
+function categoryScore(category: { score?: unknown } | undefined): number | undefined {
+  return typeof category?.score === "number" ? Math.round(category.score * 100) : undefined;
+}
+
+function cwvMetric(audit: { score?: number; displayValue?: string } | undefined): CwvMetric {
+  return {
+    value: typeof audit?.displayValue === "string" ? audit.displayValue : NOT_MEASURED,
+    status: statusFromScore(audit?.score),
+  };
+}
+
+/** Pure: turn a raw PSI response into scores, vitals and issues. Anything PSI did not return stays undefined / "Not measured". */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function parseLighthouse(data: any) {
   const categories = data.lighthouseResult?.categories ?? {};
   const audits = (data.lighthouseResult?.audits ?? {}) as Record<string, {
     score?: number;
@@ -71,27 +95,18 @@ async function fetchLighthouse(url: string, apiKey: string, strategy: "desktop" 
     .slice(0, 8);
 
   const cwv: CwvSnapshot = {
-    lcp: {
-      value: audits["largest-contentful-paint"]?.displayValue ?? "N/A",
-      status: statusFromScore(audits["largest-contentful-paint"]?.score),
-    },
-    fcp: {
-      value: audits["first-contentful-paint"]?.displayValue ?? "N/A",
-      status: statusFromScore(audits["first-contentful-paint"]?.score),
-    },
-    cls: {
-      value: audits["cumulative-layout-shift"]?.displayValue ?? "N/A",
-      status: statusFromScore(audits["cumulative-layout-shift"]?.score),
-    },
+    lcp: cwvMetric(audits["largest-contentful-paint"]),
+    fcp: cwvMetric(audits["first-contentful-paint"]),
+    cls: cwvMetric(audits["cumulative-layout-shift"]),
   };
 
   return {
     scores: {
-      performance: Math.round((categories.performance?.score ?? 0) * 100),
-      accessibility: Math.round((categories.accessibility?.score ?? 0) * 100),
-      bestPractices: Math.round((categories["best-practices"]?.score ?? 0) * 100),
-      seo: Math.round((categories.seo?.score ?? 0) * 100),
-    },
+      performance: categoryScore(categories.performance),
+      accessibility: categoryScore(categories.accessibility),
+      bestPractices: categoryScore(categories["best-practices"]),
+      seo: categoryScore(categories.seo),
+    } satisfies PageSpeedScores,
     cwv,
     lighthouseIssues,
   };

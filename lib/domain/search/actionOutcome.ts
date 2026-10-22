@@ -193,6 +193,8 @@ export function evaluateOutcome(args: {
   now?: Date;
   /** Before/after page comparison, when both fingerprints exist. */
   pageChange?: FingerprintChange | null;
+  /** Date (YYYY-MM-DD) of the snapshot `current` came from. When given, it must be at least MIN_DAYS after the change. */
+  snapshotDate?: string | null;
 }): Outcome {
   const { implementation, current } = args;
   const now = args.now ?? new Date();
@@ -227,6 +229,20 @@ export function evaluateOutcome(args: {
   if (daysSince < MIN_DAYS) {
     const left = MIN_DAYS - daysSince;
     return done("waiting", `Too early to tell. Google needs time to notice the change. Check back in ${left} day${left === 1 ? "" : "s"}.`);
+  }
+  // Search data from before the change (or too soon after it) says nothing about the change.
+  if (args.snapshotDate) {
+    const readyOn = new Date(Date.parse(implementation.implementedAt) + MIN_DAYS * DAY).toISOString().slice(0, 10);
+    if (args.snapshotDate < readyOn) {
+      const left = Math.max(1, Math.ceil((Date.parse(readyOn) - now.getTime()) / DAY));
+      return {
+        ...done(
+          "waiting",
+          `Too early to tell. The latest search data is from ${args.snapshotDate}, and a verdict needs data from ${readyOn} or later. Refresh your search data and check again.`,
+        ),
+        daysUntilReady: Math.max(base.daysUntilReady, left),
+      };
+    }
   }
   if (baseline.impressions < MIN_BASELINE_IMPRESSIONS) {
     return done("no_data", `Only ${Math.round(baseline.impressions)} views before the change, which is too few to measure reliably.`);
@@ -279,6 +295,7 @@ export function outcomeForAction(args: {
     current: query ? currentRowFor(query, args.snapshot?.payload) : null,
     now: args.now,
     pageChange: compareFingerprints(implementation.pageBefore, implementation.pageAfter),
+    snapshotDate: args.snapshot?.snapshotDate ?? null,
   });
 }
 

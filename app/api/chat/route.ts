@@ -17,6 +17,7 @@ import { createServiceClient } from "@/utils/supabase/serviceClient";
 import { chargeCredits, InsufficientCreditsError } from "@/lib/credits";
 import { PLATFORM_PROVIDER_KEYS } from "@/lib/llm/platformKeys";
 import { validateChatInput } from "@/lib/domain/chat/chatLimits";
+import { checkChatProjectScope } from "@/lib/domain/chat/projectScope";
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
 // platform max for this route (Hobby plan caps at 60s; Pro allows more).
@@ -125,6 +126,11 @@ export async function POST(req: NextRequest) {
 
     const db = createServiceClient();
 
+    // Verify the client's project before any credit is charged or history is used.
+    const activeId = await activeProjectIdSupabase(db, user.id);
+    const scope = checkChatProjectScope(body.projectId, activeId);
+    if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: 409 });
+
     const { data: conn } = await db
       .from("provider_connections")
       .select("api_key_secret_id, base_url")
@@ -159,7 +165,6 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      const activeId = await activeProjectIdSupabase(db, user.id);
       const system = await buildChatSystemPromptSupabase(db, user.id, activeId);
       const out = await answer({
         providerId, apiKey, model, baseUrl, system,
@@ -175,6 +180,10 @@ export async function POST(req: NextRequest) {
   }
 
   const db = getDb();
+  const activeId = getActiveProjectId();
+  const scope = checkChatProjectScope(body.projectId, activeId);
+  if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: 409 });
+
   const row = db
     .prepare("SELECT api_key, base_url FROM provider_connections WHERE provider_id = ?")
     .get(providerId) as { api_key: string; base_url: string | null } | undefined;
@@ -187,7 +196,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const activeId = getActiveProjectId();
     const out = await answer({
       providerId, apiKey: row.api_key, model, baseUrl: row.base_url ?? undefined,
       system: buildChatSystemPrompt(activeId),

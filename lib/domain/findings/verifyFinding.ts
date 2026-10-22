@@ -22,8 +22,11 @@ export type VerifyResult = {
 /** One finding of a fresh SEO audit, in the shape reconcileSeoAuditRecheck expects. */
 export type FreshAuditFinding = Parameters<typeof reconcileSeoAuditRecheck>[1][number];
 
-/** A fresh audit: its findings, and the URL the crawl ended on when it is known. */
-export type FreshAudit = { findings: FreshAuditFinding[]; finalUrl?: string };
+/**
+ * A fresh audit: its findings, the URL the crawl ended on when it is known, and
+ * whether the run included PageSpeed data (Lighthouse findings only exist then).
+ */
+export type FreshAudit = { findings: FreshAuditFinding[]; finalUrl?: string; hasPageSpeed?: boolean };
 
 export type VerifyCheckPorts = {
   /**
@@ -81,10 +84,22 @@ const SEVERITY_FOR_RECHECK: Record<Finding["severity"], "info" | "warning" | "cr
   critical: "critical",
 };
 
+export const PAGESPEED_MISSING_REASON = "PageSpeed data was not available for this check, so it could not be verified. Connect a PageSpeed key and re-check.";
+
+export type VerifyOptions = {
+  /**
+   * The caller's audit can produce PageSpeed data (a manual re-check with a key).
+   * Lighthouse findings are then checked, but only when the fresh audit actually
+   * carries PageSpeed data; otherwise their absence proves nothing and they are skipped.
+   */
+  allowPageSpeed?: boolean;
+};
+
 export async function verifyFinding(
   ports: VerifyCheckPorts,
   finding: Pick<Finding, "source" | "category" | "entityId" | "url" | "severity">,
   now: Date,
+  options: VerifyOptions = {},
 ): Promise<VerifyResult> {
   const checkedAt = now.toISOString();
   const skipped = (reason: string): VerifyResult => ({ outcome: "skipped", reason, checkedAt });
@@ -93,7 +108,8 @@ export async function verifyFinding(
     return skipped("This finding is measured from search data, not re-checked on the page.");
   }
   if (!finding.url) return skipped("The finding has no page to check.");
-  if (needsPageSpeed(finding)) return skipped(PAGESPEED_SKIP_REASON);
+  const pageSpeedFinding = needsPageSpeed(finding);
+  if (pageSpeedFinding && !(options.allowPageSpeed && finding.source === "seo-audit")) return skipped(PAGESPEED_SKIP_REASON);
 
   try {
     if (finding.source === "seo-audit") {
@@ -102,6 +118,7 @@ export async function verifyFinding(
       if (!Array.isArray(audit) && redirectedAway(finding.url, audit.finalUrl)) {
         return skipped("The page now redirects elsewhere, so it cannot be checked. It will be retried.");
       }
+      if (pageSpeedFinding && (Array.isArray(audit) || !audit.hasPageSpeed)) return skipped(PAGESPEED_MISSING_REASON);
       const result = reconcileSeoAuditRecheck(finding.entityId, fresh, SEVERITY_FOR_RECHECK[finding.severity] ?? "warning");
       return result.issueDetected
         ? { outcome: "failed", reason: "The audit still flags this issue.", checkedAt }

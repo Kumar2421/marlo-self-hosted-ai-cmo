@@ -2,18 +2,12 @@
 
 import { useState, useRef, useEffect } from "react";
 import {
-  Bot,
   Plus,
-  Clock,
-  MoreHorizontal,
   Search,
   Paperclip,
   AtSign,
   ArrowUp,
   Copy,
-  ThumbsUp,
-  ThumbsDown,
-  RotateCcw,
   MessageSquare,
   ChevronDown,
   Cpu,
@@ -22,6 +16,8 @@ import Link from "next/link";
 import CollapsedRail, { RailButton } from "./CollapsedRail";
 import { useToast } from "./Toast";
 import { useProviders, findProviderForModel } from "@/lib/providers-store";
+import { useProject } from "@/lib/project-store";
+import { limitedDataNotice } from "@/lib/llm/capabilities";
 
 const SUGGESTED_PROMPTS = [
   "What should I fix first on my site?",
@@ -37,6 +33,8 @@ type Msg = {
   footer?: string;
   /** Which stored data the answer looked at (from the chat tools). */
   lookedAt?: string[];
+  /** Error bubble: shown to the user, never sent back to the model as history. */
+  error?: boolean;
 };
 
 function ModelSelector() {
@@ -103,6 +101,35 @@ export default function ChatPanel({
   const inputRef = useRef<HTMLInputElement>(null);
   const { show } = useToast();
   const { primaryModel } = useProviders();
+  const { project } = useProject();
+  const projectId = project?.id ?? null;
+  const modelProviderId = primaryModel ? findProviderForModel(primaryModel) : null;
+  const dataNotice = limitedDataNotice(modelProviderId);
+
+  // Only the newest request may touch the chat: a project switch or "New chat"
+  // aborts the in-flight one and bumps the id, so a late reply is dropped.
+  const abortRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef(0);
+  // Unsent text per project, so switching projects neither leaks nor loses a draft.
+  const draftsRef = useRef<Record<string, string>>({});
+  const scopeRef = useRef<string | null>(projectId);
+
+  function resetChat() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    requestIdRef.current += 1;
+    setMessages([]);
+    setSending(false);
+  }
+
+  useEffect(() => {
+    if (scopeRef.current === projectId) return;
+    scopeRef.current = projectId;
+    resetChat();
+    setInput(projectId ? draftsRef.current[projectId] ?? "" : "");
+  }, [projectId]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -119,23 +146,33 @@ export default function ChatPanel({
     }
 
     const history = messages
-      .filter((m) => m.role === "user" || m.role === "assistant")
+      .filter((m) => !m.error)
       .map((m) => ({ role: m.role, content: m.text }));
+
+    const reqId = requestIdRef.current + 1;
+    requestIdRef.current = reqId;
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    const isCurrent = () => requestIdRef.current === reqId;
 
     setMessages((m) => [...m, { role: "user", text }]);
     setInput("");
+    if (projectId) draftsRef.current[projectId] = "";
     setSending(true);
 
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, model: primaryModel, providerId, history }),
+        signal: ctrl.signal,
+        body: JSON.stringify({ message: text, model: primaryModel, providerId, history, projectId }),
       });
       const data = await res.json();
+      if (!isCurrent()) return;
 
       if (!res.ok) {
-        setMessages((m) => [...m, { role: "assistant", text: `⚠ ${data.error ?? "Something went wrong."}` }]);
+        setMessages((m) => [...m, { role: "assistant", text: `⚠ ${data.error ?? "Something went wrong."}`, error: true }]);
         return;
       }
 
@@ -144,12 +181,13 @@ export default function ChatPanel({
         { role: "assistant", text: data.reply, lookedAt: Array.isArray(data.lookedAt) ? data.lookedAt : undefined },
       ]);
     } catch {
+      if (!isCurrent()) return;
       setMessages((m) => [
         ...m,
-        { role: "assistant", text: "⚠ Couldn't reach the server. Check your connection and try again." },
+        { role: "assistant", text: "⚠ Couldn't reach the server. Check your connection and try again.", error: true },
       ]);
     } finally {
-      setSending(false);
+      if (isCurrent()) setSending(false);
     }
   }
 
@@ -171,20 +209,16 @@ export default function ChatPanel({
       <div className="dash-panel-header">
         <div className="dash-title">
           <Search size={13} className="shrink-0 text-gray-400" />
-          <span className="min-w-0 truncate">mlforge studio</span>
+          <span className="min-w-0 truncate">{project?.name ?? "Chat"}</span>
         </div>
         <div className="flex shrink-0 items-center gap-3 text-gray-400">
           <span className="h-1.5 w-1.5 rounded-full bg-[#00ab92]" />
-          <button title="New chat" onClick={() => setMessages([])} className="hover:text-gray-700">
+          <button title="New chat" aria-label="New chat" onClick={resetChat} className="hover:text-gray-700">
             <Plus size={14} />
-          </button>
-          <button title="History" className="hover:text-gray-700">
-            <Clock size={14} />
           </button>
           <button title="Collapse" onClick={onToggle} className="hidden text-lg leading-none hover:text-gray-700 md:block">
             –
           </button>
-          <MoreHorizontal size={14} className="cursor-pointer hover:text-gray-700" />
         </div>
       </div>
 
@@ -227,9 +261,6 @@ export default function ChatPanel({
                     className="cursor-pointer hover:text-gray-600"
                     onClick={() => navigator.clipboard?.writeText(msg.text)}
                   />
-                  <ThumbsUp size={13} className="cursor-pointer hover:text-gray-600" />
-                  <ThumbsDown size={13} className="cursor-pointer hover:text-gray-600" />
-                  <RotateCcw size={13} className="cursor-pointer hover:text-gray-600" />
                 </div>
               )}
             </div>
@@ -267,11 +298,15 @@ export default function ChatPanel({
       </div>
 
       <div className="shrink-0 border-t border-gray-200 bg-[#f9fafb] p-3">
+        {dataNotice && <p className="mb-2 px-1 text-[11px] text-amber-600">{dataNotice}</p>}
         <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm focus-within:border-gray-400">
           <input
             ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              if (projectId) draftsRef.current[projectId] = e.target.value;
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -284,8 +319,12 @@ export default function ChatPanel({
           <div className="flex items-center justify-between">
             <div className="flex min-w-0 items-center gap-3 text-gray-400">
               <ModelSelector />
-              <Paperclip size={15} className="cursor-pointer hover:text-gray-600" />
-              <AtSign size={15} className="cursor-pointer hover:text-gray-600" />
+              <button type="button" disabled title="Coming soon" aria-label="Attach file (coming soon)" className="cursor-not-allowed opacity-40">
+                <Paperclip size={15} />
+              </button>
+              <button type="button" disabled title="Coming soon" aria-label="Mention (coming soon)" className="cursor-not-allowed opacity-40">
+                <AtSign size={15} />
+              </button>
             </div>
             <button
               onClick={send}

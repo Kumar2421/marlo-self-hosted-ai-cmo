@@ -1,4 +1,5 @@
 import { deriveOpportunityRecommendations } from "../search/opportunityRecommendations.ts";
+import { catalogEntry, genericEntry } from "./issueRecommendations.ts";
 import type { Recommendation, RecommendationPriority, RecommendationType } from "./recommendationTypes.ts";
 
 type FindingLike = {
@@ -7,6 +8,8 @@ type FindingLike = {
   entityId: string;
   url: string | null;
   evidence: Record<string, unknown>;
+  source?: string;
+  category?: string;
 };
 
 type FindingPageEvidence = {
@@ -51,6 +54,12 @@ export function deriveRecommendations(finding: FindingLike): Recommendation[] {
   const fromOpportunity = deriveOpportunityRecommendations(finding);
   if (fromOpportunity) return fromOpportunity;
 
+  // Findings Marlo created itself (SEO audit, GEO readiness, Lighthouse) are recognised by what they are, not by page evidence they do not carry.
+  const entry = catalogEntry(finding);
+  if (entry) {
+    return [recommendation(finding, entry.type, entry.title, entry.summary, entry.priority, entry.kind, entry.action, entry.evidence)];
+  }
+
   const page = pageEvidence(finding);
   const recommendations: Recommendation[] = [];
 
@@ -69,7 +78,8 @@ export function deriveRecommendations(finding: FindingLike): Recommendation[] {
     );
   }
 
-  if (!page.meta?.canonical) {
+  // Only judge the canonical when page metadata was actually collected; an absent `meta` means "unknown", not "missing".
+  if (page.meta && !page.meta.canonical) {
     recommendations.push(
       recommendation(
         finding,
@@ -100,26 +110,6 @@ export function deriveRecommendations(finding: FindingLike): Recommendation[] {
     );
   }
 
-  if (finding.evidence.auditId && finding.evidence.device) {
-    const mode = typeof finding.evidence.mode === "string" ? finding.evidence.mode : "diagnostic";
-    const displayValue = typeof finding.evidence.displayValue === "string" ? finding.evidence.displayValue : undefined;
-    const score = typeof finding.evidence.score === "number" ? Math.round(finding.evidence.score * 100) : undefined;
-    recommendations.push(
-      recommendation(
-        finding,
-        "lighthouse_issue",
-        mode === "opportunity" ? "Improve this Lighthouse opportunity" : "Address this Lighthouse diagnostic",
-        displayValue
-          ? `${displayValue}. This audit identifies a measurable Lighthouse issue on the ${String(finding.evidence.device)} experience.`
-          : "This Lighthouse audit identifies a performance, accessibility, best-practice, or SEO issue worth addressing.",
-        score !== undefined && score < 50 ? "high" : "medium",
-        "manual",
-        "Review the Lighthouse audit details, make the smallest relevant page or application change, then re-run the SEO audit to confirm the score improves.",
-        { device: finding.evidence.device, mode, score, displayValue, auditId: finding.evidence.auditId },
-      ),
-    );
-  }
-
   const ttfbMs = page.serverTiming?.ttfbMs;
   if (typeof ttfbMs === "number" && ttfbMs > 1500) {
     recommendations.push(
@@ -135,6 +125,14 @@ export function deriveRecommendations(finding: FindingLike): Recommendation[] {
       ),
     );
   }
+
+  // Search-console findings with healthy page data legitimately have nothing to add. Anything else we cannot
+  // recognise gets a generic review step rather than a specific recommendation that might be wrong.
+  if (recommendations.length === 0 && (finding.source ?? "").toLowerCase() !== "search-console") {
+    const generic = genericEntry(finding);
+    return [recommendation(finding, generic.type, generic.title, generic.summary, generic.priority, generic.kind, generic.action, generic.evidence)];
+  }
+
 
   return recommendations;
 }

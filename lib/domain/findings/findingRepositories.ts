@@ -18,7 +18,7 @@ export function sqliteFindingRepository(): FindingRepository {
   return {
     get: (projectId, id) => getProjectFinding(projectId, id),
     list: (projectId) => listProjectFindings(projectId),
-    transition: (projectId, id, status) => updateFindingStatus(projectId, id, status),
+    transition: (projectId, id, status, from) => updateFindingStatus(projectId, id, status, from),
     refresh: (projectId, id, input) => refreshFinding(projectId, id, input),
   };
 }
@@ -28,7 +28,7 @@ export function supabaseFindingRepository(db: SupabaseClient, userId: string): F
   return {
     get: (projectId, id) => getProjectFindingSupabase(db, userId, projectId, id),
     list: (projectId) => listProjectFindingsSupabase(db, userId, projectId),
-    transition: (projectId, id, status) => updateFindingStatusSupabase(db, userId, projectId, id, status),
+    transition: (projectId, id, status, from) => updateFindingStatusSupabase(db, userId, projectId, id, status, from),
     refresh: (projectId, id, input) => refreshFindingSupabase(db, userId, projectId, id, input),
   };
 }

@@ -7,7 +7,9 @@ import { buildOpportunities, type OpportunityGroups } from "@/lib/domain/search/
 import { getLatestSnapshot } from "@/lib/domain/search/searchSnapshotStore";
 import { getLatestSnapshot as getLatestSnapshotSupabase } from "@/lib/domain/search/searchSnapshotStoreSupabase";
 import type { SearchSnapshotPayload } from "@/lib/domain/search/searchSnapshot";
-import { rankNextActions } from "@/lib/domain/search/nextActions";
+import { nextActionsEmptyState, rankNextActions } from "@/lib/domain/search/nextActions";
+import { computeDelta, overviewDataFlags } from "@/lib/domain/search/deltaView";
+import { summaryTotals } from "@/lib/domain/search/summaryTotals";
 import { weekChanges } from "@/lib/domain/search/weekChanges";
 import { readOutcomes, type ActionWithOutcome, type OutcomePorts } from "@/lib/domain/search/outcomeService";
 import { platformOutcomePorts, selfHostOutcomePorts } from "@/lib/domain/search/outcomePorts";
@@ -23,6 +25,11 @@ type OverviewResponse = {
   snapshot?: { capturedAt: string; snapshotDate: string } | null;
   gscNotConnected?: boolean;
   collectingData?: boolean;
+  /** Snapshot has data but the previous period is empty: show no deltas. */
+  noComparison?: boolean;
+  /** Null for a metric means "no baseline": show no arrow. */
+  deltas?: { clicks: unknown; impressions: unknown; position: unknown } | null;
+  nextActionsEmpty?: unknown;
   stats?: unknown;
   weekChanges?: unknown[];
   nextActions?: unknown[];
@@ -57,14 +64,29 @@ async function buildOverview(params: {
     .slice(0, 3);
 
   const payload = latest.payload;
+  const flags = overviewDataFlags(payload.windows);
+  const usable = !flags.collectingData && !flags.noComparison;
+  const now = summaryTotals(payload.windows.d28);
+  const before = summaryTotals(payload.windows.prev28);
+  const nextActions = flags.collectingData ? [] : rankNextActions(findings, opportunities, 3);
   return {
     snapshot: { capturedAt: latest.capturedAt, snapshotDate: latest.snapshotDate },
+    ...flags,
     stats: {
       d28: payload.windows.d28,
       prev28: payload.windows.prev28,
     },
-    weekChanges: weekChanges(payload.windows.d28, payload.windows.prev28, 5),
-    nextActions: rankNextActions(findings, opportunities, 3),
+    deltas: usable
+      ? {
+          clicks: computeDelta(now.clicks, before.clicks),
+          impressions: computeDelta(now.impressions, before.impressions),
+          position: computeDelta(now.position, before.position, "position"),
+        }
+      : null,
+    // Without a baseline there is nothing to compare, so no "lost/gained" claims either.
+    weekChanges: usable ? weekChanges(payload.windows.d28, payload.windows.prev28, 5) : [],
+    nextActions,
+    nextActionsEmpty: nextActions.length === 0 ? nextActionsEmptyState(payload) : null,
     yourFixes,
   };
 }

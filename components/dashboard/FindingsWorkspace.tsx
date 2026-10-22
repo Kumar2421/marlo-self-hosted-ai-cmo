@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronRight, CircleDot, Loader2, RefreshCw } from "lucide-react";
 import type { Finding, FindingStatus } from "@/lib/domain/findings/findingTypes";
-import { countFindings, findingTitle, pagePath } from "@/lib/domain/findings/findingDisplay";
+import { countFindings, explainPriority, findingTitle, pagePath } from "@/lib/domain/findings/findingDisplay";
 import { friendlyGithubUrlError } from "@/lib/domain/github/friendlyGithubError";
 import { useToast } from "@/components/dashboard/Toast";
 import SidePanel from "@/components/shared/SidePanel";
@@ -153,6 +153,11 @@ export default function FindingsWorkspace({ onRunAudit, auditRunning = false }: 
         <Stat label="Warnings" value={counts.warning} />
         <Stat label="Verified" value={counts.verified} tone="good" />
       </div>
+      {counts.awaitingVerification > 0 && (
+        <p className="-mt-2 text-[11px] text-gray-500">
+          {counts.awaitingVerification} fixed and waiting for Marlo to re-check. They are not counted above until verified.
+        </p>
+      )}
 
       {findings.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center">
@@ -175,7 +180,7 @@ export default function FindingsWorkspace({ onRunAudit, auditRunning = false }: 
         </div>
       ) : (
         <ul className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-          {findings.map((finding) => (
+          {findings.map((finding, index) => (
             <li key={finding.id} className="border-t border-gray-100 first:border-t-0">
               <button
                 type="button"
@@ -193,6 +198,7 @@ export default function FindingsWorkspace({ onRunAudit, auditRunning = false }: 
                       {pagePath(finding.url)}
                     </span>
                   </span>
+                  {index < 3 && <span className="mt-1 block text-[11px] text-gray-500">Why it is up here: {explainPriority(finding)}</span>}
                 </span>
                 <ChevronRight size={14} className="mt-1 shrink-0 text-gray-300" />
               </button>

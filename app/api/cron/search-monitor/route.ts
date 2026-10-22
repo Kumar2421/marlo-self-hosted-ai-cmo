@@ -4,7 +4,7 @@ import { isAuthorizedCron, runWithBudget } from "@/lib/jobs/jobRunner";
 import { runPlatformDailyProposals } from "@/lib/domain/actions/dailyProposalPorts";
 import { captureProjectSnapshotPlatform } from "@/lib/domain/search/captureForProject";
 import { listProposalsDone, markProposalsDone } from "@/lib/domain/actions/automationSettingsStoreSupabase";
-import { selectDueProjects } from "@/lib/domain/search/dueProjects";
+import { selectDueProjects, skippedTargets, type SnapshotTarget } from "@/lib/domain/search/dueProjects";
 import { isoDate } from "@/lib/domain/search/searchSnapshot";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 import { runNotificationJob, type NotificationJobSummary } from "@/lib/domain/notifications/job";
@@ -65,19 +65,18 @@ export async function GET(req: NextRequest) {
   const today = isoDate(new Date());
 
   try {
-    const { data: connections, error } = await db
-      .from("integration_connections")
-      .select("project_id, user_id")
-      .eq("provider", "gsc")
-      .not("project_id", "is", null);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const targets = await loadGscTargets(db);
+    if ("error" in targets) return NextResponse.json({ error: targets.error }, { status: 500 });
+    const connections = targets.rows;
 
     const { data: done } = await db.from("search_snapshots").select("project_id").eq("snapshot_date", today);
+    const doneToday = new Set((done ?? []).map((row) => String(row.project_id)));
 
-    const due = selectDueProjects(
-      (connections ?? []).map((c) => ({ projectId: String(c.project_id), userId: String(c.user_id) })),
-      new Set((done ?? []).map((row) => String(row.project_id))),
-    );
+    // Oldest capture first so a project that keeps failing cannot starve the ones behind it.
+    const lastCapturedAt = await lastCaptureTimes(db, connections.map((c) => c.projectId));
+    const due = selectDueProjects(connections, doneToday, lastCapturedAt);
+    // Known-broken connections (needs reconnect, no property) are not retried; they are reported instead.
+    const skippedConnections = skippedTargets(connections, doneToday);
 
     // Phase 1: snapshots for due projects only (resumes where the last run stopped).
     const captured = new Set<string>();
@@ -95,7 +94,7 @@ export async function GET(req: NextRequest) {
     const snapshottedToday = new Set((done ?? []).map((row) => String(row.project_id)));
     const proposalsDone = await listProposalsDone(db, today).catch(() => new Set<string>());
     const proposalTargets = selectDueProjects(
-      (connections ?? []).map((c) => ({ projectId: String(c.project_id), userId: String(c.user_id) })),
+      connections,
       proposalsDone,
     ).filter(({ projectId }) => captured.has(projectId) || snapshottedToday.has(projectId));
     // Freshly captured projects first, then the older backlog.
@@ -207,6 +206,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       notifications,
       due: due.length,
+      skippedConnections,
       processed: summary.processed,
       skipped: summary.skipped,
       failed: summary.failed.map(({ item, error: message }) => ({ projectId: item.projectId, error: message })),
@@ -218,6 +218,57 @@ export async function GET(req: NextRequest) {
   } finally {
     await cleanupRateLimitCounters(db);
   }
+}
+
+/**
+ * GSC connections with their health and whether a property is selected. The health columns come from
+ * migration 20261021000000; until it is applied the query falls back to the old columns and nothing is skipped.
+ */
+async function loadGscTargets(db: ReturnType<typeof createServiceClient>): Promise<{ rows: SnapshotTarget[] } | { error: string }> {
+  const full = await db
+    .from("integration_connections")
+    .select("id, project_id, user_id, status")
+    .eq("provider", "gsc")
+    .not("project_id", "is", null);
+  let rows: Array<{ id: string; project_id: string; user_id: string; status?: string | null }>;
+  if (full.error) {
+    const basic = await db.from("integration_connections").select("id, project_id, user_id").eq("provider", "gsc").not("project_id", "is", null);
+    if (basic.error) return { error: basic.error.message };
+    rows = basic.data ?? [];
+  } else {
+    rows = full.data ?? [];
+  }
+
+  const { data: selected, error: selectedError } = await db
+    .from("integration_resources")
+    .select("connection_id")
+    .eq("resource_type", "search_console_property")
+    .eq("selected", true);
+  const withProperty = selectedError ? null : new Set((selected ?? []).map((r) => String(r.connection_id)));
+
+  return {
+    rows: rows.map((c) => ({
+      projectId: String(c.project_id),
+      userId: String(c.user_id),
+      status: c.status ?? null,
+      hasProperty: withProperty ? withProperty.has(String(c.id)) : undefined,
+    })),
+  };
+}
+
+/** Latest snapshot capture time per project over the last 30 days; projects without one sort first. */
+async function lastCaptureTimes(db: ReturnType<typeof createServiceClient>, projectIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (projectIds.length === 0) return out;
+  const since = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+  const { data } = await db.from("search_snapshots").select("project_id, captured_at").gte("snapshot_date", since).in("project_id", projectIds);
+  for (const row of data ?? []) {
+    const id = String(row.project_id);
+    const at = String(row.captured_at);
+    const prev = out.get(id);
+    if (!prev || at > prev) out.set(id, at);
+  }
+  return out;
 }
 
 /** Projects with a GitHub App link. The link is stored per project in user_settings as `github_app:<projectId>`. */

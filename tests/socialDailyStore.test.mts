@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { claimSocialDay, fetchAllRows, releaseSocialDay, summarizeMarkers, type MarkerRow } from "../lib/domain/social/dailyDraftsStoreSupabase.ts";
-import { DEFAULT_DAILY_DRAFT_SETTINGS, normalizeDailyDraftSettings, parseDailyDraftSettings } from "../lib/domain/social/dailyDraftSettings.ts";
+import { DEFAULT_DAILY_DRAFT_SETTINGS, normalizeDailyDraftSettings, optedInProjectIds, parseDailyDraftSettings } from "../lib/domain/social/dailyDraftSettings.ts";
 
 const NOW = new Date("2026-10-14T09:00:00Z");
 
@@ -153,14 +153,33 @@ test("release: deletes only the row whose content is this run's token", async ()
   assert.ok(eqs.some((a) => a[0] === "doc_type" && a[1] === "social_daily_claim:2026-10-14"));
 });
 
-test("settings: missing or malformed content gives all networks on", () => {
-  assert.deepEqual(parseDailyDraftSettings(null), DEFAULT_DAILY_DRAFT_SETTINGS);
-  assert.deepEqual(parseDailyDraftSettings("{not json"), DEFAULT_DAILY_DRAFT_SETTINGS);
-  assert.deepEqual(normalizeDailyDraftSettings(null), { x: true, linkedin: true, reddit: true });
-  assert.deepEqual(normalizeDailyDraftSettings([1, 2]), { x: true, linkedin: true, reddit: true });
+test("settings: missing or malformed content gives all networks off (opt-in)", () => {
+  const off = { x: false, linkedin: false, reddit: false };
+  assert.deepEqual(DEFAULT_DAILY_DRAFT_SETTINGS, off);
+  assert.deepEqual(parseDailyDraftSettings(null), off);
+  assert.deepEqual(parseDailyDraftSettings("{not json"), off);
+  assert.deepEqual(normalizeDailyDraftSettings(null), off);
+  assert.deepEqual(normalizeDailyDraftSettings([1, 2]), off);
 });
 
-test("settings: only real booleans are read; anything else keeps the default on", () => {
-  assert.deepEqual(normalizeDailyDraftSettings({ x: false, linkedin: "no", reddit: 0 }), { x: false, linkedin: true, reddit: true });
+test("settings: only real booleans are read; anything else keeps the default off", () => {
+  assert.deepEqual(normalizeDailyDraftSettings({ x: true, linkedin: "yes", reddit: 1 }), { x: true, linkedin: false, reddit: false });
   assert.deepEqual(normalizeDailyDraftSettings({ x: false, linkedin: true, reddit: false, extra: true }), { x: false, linkedin: true, reddit: false });
+});
+
+test("settings: existing explicit settings keep their values", () => {
+  assert.deepEqual(parseDailyDraftSettings('{"x":true,"linkedin":true,"reddit":true}'), { x: true, linkedin: true, reddit: true });
+  assert.deepEqual(parseDailyDraftSettings('{"x":true,"linkedin":false,"reddit":true}'), { x: true, linkedin: false, reddit: true });
+});
+
+test("opt-in: only projects with a saved row and a network on are drafted for", () => {
+  const ids = optedInProjectIds([
+    { project_id: "never-saved-is-absent", content: null },
+    { project_id: "all-off", content: '{"x":false,"linkedin":false,"reddit":false}' },
+    { project_id: "garbage", content: "{nope" },
+    { project_id: "one-on", content: '{"x":false,"linkedin":true,"reddit":false}' },
+    { project_id: "all-on", content: '{"x":true,"linkedin":true,"reddit":true}' },
+  ]);
+  assert.deepEqual([...ids].sort(), ["all-on", "one-on"]);
+  assert.equal(optedInProjectIds([]).size, 0, "a user with no settings row is never drafted for");
 });

@@ -5,6 +5,8 @@ import type {
   IntegrationType,
   ProjectIntegration,
 } from "./integrationTypes";
+import { chooseSelectedResourceId } from "./resourceSelection.ts";
+import type { ConnectionHealth } from "./connectionStatus.ts";
 
 /** Supabase mirror of integrationStore.ts (self-host, SQLite) — same
  * function names and shapes, so both platform-mode and self-host routes
@@ -131,6 +133,67 @@ export async function saveIntegrationSecrets(
     .eq("id", integrationId)
     .eq("user_id", userId);
   if (error) throw new Error(error.message);
+
+  // Fresh credentials clear an earlier needs_reconnect flag. Best effort: the health
+  // columns come from a separate migration and may not exist yet.
+  await clearConnectionHealth(db, userId, integrationId);
+}
+
+/**
+ * Connection health lives in integration_connections.status / last_error_code /
+ * last_error_at (migration 20261021000000). Every helper tolerates the columns
+ * being absent: writes are swallowed, reads return null.
+ */
+export async function markConnectionNeedsReconnect(
+  db: SupabaseClient,
+  userId: string,
+  projectId: string,
+  integrationType: IntegrationType,
+  errorCode: string,
+): Promise<void> {
+  try {
+    await db
+      .from("integration_connections")
+      .update({ status: "needs_reconnect", last_error_code: errorCode, last_error_at: new Date().toISOString() })
+      .eq("user_id", userId)
+      .eq("project_id", projectId)
+      .eq("provider", providerFor(integrationType));
+  } catch {
+    // Column missing or write refused: health is advisory.
+  }
+}
+
+export async function clearConnectionHealth(db: SupabaseClient, userId: string, integrationId: string): Promise<void> {
+  try {
+    await db
+      .from("integration_connections")
+      .update({ status: "connected", last_error_code: null, last_error_at: null })
+      .eq("id", integrationId)
+      .eq("user_id", userId)
+      .eq("status", "needs_reconnect");
+  } catch {
+    // See markConnectionNeedsReconnect.
+  }
+}
+
+/** Health of each Google row of a project (gsc and ga4); empty when the columns do not exist. */
+export async function listConnectionHealth(db: SupabaseClient, userId: string, projectId: string): Promise<ConnectionHealth[]> {
+  try {
+    const { data, error } = await db
+      .from("integration_connections")
+      .select("status, last_error_code, last_error_at")
+      .eq("user_id", userId)
+      .eq("project_id", projectId)
+      .in("provider", ["ga4", "gsc"]);
+    if (error) return [];
+    return (data ?? []).map((row) => ({
+      status: (row.status as string | null) ?? null,
+      lastErrorCode: (row.last_error_code as string | null) ?? null,
+      lastErrorAt: (row.last_error_at as string | null) ?? null,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export async function getIntegrationSecrets(
@@ -166,6 +229,20 @@ export async function replaceIntegrationResources(
   resources: Omit<IntegrationResource, "id" | "integrationId" | "selected">[],
   selectedResourceId?: string | null
 ): Promise<IntegrationResource[]> {
+  // Reconnecting rebuilds the list; keep the user's earlier pick when Google still lists it.
+  const { data: previous } = await db
+    .from("integration_resources")
+    .select("resource_id")
+    .eq("connection_id", integrationId)
+    .eq("selected", true)
+    .limit(1)
+    .maybeSingle();
+  const keepId = chooseSelectedResourceId(
+    resources.map((resource) => resource.resourceId),
+    (previous?.resource_id as string | undefined) ?? null,
+    selectedResourceId,
+  );
+
   const { error: delErr } = await db.from("integration_resources").delete().eq("connection_id", integrationId);
   if (delErr) throw new Error(delErr.message);
 
@@ -177,7 +254,7 @@ export async function replaceIntegrationResources(
       resource_id: resource.resourceId,
       resource_name: resource.resourceName,
       metadata: resource.metadata ?? {},
-      selected: selectedResourceId ? resource.resourceId === selectedResourceId : resources.length === 1,
+      selected: keepId !== null && resource.resourceId === keepId,
     }));
     const { error: insErr } = await db.from("integration_resources").insert(rows);
     if (insErr) throw new Error(insErr.message);

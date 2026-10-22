@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { getDb } from "@/lib/db";
-import { canTransitionFinding } from "./findingTypes";
+import { canTransitionFinding, invalidTransitionError, staleFindingError } from "./findingTypes";
 import type { Finding, FindingSeverity } from "./findingTypes";
 
 type FindingRow = {
@@ -24,16 +24,19 @@ export function getProjectFinding(projectId: string, id: string): Finding | null
   return row ? mapFinding(row) : null;
 }
 
-export function updateFindingStatus(projectId: string, id: string, status: Finding["status"]): Finding | null {
+/** Conditional on the status that was read (a stale write throws a conflict); a status change leaves last_seen alone. */
+export function updateFindingStatus(projectId: string, id: string, status: Finding["status"], from?: Finding["status"]): Finding | null {
   const db = getDb();
   const existing = getProjectFinding(projectId, id);
   if (!existing) return null;
+  if (from && existing.status !== from) throw staleFindingError();
   if (!canTransitionFinding(existing.status, status)) {
-    throw new Error(`Invalid finding status transition: ${existing.status} -> ${status}`);
+    throw invalidTransitionError(existing.status, status);
   }
   const now = new Date().toISOString();
-  db.prepare("UPDATE findings SET status = ?, resolved_at = ?, last_seen = ? WHERE project_id = ? AND id = ?")
-    .run(status, status === "verified" ? now : null, now, projectId, id);
+  const changed = db.prepare("UPDATE findings SET status = ?, resolved_at = ? WHERE project_id = ? AND id = ? AND status = ?")
+    .run(status, status === "verified" ? now : null, projectId, id, existing.status).changes;
+  if (changed === 0) throw staleFindingError();
   return getProjectFinding(projectId, id);
 }
 
@@ -42,12 +45,17 @@ export function refreshFinding(projectId: string, id: string, input: {
   evidence: Record<string, unknown>;
   recommendation: string;
   status: Finding["status"];
+  expectedStatus?: Finding["status"];
 }): Finding | null {
   const db = getDb();
   if (!getProjectFinding(projectId, id)) return null;
   const now = new Date().toISOString();
-  db.prepare("UPDATE findings SET severity = ?, evidence = ?, recommendation = ?, status = ?, resolved_at = ?, last_seen = ? WHERE project_id = ? AND id = ?")
-    .run(input.severity, JSON.stringify(input.evidence), input.recommendation, input.status, input.status === "verified" ? now : null, now, projectId, id);
+  const guard = input.expectedStatus ? " AND status = ?" : "";
+  const args: unknown[] = [input.severity, JSON.stringify(input.evidence), input.recommendation, input.status, input.status === "verified" ? now : null, now, projectId, id];
+  if (input.expectedStatus) args.push(input.expectedStatus);
+  const changed = db.prepare(`UPDATE findings SET severity = ?, evidence = ?, recommendation = ?, status = ?, resolved_at = ?, last_seen = ? WHERE project_id = ? AND id = ?${guard}`)
+    .run(...(args as never[])).changes;
+  if (changed === 0) throw staleFindingError();
   return getProjectFinding(projectId, id);
 }
 
