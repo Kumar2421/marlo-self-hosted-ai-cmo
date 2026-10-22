@@ -10,7 +10,11 @@ export type CompetitorData = {
   features: string[];
 };
 
+/** The user's own product. `extracted: false` means the site could not be read, so price/features are unknown. */
+export type OwnProductData = CompetitorData & { extracted: boolean };
+
 export type ComparisonResult = {
+  ownProduct?: OwnProductData;
   competitors: CompetitorData[];
   generatedAt: string;
 };
@@ -27,32 +31,31 @@ Context:
 ${context}`;
 }
 
-export async function generateCompetitorComparison(
-  competitors: { id: string; url: string }[],
+type Extracted = { startingPrice: string; features: string[] };
+
+/** Crawl one site and run the grounded extraction prompt. Returns null if the site or LLM call failed. */
+async function extractSite(
+  url: string,
   model: string,
   driver: LlmDriver,
   apiKey: string,
   baseUrl?: string
-): Promise<ComparisonResult> {
-  const results: CompetitorData[] = [];
-  console.log(`[generator] Starting extraction for ${competitors.length} competitors`);
-  console.log(`[generator] API key present: ${!!apiKey}, length: ${apiKey?.length || 0}`);
-  console.log(`[generator] Model: ${model}, baseUrl: ${baseUrl || "default"}`);
+): Promise<(Extracted & { hostname: string }) | null> {
+  console.log(`[generator] Crawling ${url}...`);
+  const crawled = await crawlCompetitorSite(url);
+  if (!crawled) {
+    console.log(`[generator] Failed to crawl ${url}`);
+    return null;
+  }
+  let hostname = url;
+  try {
+    hostname = new URL(url).hostname.replace("www.", "");
+  } catch {
+    // keep raw url
+  }
 
-  for (const comp of competitors) {
-    console.log(`[generator] Crawling ${comp.url}...`);
-    const crawled = await crawlCompetitorSite(comp.url);
-    if (!crawled) {
-      console.log(`[generator] Failed to crawl ${comp.url}`);
-      continue;
-    }
-    console.log(`[generator] Crawled ${comp.url}: pricing=${crawled.pricingSection.length} bytes, features=${crawled.featuresSection.length} bytes`);
-
-    const hostname = new URL(comp.url).hostname.replace("www.", "");
-
-    try {
-      // Build context from crawled sections
-      const context = `
+  try {
+    const context = `
 Product: ${crawled.title || hostname}
 Description: ${crawled.description}
 
@@ -66,53 +69,69 @@ About:
 ${crawled.aboutSection || "(not found)"}
 `.trim();
 
-      const res = await driver({
-        apiKey,
-        model,
-        baseUrl,
-        messages: [
-          {
-            role: "user",
-            content: buildComparisonExtractionPrompt(context),
-          },
-        ],
-      });
+    const res = await driver({
+      apiKey,
+      model,
+      baseUrl,
+      messages: [{ role: "user", content: buildComparisonExtractionPrompt(context) }],
+    });
 
-      const text = res.text || "";
-      console.log(`[generator] LLM response for ${comp.url}:`, text.substring(0, 200));
-
-      let parsed: { startingPrice: string; features: string[] } = {
-        startingPrice: "pricing not found",
-        features: [],
-      };
-
-      try {
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[0]);
-          console.log(`[generator] Parsed JSON:`, parsed);
-        } else {
-          console.log(`[generator] No JSON found in response`);
-        }
-      } catch (e) {
-        console.log(`[generator] JSON parse error:`, e);
-      }
-
-      results.push({
-        id: comp.id,
-        url: comp.url,
-        name: hostname.charAt(0).toUpperCase() + hostname.slice(1),
-        startingPrice: parsed.startingPrice || "pricing not found",
-        features: Array.isArray(parsed.features) ? parsed.features.slice(0, 4) : [],
-      });
-      console.log(`[generator] Added result:`, results[results.length - 1]);
-    } catch (err) {
-      console.log(`[generator] Extraction error for ${comp.url}:`, err);
+    let parsed: Extracted = { startingPrice: "pricing not found", features: [] };
+    try {
+      const jsonMatch = (res.text || "").match(/\{[\s\S]*\}/);
+      if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      console.log(`[generator] JSON parse error:`, e);
     }
+    return {
+      hostname,
+      startingPrice: parsed.startingPrice || "pricing not found",
+      features: Array.isArray(parsed.features) ? parsed.features.slice(0, 4) : [],
+    };
+  } catch (err) {
+    console.log(`[generator] Extraction error for ${url}:`, err);
+    return null;
   }
-  console.log(`[generator] Final results: ${results.length} competitors`);
+}
+
+export async function generateCompetitorComparison(
+  competitors: { id: string; url: string }[],
+  model: string,
+  driver: LlmDriver,
+  apiKey: string,
+  baseUrl?: string,
+  own?: { name: string; url: string }
+): Promise<ComparisonResult> {
+  const results: CompetitorData[] = [];
+
+  // The user's own site goes through the same pipeline, inside this same run (no extra charge).
+  let ownProduct: OwnProductData | undefined;
+  if (own?.url) {
+    const got = await extractSite(own.url, model, driver, apiKey, baseUrl);
+    ownProduct = {
+      id: "own",
+      url: own.url,
+      name: own.name,
+      startingPrice: got?.startingPrice ?? "",
+      features: got?.features ?? [],
+      extracted: !!got,
+    };
+  }
+
+  for (const comp of competitors) {
+    const got = await extractSite(comp.url, model, driver, apiKey, baseUrl);
+    if (!got) continue;
+    results.push({
+      id: comp.id,
+      url: comp.url,
+      name: got.hostname.charAt(0).toUpperCase() + got.hostname.slice(1),
+      startingPrice: got.startingPrice,
+      features: got.features,
+    });
+  }
 
   return {
+    ownProduct,
     competitors: results,
     generatedAt: new Date().toISOString().split("T")[0],
   };
