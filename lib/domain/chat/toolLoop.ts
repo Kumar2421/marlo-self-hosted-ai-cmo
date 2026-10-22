@@ -22,7 +22,7 @@ export const MAX_TOTAL_RESULT_CHARS = 12_000;
 
 const BUDGET_MESSAGE = "Tool budget used up. Answer now from what you already have, and say what you could not check.";
 
-export const TOOL_SYSTEM_RULES = `You can look things up with read-only tools: search performance, search opportunities, findings, tracked actions and their measured outcomes, leads, and the AI-search (GEO) check. Call a tool whenever the question depends on the user's data, and call only what the question needs. Never invent numbers, dates, findings, or results. If a tool says data is not available, or you did not look it up, say so plainly. Mention how recent the data is when it matters. Do not claim an action worked unless its outcome says it improved.`;
+export const TOOL_SYSTEM_RULES = `You can look things up with read-only tools: search performance, search opportunities, findings, the latest SEO audit, tracked competitors, tracked actions and their measured outcomes, leads, and the AI-search (GEO) check. Zero findings can mean the site was never audited rather than that nothing is wrong: when a tool says neverAudited, tell the user to run an SEO audit. Call a tool whenever the question depends on the user's data, and call only what the question needs. Never invent numbers, dates, findings, or results. If a tool says data is not available, or you did not look it up, say so plainly. Mention how recent the data is when it matters. Do not claim an action worked unless its outcome says it improved.`;
 
 export type ChatRunInput = {
   driver: DriverLike;
@@ -91,6 +91,12 @@ export async function buildAutoSummary(ports: ChatPorts): Promise<string> {
     const by: Record<string, number> = {};
     for (const f of findings) by[f.status] = (by[f.status] ?? 0) + 1;
     lines.push(`Findings: ${findings.length} total (${Object.entries(by).map(([k, v]) => `${v} ${k}`).join(", ") || "none"}).`);
+  }
+
+  let auditOk = true;
+  const audit = await ports.getAuditSummary().catch(() => { auditOk = false; return null; });
+  if (auditOk) {
+    lines.push(audit ? `Site audit (${audit.checkedAt.slice(0, 10)}): ${audit.errors} errors, ${audit.warnings} warnings.` : "Site audit: never run for this project (zero findings does not mean the site is fine).");
   }
 
   const actions = await safe(() => ports.listActionsWithOutcomes());

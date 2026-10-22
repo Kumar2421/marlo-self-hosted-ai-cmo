@@ -5,9 +5,9 @@ import { createServiceClient } from "@/utils/supabase/serviceClient";
 import {
   exchangeCodeForTokens,
   getConnectedEmail,
-  listSearchConsoleSites,
-  listGA4Properties,
+  discoverGoogleResources,
 } from "@/lib/domain/shared/googleAnalyticsOAuth";
+import { fetchGrantedScopes } from "@/lib/domain/shared/googleTokenInfo";
 import {
   replaceIntegrationResources,
   saveIntegrationSecrets,
@@ -65,11 +65,8 @@ export async function GET(req: NextRequest) {
         );
       }
 
-      const [email, gscSites, ga4Properties] = await Promise.all([
-        getConnectedEmail(tokens.accessToken),
-        listSearchConsoleSites(tokens.accessToken),
-        listGA4Properties(tokens.accessToken),
-      ]);
+      const [email, granted] = await Promise.all([getConnectedEmail(tokens.accessToken), fetchGrantedScopes(tokens.accessToken)]);
+      const { gscSites, ga4Properties, gscListed, ga4Listed, problems } = await discoverGoogleResources(tokens.accessToken, granted);
 
       const now = new Date().toISOString();
       const gsc = await upsertProjectIntegrationSupabase(db, oauthState.userId, {
@@ -98,20 +95,30 @@ export async function GET(req: NextRequest) {
         }),
       ]);
 
+      // A listing that failed or was not permitted keeps the resources (and the chosen one) already stored.
       await Promise.all([
-        replaceIntegrationResourcesSupabase(
-          db,
-          oauthState.userId,
-          gsc.id,
-          gscSites.map((site) => ({ resourceType: "search_console_property", resourceId: site, resourceName: site, metadata: {} }))
-        ),
-        replaceIntegrationResourcesSupabase(
-          db,
-          oauthState.userId,
-          ga4.id,
-          ga4Properties.map((property) => ({ resourceType: "ga4_property", resourceId: property.id, resourceName: property.name, metadata: {} }))
-        ),
+        gscListed
+          ? replaceIntegrationResourcesSupabase(
+              db,
+              oauthState.userId,
+              gsc.id,
+              gscSites.map((site) => ({ resourceType: "search_console_property", resourceId: site, resourceName: site, metadata: {} }))
+            )
+          : null,
+        ga4Listed
+          ? replaceIntegrationResourcesSupabase(
+              db,
+              oauthState.userId,
+              ga4.id,
+              ga4Properties.map((property) => ({ resourceType: "ga4_property", resourceId: property.id, resourceName: property.name, metadata: {} }))
+            )
+          : null,
       ]);
+
+      // Tokens are saved, but a missing permission or a failed listing is not a success.
+      if (problems.length > 0) {
+        return NextResponse.redirect(redirectUrl(req, oauthState.returnTo, { ga_error: problems.join(" ") }));
+      }
 
       return NextResponse.redirect(
         redirectUrl(req, oauthState.returnTo, {
@@ -142,11 +149,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const [email, gscSites, ga4Properties] = await Promise.all([
-      getConnectedEmail(tokens.accessToken),
-      listSearchConsoleSites(tokens.accessToken),
-      listGA4Properties(tokens.accessToken),
-    ]);
+    const [email, granted] = await Promise.all([getConnectedEmail(tokens.accessToken), fetchGrantedScopes(tokens.accessToken)]);
+    const { gscSites, ga4Properties, gscListed, ga4Listed, problems } = await discoverGoogleResources(tokens.accessToken, granted);
 
     const now = new Date().toISOString();
     const gsc = upsertProjectIntegration({
@@ -175,24 +179,32 @@ export async function GET(req: NextRequest) {
       expiresAt: tokens.expiresAt,
     });
 
-    replaceIntegrationResources(
-      gsc.id,
-      gscSites.map((site) => ({
-        resourceType: "search_console_property",
-        resourceId: site,
-        resourceName: site,
-        metadata: {},
-      }))
-    );
-    replaceIntegrationResources(
-      ga4.id,
-      ga4Properties.map((property) => ({
-        resourceType: "ga4_property",
-        resourceId: property.id,
-        resourceName: property.name,
-        metadata: {},
-      }))
-    );
+    if (gscListed) {
+      replaceIntegrationResources(
+        gsc.id,
+        gscSites.map((site) => ({
+          resourceType: "search_console_property",
+          resourceId: site,
+          resourceName: site,
+          metadata: {},
+        }))
+      );
+    }
+    if (ga4Listed) {
+      replaceIntegrationResources(
+        ga4.id,
+        ga4Properties.map((property) => ({
+          resourceType: "ga4_property",
+          resourceId: property.id,
+          resourceName: property.name,
+          metadata: {},
+        }))
+      );
+    }
+
+    if (problems.length > 0) {
+      return NextResponse.redirect(redirectUrl(req, oauthState.returnTo, { ga_error: problems.join(" ") }));
+    }
 
     return NextResponse.redirect(
       redirectUrl(req, oauthState.returnTo, {

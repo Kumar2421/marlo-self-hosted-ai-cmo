@@ -5,6 +5,9 @@
  * consent flow (different scopes, own token set) rather than a second client
  * the user would have to create and paste in again. */
 
+import { GoogleAuthError, envValue, parseGoogleApiError, parseGoogleTokenError } from "./googleAuthError.ts";
+import { checkGoogleServiceScopes } from "../integrations/googleScopes.ts";
+
 const SCOPES = [
   "https://www.googleapis.com/auth/analytics.readonly",
   "https://www.googleapis.com/auth/webmasters.readonly",
@@ -14,7 +17,7 @@ const SCOPES = [
 export type GoogleTokens = { accessToken: string; refreshToken?: string; expiresAt: number };
 
 export function buildAuthUrl(redirectUri: string, state?: string): string {
-  const clientId = process.env.GMAIL_CLIENT_ID;
+  const clientId = envValue(process.env.GMAIL_CLIENT_ID);
   if (!clientId) throw new Error("GMAIL_CLIENT_ID not set — add it in Settings → API Credentials, then restart the server.");
 
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -29,16 +32,22 @@ export function buildAuthUrl(redirectUri: string, state?: string): string {
 }
 
 async function tokenRequest(params: Record<string, string>): Promise<{ access_token: string; refresh_token?: string; expires_in: number }> {
-  const clientId = process.env.GMAIL_CLIENT_ID;
-  const clientSecret = process.env.GMAIL_CLIENT_SECRET;
+  const clientId = envValue(process.env.GMAIL_CLIENT_ID);
+  const clientSecret = envValue(process.env.GMAIL_CLIENT_SECRET);
   if (!clientId || !clientSecret) throw new Error("GMAIL_CLIENT_ID/GMAIL_CLIENT_SECRET not set.");
 
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, ...params }),
-  });
-  if (!res.ok) throw new Error(`Google token request failed: HTTP ${res.status}`);
+  let res: Response;
+  try {
+    res = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, ...params }),
+    });
+  } catch {
+    // The underlying error can carry request details; keep only the typed code.
+    throw new GoogleAuthError("network");
+  }
+  if (!res.ok) throw parseGoogleTokenError(res.status, await res.text().catch(() => ""));
   return res.json();
 }
 
@@ -69,44 +78,77 @@ export async function getConnectedEmail(accessToken: string): Promise<string | n
   }
 }
 
-/** All Search Console properties visible to this Google account. */
-export async function listSearchConsoleSites(accessToken: string): Promise<string[]> {
+/** Throws GoogleAuthError (never returns [] for a failure, so "no sites" and "call failed" differ). */
+async function googleGet(url: string, accessToken: string): Promise<{ [key: string]: unknown }> {
+  let res: Response;
   try {
-    const res = await fetch("https://www.googleapis.com/webmasters/v3/sites", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const entries: { siteUrl: string }[] = data.siteEntry ?? [];
-    return entries.map((entry) => entry.siteUrl).filter(Boolean);
+    res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
   } catch {
-    return [];
+    throw new GoogleAuthError("network");
   }
+  if (!res.ok) throw parseGoogleApiError(res.status, await res.text().catch(() => ""));
+  return (await res.json()) as { [key: string]: unknown };
 }
 
-/** All GA4 properties visible to this Google account. */
+/** All Search Console properties visible to this Google account. Throws GoogleAuthError on failure. */
+export async function listSearchConsoleSites(accessToken: string): Promise<string[]> {
+  const data = await googleGet("https://www.googleapis.com/webmasters/v3/sites", accessToken);
+  const entries = (data.siteEntry ?? []) as { siteUrl: string }[];
+  return entries.map((entry) => entry.siteUrl).filter(Boolean);
+}
+
+/** All GA4 properties visible to this Google account. Throws GoogleAuthError on failure. */
 export async function listGA4Properties(accessToken: string): Promise<{ id: string; name: string }[]> {
-  try {
-    const res = await fetch("https://analyticsadmin.googleapis.com/v1beta/accountSummaries", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const properties: { id: string; name: string }[] = [];
-    for (const account of data.accountSummaries ?? []) {
-      for (const property of account.propertySummaries ?? []) {
-        if (property.property) {
-          properties.push({
-            id: property.property,
-            name: property.displayName ?? property.property,
-          });
-        }
+  const data = await googleGet("https://analyticsadmin.googleapis.com/v1beta/accountSummaries", accessToken);
+  const properties: { id: string; name: string }[] = [];
+  for (const account of (data.accountSummaries ?? []) as { propertySummaries?: { property?: string; displayName?: string }[] }[]) {
+    for (const property of account.propertySummaries ?? []) {
+      if (property.property) {
+        properties.push({ id: property.property, name: property.displayName ?? property.property });
       }
     }
-    return properties;
-  } catch {
-    return [];
   }
+  return properties;
+}
+
+export type DiscoveredGoogleResources = {
+  gscSites: string[];
+  ga4Properties: { id: string; name: string }[];
+  /** True only when the listing call succeeded; an empty list from a failed call must not replace stored resources. */
+  gscListed: boolean;
+  ga4Listed: boolean;
+  /** Plain-language problems, one per failed or ungranted service. Empty means everything asked for worked. */
+  problems: string[];
+};
+
+/**
+ * Lists Search Console sites and GA4 properties after a connect. A service whose
+ * permission was not granted is not called; a service whose call fails is
+ * reported in `problems` instead of silently becoming an empty list.
+ * `grantedScopes` null means the grant could not be read: both are tried.
+ */
+export async function discoverGoogleResources(accessToken: string, grantedScopes: string[] | null): Promise<DiscoveredGoogleResources> {
+  const scopes = checkGoogleServiceScopes(grantedScopes);
+  const problems: string[] = [];
+  let gscSites: string[] = [];
+  let ga4Properties: { id: string; name: string }[] = [];
+
+  if (scopes.problem) {
+    if (!scopes.gsc) problems.push("Search Console permission not granted: reconnect and tick it.");
+    if (!scopes.ga4) problems.push("Google Analytics permission not granted: reconnect and tick it.");
+  }
+  const [gsc, ga4] = await Promise.allSettled([
+    scopes.gsc ? listSearchConsoleSites(accessToken) : Promise.resolve([] as string[]),
+    scopes.ga4 ? listGA4Properties(accessToken) : Promise.resolve([] as { id: string; name: string }[]),
+  ]);
+  const gscListed = scopes.gsc && gsc.status === "fulfilled";
+  const ga4Listed = scopes.ga4 && ga4.status === "fulfilled";
+  if (gsc.status === "fulfilled") gscSites = gsc.value;
+  else problems.push(`Could not list Search Console sites: ${gsc.reason instanceof Error ? gsc.reason.message : "unknown error"}`);
+  if (ga4.status === "fulfilled") ga4Properties = ga4.value;
+  else problems.push(`Could not list Google Analytics properties: ${ga4.reason instanceof Error ? ga4.reason.message : "unknown error"}`);
+
+  return { gscSites, ga4Properties, gscListed, ga4Listed, problems };
 }
 
 /** First GA4 property for this account, or null if none — used only as the

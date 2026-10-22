@@ -30,7 +30,9 @@ export default function IntegrationsPage() {
         {cmsIntegrations.map((i) => {
           if (i.id === "wordpress-self") return <WordPressCard key={i.id} />;
           if (i.id === "webflow") return <WebflowCard key={i.id} />;
-          if (i.id === "github-articles") return <GitHubCodeFixCard key={i.id} />;
+          // GitHub has one card: it lives under Code Repository below, so the
+          // CMS slot is skipped here instead of showing the same connection twice.
+          if (i.id === "github-articles") return null;
           return <ComingSoonCard key={i.id} name={i.name} desc={i.desc} icon={i.icon} color={i.color} />;
         })}
       </div>

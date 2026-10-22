@@ -8,6 +8,9 @@ import { SkeletonCard, SkeletonLines } from "@/components/shared/Skeleton";
 import { useProject } from "@/lib/project-store";
 import { fetchJson } from "@/lib/query/fetchJson";
 import { qk } from "@/lib/query/keys";
+import { useGoogleConnection } from "@/lib/query/useGoogleConnection";
+import { referralNotice } from "@/lib/domain/integrations/googleHealthView";
+import GoogleReconnectLink from "@/components/settings/GoogleReconnectLink";
 import { useToast } from "@/components/dashboard/Toast";
 import type { GeoOverview, PromptRow, ReferralView } from "@/lib/domain/geo/geoService";
 import type { ReadinessResult } from "@/lib/domain/geo/readiness";
@@ -111,15 +114,24 @@ function Referrals({ pid }: { pid: string | undefined }) {
     staleTime: 5 * 60_000,
     queryFn: () => fetchJson<ReferralView & { unavailable?: boolean }>("/api/geo/referral"),
   });
+  const health = useGoogleConnection(pid);
+  const notice = query.isPending
+    ? null
+    : referralNotice(health, query.isError || ("unavailable" in query.data && query.data.unavailable) ? "unavailable" : "notConnected" in query.data ? "not_connected" : "ok");
   return (
     <Block title="AI referral visits" subtitle="Visits from ChatGPT, Perplexity, Claude, Gemini and Copilot in the last 28 days (a floor; some visits carry no referrer).">
       {query.isPending ? (
         <SkeletonLines rows={2} />
-      ) : query.isError || ("unavailable" in query.data && query.data.unavailable) ? (
-        <p className="text-[12px] text-gray-500">We could not read Google Analytics right now.</p>
-      ) : "notConnected" in query.data ? (
-        <p className="rounded-xl border border-dashed border-gray-200 p-4 text-[12px] text-gray-500">Connect Google Analytics in Settings to see visits that come from AI assistants.</p>
-      ) : (
+      ) : notice ? (
+        <div className="rounded-xl border border-dashed border-gray-200 p-4 text-[12px] text-gray-500">
+          <p>{notice.text}</p>
+          {notice.showReconnect && (
+            <div className="mt-2">
+              <GoogleReconnectLink returnTo="dashboard" />
+            </div>
+          )}
+        </div>
+      ) : query.data && "total" in query.data ? (
         <div className="rounded-xl border border-gray-200 p-3">
           <div className="text-[20px] font-semibold text-gray-900">{query.data.total} <span className="text-[12px] font-normal text-gray-500">visits</span></div>
           {query.data.bySource.length === 0 ? (
@@ -132,7 +144,7 @@ function Referrals({ pid }: { pid: string | undefined }) {
             </ul>
           )}
         </div>
-      )}
+      ) : null}
     </Block>
   );
 }

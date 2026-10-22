@@ -5,17 +5,30 @@
  * invoke this when a real key is present, and treat a thrown error as
  * "not available this run," never as a reason to invent placeholder scores. */
 
-export type CwvStatus = "Pass" | "Warn" | "Fail";
+import type { LighthouseCategory } from "./lighthouseAudits.ts";
+
+/** "Unknown": PSI did not return this audit, so it was not measured (never a fake Fail). */
+export type CwvStatus = "Pass" | "Warn" | "Fail" | "Unknown";
 export type CwvMetric = { value: string; status: CwvStatus };
 export type CwvSnapshot = { lcp: CwvMetric; fcp: CwvMetric; cls: CwvMetric };
 
-export type PageSpeedScores = { performance: number; accessibility: number; bestPractices: number; seo: number };
+/** A score is undefined when PSI did not return that category: "not measured", never 0. */
+export type PageSpeedScores = {
+  performance: number | undefined;
+  accessibility: number | undefined;
+  bestPractices: number | undefined;
+  seo: number | undefined;
+};
+
+export const NOT_MEASURED = "Not measured";
 export type LighthouseIssue = {
   id: string;
   title: string;
   score: number | null;
   displayValue?: string;
   mode: "opportunity" | "diagnostic";
+  /** The Lighthouse category this audit belongs to, when the response said so. Absent otherwise (never guessed). */
+  category?: LighthouseCategory;
 };
 export type PageSpeedResult = {
   pageSpeed: { desktop: PageSpeedScores; mobile: PageSpeedScores };
@@ -23,14 +36,51 @@ export type PageSpeedResult = {
   lighthouseIssues: { desktop: LighthouseIssue[]; mobile: LighthouseIssue[] };
 };
 
+/** Longest one PageSpeed Insights measurement (both attempts together) may take.
+ * PSI itself can run 15-40s on a slow page; past this we report "not measured"
+ * instead of letting one page hold a 60s serverless request hostage. */
+export const PSI_TIMEOUT_MS = 20_000;
+
+/** PSI budget for the audit that runs during project creation (P3 fix 5): if PSI
+ * is slower than this it is skipped so onboarding is not blocked. */
+export const PSI_ONBOARDING_TIMEOUT_MS = 10_000;
+
+/** Raised when PSI did not answer inside its time budget. Callers treat it as
+ * "not measured this run" (no scores, no fake 0), not as a failure to alert on. */
+export class PageSpeedTimeoutError extends Error {
+  readonly timeoutMs: number;
+  constructor(timeoutMs: number) {
+    super(`PageSpeed Insights did not respond within ${Math.round(timeoutMs / 1000)}s`);
+    this.name = "PageSpeedTimeoutError";
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+export function isPageSpeedTimeout(e: unknown): e is PageSpeedTimeoutError {
+  return e instanceof PageSpeedTimeoutError;
+}
+
+export type PageSpeedOptions = {
+  /** Total time for this measurement, retry included. Defaults to PSI_TIMEOUT_MS. */
+  timeoutMs?: number;
+  /** Injectable for tests. */
+  fetchImpl?: typeof fetch;
+};
+
 function statusFromScore(score: number | undefined): CwvStatus {
-  if (score === undefined) return "Fail";
+  if (typeof score !== "number") return "Unknown";
   if (score >= 0.9) return "Pass";
   if (score >= 0.5) return "Warn";
   return "Fail";
 }
 
-async function fetchLighthouse(url: string, apiKey: string, strategy: "desktop" | "mobile") {
+async function fetchLighthouse(
+  url: string,
+  apiKey: string,
+  strategy: "desktop" | "mobile",
+  timeoutMs: number,
+  fetchImpl: typeof fetch,
+) {
   const psiUrl = new URL("https://www.googleapis.com/pagespeedonline/v5/runPagespeed");
   psiUrl.searchParams.append("url", url);
   psiUrl.searchParams.append("strategy", strategy);
@@ -42,10 +92,36 @@ async function fetchLighthouse(url: string, apiKey: string, strategy: "desktop" 
     psiUrl.searchParams.append("category", category);
   }
 
-  const res = await fetch(psiUrl.toString());
-  if (!res.ok) throw new Error(`PSI fetch failed: HTTP ${res.status}`);
-  const data = await res.json();
+  // The signal covers the body read too: a response that stalls mid-stream is
+  // cut off by the same timer rather than hanging.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
+  try {
+    const res = await fetchImpl(psiUrl.toString(), { signal: controller.signal });
+    if (!res.ok) throw new Error(`PSI fetch failed: HTTP ${res.status}`);
+    return parseLighthouse(await res.json());
+  } catch (e) {
+    if (controller.signal.aborted) throw new PageSpeedTimeoutError(timeoutMs);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
+function categoryScore(category: { score?: unknown } | undefined): number | undefined {
+  return typeof category?.score === "number" ? Math.round(category.score * 100) : undefined;
+}
+
+function cwvMetric(audit: { score?: number; displayValue?: string } | undefined): CwvMetric {
+  return {
+    value: typeof audit?.displayValue === "string" ? audit.displayValue : NOT_MEASURED,
+    status: statusFromScore(audit?.score),
+  };
+}
+
+/** Pure: turn a raw PSI response into scores, vitals and issues. Anything PSI did not return stays undefined / "Not measured". */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function parseLighthouse(data: any) {
   const categories = data.lighthouseResult?.categories ?? {};
   const audits = (data.lighthouseResult?.audits ?? {}) as Record<string, {
     score?: number;
@@ -53,6 +129,15 @@ async function fetchLighthouse(url: string, apiKey: string, strategy: "desktop" 
     displayValue?: string;
     details?: { type?: string };
   }>;
+
+  // Which category each audit belongs to, from the response's own auditRefs. An audit listed under several
+  // categories takes the first in this order, so a specific category wins over performance.
+  const categoryOfAudit = new Map<string, LighthouseCategory>();
+  for (const key of ["accessibility", "best-practices", "seo", "performance"] as const) {
+    const refs = (categories[key] as { auditRefs?: Array<{ id?: unknown }> } | undefined)?.auditRefs;
+    if (!Array.isArray(refs)) continue;
+    for (const ref of refs) if (typeof ref?.id === "string" && !categoryOfAudit.has(ref.id)) categoryOfAudit.set(ref.id, key);
+  }
 
   const lighthouseIssues: LighthouseIssue[] = Object.entries(audits)
     .map(([id, audit]) => {
@@ -64,6 +149,7 @@ async function fetchLighthouse(url: string, apiKey: string, strategy: "desktop" 
         score,
         displayValue: typeof audit?.displayValue === "string" ? audit.displayValue : undefined,
         mode,
+        ...(categoryOfAudit.has(id) ? { category: categoryOfAudit.get(id) } : {}),
       } as LighthouseIssue;
     })
     .filter((audit) => audit.score !== null && audit.score < 0.9 && audit.id !== "largest-contentful-paint" && audit.id !== "first-contentful-paint" && audit.id !== "cumulative-layout-shift")
@@ -71,27 +157,18 @@ async function fetchLighthouse(url: string, apiKey: string, strategy: "desktop" 
     .slice(0, 8);
 
   const cwv: CwvSnapshot = {
-    lcp: {
-      value: audits["largest-contentful-paint"]?.displayValue ?? "N/A",
-      status: statusFromScore(audits["largest-contentful-paint"]?.score),
-    },
-    fcp: {
-      value: audits["first-contentful-paint"]?.displayValue ?? "N/A",
-      status: statusFromScore(audits["first-contentful-paint"]?.score),
-    },
-    cls: {
-      value: audits["cumulative-layout-shift"]?.displayValue ?? "N/A",
-      status: statusFromScore(audits["cumulative-layout-shift"]?.score),
-    },
+    lcp: cwvMetric(audits["largest-contentful-paint"]),
+    fcp: cwvMetric(audits["first-contentful-paint"]),
+    cls: cwvMetric(audits["cumulative-layout-shift"]),
   };
 
   return {
     scores: {
-      performance: Math.round((categories.performance?.score ?? 0) * 100),
-      accessibility: Math.round((categories.accessibility?.score ?? 0) * 100),
-      bestPractices: Math.round((categories["best-practices"]?.score ?? 0) * 100),
-      seo: Math.round((categories.seo?.score ?? 0) * 100),
-    },
+      performance: categoryScore(categories.performance),
+      accessibility: categoryScore(categories.accessibility),
+      bestPractices: categoryScore(categories["best-practices"]),
+      seo: categoryScore(categories.seo),
+    } satisfies PageSpeedScores,
     cwv,
     lighthouseIssues,
   };
@@ -100,19 +177,33 @@ async function fetchLighthouse(url: string, apiKey: string, strategy: "desktop" 
 /** PSI genuinely 500s sometimes when asked to compute all 4 categories at
  * once on a slower page — confirmed for real: a page that failed with all 4
  * categories succeeded immediately when requesting just one. One retry
- * meaningfully improves real yield without hiding a persistent failure. */
-async function fetchLighthouseWithRetry(url: string, apiKey: string, strategy: "desktop" | "mobile") {
+ * meaningfully improves real yield without hiding a persistent failure.
+ * The retry shares the one deadline and never follows a timeout, so the whole
+ * measurement stays inside `timeoutMs`. */
+async function fetchLighthouseWithRetry(
+  url: string,
+  apiKey: string,
+  strategy: "desktop" | "mobile",
+  timeoutMs: number,
+  fetchImpl: typeof fetch,
+) {
+  const deadline = Date.now() + timeoutMs;
   try {
-    return await fetchLighthouse(url, apiKey, strategy);
-  } catch {
-    return await fetchLighthouse(url, apiKey, strategy);
+    return await fetchLighthouse(url, apiKey, strategy, timeoutMs, fetchImpl);
+  } catch (e) {
+    if (isPageSpeedTimeout(e)) throw e;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new PageSpeedTimeoutError(timeoutMs);
+    return await fetchLighthouse(url, apiKey, strategy, remaining, fetchImpl);
   }
 }
 
-export async function fetchPageSpeed(url: string, apiKey: string): Promise<PageSpeedResult> {
+export async function fetchPageSpeed(url: string, apiKey: string, options: PageSpeedOptions = {}): Promise<PageSpeedResult> {
+  const timeoutMs = options.timeoutMs ?? PSI_TIMEOUT_MS;
+  const fetchImpl = options.fetchImpl ?? fetch;
   const [desktopData, mobileData] = await Promise.all([
-    fetchLighthouseWithRetry(url, apiKey, "desktop"),
-    fetchLighthouseWithRetry(url, apiKey, "mobile"),
+    fetchLighthouseWithRetry(url, apiKey, "desktop", timeoutMs, fetchImpl),
+    fetchLighthouseWithRetry(url, apiKey, "mobile", timeoutMs, fetchImpl),
   ]);
 
   return {

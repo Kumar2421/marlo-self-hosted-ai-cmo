@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Action } from "@/lib/domain/actions/actionTypes";
 import type { ActionWithOutcome } from "@/lib/domain/search/outcomeService";
 import type { Finding } from "@/lib/domain/findings/findingTypes";
+import { collapseDuplicateFindings } from "@/lib/domain/findings/findingDisplay";
 import type { Recommendation } from "@/lib/domain/recommendations/recommendationTypes";
 import { fetchJson } from "@/lib/query/fetchJson";
 import { qk } from "@/lib/query/keys";
@@ -13,7 +14,7 @@ import { useProject } from "@/lib/project-store";
 type FindingUpdate = { finding: Finding; verification?: { status: "verified" | "failed"; changed: boolean } };
 
 /** The project's findings, cached per project, with status changes and re-checks written straight into the cache. */
-export function useFindings() {
+export function useFindings({ enabled = true }: { enabled?: boolean } = {}) {
   const { project } = useProject();
   const projectId = project?.id;
   const queryClient = useQueryClient();
@@ -21,7 +22,9 @@ export function useFindings() {
   const list = useQuery({
     queryKey: qk.findings(projectId),
     queryFn: async () => (await fetchJson<{ findings?: Finding[] }>("/api/agents/analytics/findings")).findings ?? [],
-    enabled: Boolean(project),
+    enabled: Boolean(project) && enabled,
+    // One finding per real problem (the on-page and Lighthouse heading-order checks are the same issue).
+    select: (findings) => collapseDuplicateFindings(findings),
   });
 
   // Other parts of the app (e.g. creating a finding from search insights) announce changes this way.

@@ -4,8 +4,9 @@ import { isAuthorizedCron, runWithBudget } from "@/lib/jobs/jobRunner";
 import { runPlatformDailyProposals } from "@/lib/domain/actions/dailyProposalPorts";
 import { captureProjectSnapshotPlatform } from "@/lib/domain/search/captureForProject";
 import { listProposalsDone, markProposalsDone } from "@/lib/domain/actions/automationSettingsStoreSupabase";
-import { selectDueProjects } from "@/lib/domain/search/dueProjects";
+import { selectDueProjects, skippedTargets } from "@/lib/domain/search/dueProjects";
 import { isoDate } from "@/lib/domain/search/searchSnapshot";
+import { loadGscTargets, loadSnapshotsDoneToday, lastCaptureTimes, linkedGithubProjects } from "@/lib/domain/search/cronSelection";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 import { runNotificationJob, type NotificationJobSummary } from "@/lib/domain/notifications/job";
 import { supabaseNotificationStore } from "@/lib/domain/notifications/notificationStoreSupabase";
@@ -18,7 +19,7 @@ import { runVerifyAndMonitorPlatform, type VerifyPhaseSummary } from "@/lib/doma
 import { listProjectActions as listProjectActionsSupabase } from "@/lib/domain/actions/actionStoreSupabase";
 import { platformOutcomePorts } from "@/lib/domain/search/outcomePorts";
 import { fixDeliveryGithub } from "@/lib/domain/fixes/fixDeliveryGithub";
-import { reconcileAllProjects, type LinkedProject, type ReconcileAllSummary } from "@/lib/domain/fixes/reconcileAllProjects";
+import { reconcileAllProjects, type ReconcileAllSummary } from "@/lib/domain/fixes/reconcileAllProjects";
 import { hostedGithubToken } from "@/lib/githubAppServer";
 
 // Hobby caps cron functions at 60s. Stop a little short of it and resume on
@@ -65,19 +66,25 @@ export async function GET(req: NextRequest) {
   const today = isoDate(new Date());
 
   try {
-    const { data: connections, error } = await db
-      .from("integration_connections")
-      .select("project_id, user_id")
-      .eq("provider", "gsc")
-      .not("project_id", "is", null);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const targets = await loadGscTargets(db);
+    if ("error" in targets) return NextResponse.json({ error: targets.error }, { status: 500 });
+    const connections = targets.rows;
 
-    const { data: done } = await db.from("search_snapshots").select("project_id").eq("snapshot_date", today);
+    // Paged read of today's snapshots. A failed read stops the run (a wrong "done" set would re-capture or skip
+    // projects); the next scheduled run starts clean.
+    let doneToday: Set<string>;
+    try {
+      doneToday = await loadSnapshotsDoneToday(db, today);
+    } catch (err) {
+      console.error("[search-monitor] could not read today's snapshots:", err instanceof Error ? err.message : err);
+      return NextResponse.json({ error: err instanceof Error ? err.message : "Could not read today's snapshots." }, { status: 500 });
+    }
 
-    const due = selectDueProjects(
-      (connections ?? []).map((c) => ({ projectId: String(c.project_id), userId: String(c.user_id) })),
-      new Set((done ?? []).map((row) => String(row.project_id))),
-    );
+    // Oldest capture first so a project that keeps failing cannot starve the ones behind it.
+    const lastCapturedAt = await lastCaptureTimes(db, connections.map((c) => c.projectId).filter((id) => !doneToday.has(id)));
+    const due = selectDueProjects(connections, doneToday, lastCapturedAt);
+    // Known-broken connections (needs reconnect, no property) are not retried; they are reported instead.
+    const skippedConnections = skippedTargets(connections, doneToday);
 
     // Phase 1: snapshots for due projects only (resumes where the last run stopped).
     const captured = new Set<string>();
@@ -92,10 +99,13 @@ export async function GET(req: NextRequest) {
 
     // Phase 2: daily proposals for projects captured in this run, plus projects snapshotted earlier today
     // whose proposals have not finished today. Time-budgeted; the rest wait for the next run.
-    const snapshottedToday = new Set((done ?? []).map((row) => String(row.project_id)));
-    const proposalsDone = await listProposalsDone(db, today).catch(() => new Set<string>());
+    const snapshottedToday = doneToday;
+    const proposalsDone = await listProposalsDone(db, today).catch((err) => {
+      console.error("[search-monitor] could not read finished proposals; treating none as done:", err instanceof Error ? err.message : err);
+      return new Set<string>();
+    });
     const proposalTargets = selectDueProjects(
-      (connections ?? []).map((c) => ({ projectId: String(c.project_id), userId: String(c.user_id) })),
+      connections,
       proposalsDone,
     ).filter(({ projectId }) => captured.has(projectId) || snapshottedToday.has(projectId));
     // Freshly captured projects first, then the older backlog.
@@ -207,6 +217,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       notifications,
       due: due.length,
+      skippedConnections,
       processed: summary.processed,
       skipped: summary.skipped,
       failed: summary.failed.map(({ item, error: message }) => ({ projectId: item.projectId, error: message })),
@@ -218,16 +229,6 @@ export async function GET(req: NextRequest) {
   } finally {
     await cleanupRateLimitCounters(db);
   }
-}
-
-/** Projects with a GitHub App link. The link is stored per project in user_settings as `github_app:<projectId>`. */
-async function linkedGithubProjects(db: ReturnType<typeof createServiceClient>): Promise<LinkedProject[]> {
-  const PREFIX = "github_app:";
-  const { data, error } = await db.from("user_settings").select("user_id, key").like("key", `${PREFIX}%`);
-  if (error) throw new Error(error.message);
-  return (data ?? [])
-    .map((row) => ({ userId: String(row.user_id), projectId: String(row.key).slice(PREFIX.length) }))
-    .filter((project) => project.projectId !== "");
 }
 
 /** Housekeeping for the public audit rate limiter. Never throws: a failure only logs and never changes the response. */

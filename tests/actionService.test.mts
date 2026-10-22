@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createAction, transitionAction, type ActionRepository } from "../lib/domain/actions/actionService.ts";
-import type { Action } from "../lib/domain/actions/actionTypes.ts";
+import { ActionLifecycleError, staleActionError, type Action } from "../lib/domain/actions/actionTypes.ts";
 
 function makeAction(status: Action["status"] = "proposed"): Action {
   return {
@@ -20,7 +20,8 @@ function repository(initial: Action) {
       current = { ...current, ...input, id: "action_new", status: "proposed", result: null, createdAt: current.createdAt, startedAt: null, completedAt: null };
       return current;
     },
-    transition: (_projectId, _id, status, result = null) => {
+    transition: (_projectId, _id, status, result = null, from) => {
+      if (from && current.status !== from) throw staleActionError();
       current = { ...current, status, result };
       return current;
     },
@@ -44,4 +45,25 @@ test("enforces action lifecycle transitions", async () => {
   await transitionAction(state.repo, "project_1", "action_1", "completed", { ok: true });
   assert.equal(state.current.status, "completed");
   await assert.rejects(() => transitionAction(state.repo, "project_1", "action_1", "running"), /Invalid action status transition/);
+});
+
+test("illegal action edges are lifecycle errors (409), not generic failures", async () => {
+  const state = repository(makeAction("completed"));
+  await assert.rejects(
+    () => transitionAction(state.repo, "project_1", "action_1", "running"),
+    (err: unknown) => err instanceof ActionLifecycleError && err.kind === "invalid",
+  );
+});
+
+test("two concurrent approvals from the same read: one wins, the other conflicts", async () => {
+  const state = repository(makeAction("proposed"));
+  const stale = { ...state.current };
+  const racing: ActionRepository = { ...state.repo, get: () => stale };
+  const results = await Promise.allSettled([
+    transitionAction(racing, "project_1", "action_1", "approved"),
+    transitionAction(racing, "project_1", "action_1", "approved"),
+  ]);
+  assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+  const lost = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+  assert.ok(lost.reason instanceof ActionLifecycleError && lost.reason.kind === "conflict");
 });

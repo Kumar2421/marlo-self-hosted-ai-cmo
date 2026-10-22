@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { AlertTriangle, Check, Mail } from "lucide-react";
 import { FEATURES } from "@/lib/features";
-import { GOOGLE_ANALYTICS_SCOPES } from "@/lib/googleOAuthScopes";
+import { googleOAuthQueryParams, scopesFor } from "@/lib/googleOAuthScopes";
 import { createClient } from "@/utils/supabase/client";
 import { useGmailStatus } from "./useGmailStatus";
 
@@ -29,8 +29,8 @@ export default function GmailOutreachBar() {
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/api/auth/callback?next=/dashboard`,
-        scopes: GOOGLE_ANALYTICS_SCOPES,
-        queryParams: { access_type: "offline", prompt: "consent" },
+        scopes: scopesFor("gmail"),
+        queryParams: googleOAuthQueryParams("gmail"),
       },
     });
     if (oauthError) {
@@ -42,7 +42,7 @@ export default function GmailOutreachBar() {
   const button = (label: string, tone: "primary" | "plain" = "primary") => {
     const className =
       tone === "primary"
-        ? "shrink-0 rounded-lg bg-gray-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50"
+        ? "ml-auto shrink-0 rounded-lg bg-gray-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50"
         : "shrink-0 text-[11px] font-medium text-gray-500 underline-offset-2 hover:text-gray-800 hover:underline disabled:opacity-50";
     return FEATURES.PLATFORM_MODE ? (
       <button type="button" onClick={connectHosted} disabled={busy} className={className}>
@@ -66,9 +66,9 @@ export default function GmailOutreachBar() {
   if (!gmail.connected) {
     return (
       <div className="mx-4 my-3 rounded-xl border border-gray-200 bg-white p-3">
-        <div className="flex items-start gap-3">
+        <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
           <Mail size={16} className="mt-0.5 shrink-0 text-gray-400" />
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-[1_1_9rem]">
             <div className="text-[13px] font-semibold text-gray-900">Connect Gmail to email your leads</div>
             <p className="mt-0.5 text-[11px] leading-4 text-gray-500">
               Send outreach from your own address and see replies here. Marlo only reads replies on threads it started. On Google&apos;s
@@ -86,9 +86,9 @@ export default function GmailOutreachBar() {
     const missing = !gmail.canSend && !gmail.canRead ? "send emails or read replies" : !gmail.canSend ? "send emails" : "read replies";
     return (
       <div className="mx-4 my-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-        <div className="flex items-start gap-3">
+        <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
           <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600" />
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-[1_1_9rem]">
             <div className="text-[13px] font-semibold text-amber-900">Gmail is connected, but can&apos;t {missing}</div>
             <p className="mt-0.5 text-[11px] leading-4 text-amber-800">
               {gmail.email ? `${gmail.email} ` : "This account "}

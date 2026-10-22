@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { canTransitionFinding } from "./findingTypes";
+import { canTransitionFinding, invalidTransitionError, staleFindingError } from "./findingTypes";
 import type { Finding, FindingSeverity } from "./findingTypes";
 import { compareFindingsByPriority } from "./findingPriority";
 
@@ -120,19 +120,25 @@ export async function getProjectFinding(db: SupabaseClient, userId: string, proj
   return data ? mapFinding(data as FindingRow) : null;
 }
 
-export async function updateFindingStatus(db: SupabaseClient, userId: string, projectId: string, id: string, status: Finding["status"]): Promise<Finding | null> {
+/**
+ * Moves a finding's status. The update is conditional on the status that was
+ * read, so two concurrent requests cannot both apply: the loser gets a
+ * conflict. A status change is not a new observation, so last_seen is left
+ * alone (it is what the UI shows as "Last checked").
+ */
+export async function updateFindingStatus(db: SupabaseClient, userId: string, projectId: string, id: string, status: Finding["status"], from?: Finding["status"]): Promise<Finding | null> {
   const existing = await getProjectFinding(db, userId, projectId, id);
   if (!existing) return null;
+  if (from && existing.status !== from) throw staleFindingError();
   if (!canTransitionFinding(existing.status, status)) {
-    throw new Error(`Invalid finding status transition: ${existing.status} -> ${status}`);
+    throw invalidTransitionError(existing.status, status);
   }
-  const now = new Date().toISOString();
   const { data, error } = await db.from("findings").update({
     status,
-    last_seen: now,
-    resolved_at: status === "verified" ? now : null,
-  }).eq("user_id", userId).eq("project_id", projectId).eq("id", id).select("*").single();
+    resolved_at: status === "verified" ? new Date().toISOString() : null,
+  }).eq("user_id", userId).eq("project_id", projectId).eq("id", id).eq("status", existing.status).select("*").maybeSingle();
   if (error) throw new Error(error.message);
+  if (!data) throw staleFindingError();
   return mapFinding(data as FindingRow);
 }
 
@@ -141,16 +147,20 @@ export async function refreshFinding(db: SupabaseClient, userId: string, project
   evidence: Record<string, unknown>;
   recommendation: string;
   status: Finding["status"];
+  expectedStatus?: Finding["status"];
 }): Promise<Finding | null> {
   const now = new Date().toISOString();
-  const { data, error } = await db.from("findings").update({
+  let update = db.from("findings").update({
     severity: input.severity,
     evidence: input.evidence,
     recommendation: input.recommendation,
     status: input.status,
     last_seen: now,
     resolved_at: input.status === "verified" ? now : null,
-  }).eq("user_id", userId).eq("project_id", projectId).eq("id", id).select("*").maybeSingle();
+  }).eq("user_id", userId).eq("project_id", projectId).eq("id", id);
+  if (input.expectedStatus) update = update.eq("status", input.expectedStatus);
+  const { data, error } = await update.select("*").maybeSingle();
   if (error) throw new Error(error.message);
+  if (!data && input.expectedStatus) throw staleFindingError();
   return data ? mapFinding(data as FindingRow) : null;
 }

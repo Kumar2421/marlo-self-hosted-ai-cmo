@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from "react";
+import { useState, useEffect, useMemo, useRef, useLayoutEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Layers,
   ChevronLeft,
   Pencil,
   Plus,
   ChevronRight,
-  RefreshCw,
   Globe,
   FolderOpen,
   Users,
@@ -33,6 +33,7 @@ import ContentStrategyPanel from "./documents/ContentStrategyPanel";
 import DesignGuidePanel from "./documents/DesignGuidePanel";
 import { WebsiteIcon } from "@/components/shared/WebsiteIcon";
 import { normalizeHostUrl } from "@/lib/domain/shared/hostLike";
+import { deriveSetupChecklist, latestOnPageScore, type SetupStepId } from "@/lib/domain/project/setupChecklist";
 
 // Long descriptions clamp to 4 lines with a toggle; short ones render as-is.
 function ProjectDescription({ text }: { text: string }) {
@@ -89,13 +90,16 @@ export default function ContextPanel({
   const [newCompetitorUrl, setNewCompetitorUrl] = useState("");
   const [discovering, setDiscovering] = useState(false);
   const { show } = useToast();
-  const { project, loading, competitorsVersion, documentsVersion } = useProject();
+  const router = useRouter();
+  const { project, loading, setupRunning, competitorsVersion, documentsVersion, updateProject, notifyAuditChanged } = useProject();
+  const [retryingStep, setRetryingStep] = useState<SetupStepId | null>(null);
   const {
+    data: dashboardData,
     documents,
     competitors: contextCompetitors,
     loading: contextLoading,
     error: contextError,
-    refresh: refreshContext,
+    refreshDatasets,
   } = useProjectContext();
   const competitors = useMemo(
     () => selectContextPanelCompetitors(contextCompetitors),
@@ -109,6 +113,25 @@ export default function ContextPanel({
     () => selectContextPanelDocumentStatus(documents),
     [documents],
   );
+
+  const auditRows = useMemo(() => dashboardData?.data.seo_audits ?? [], [dashboardData]);
+  const onPageScore = useMemo(() => latestOnPageScore(auditRows, project?.url), [auditRows, project?.url]);
+  // Derived from rows that already exist; nothing is stored. Empty until the
+  // shared dashboard data has loaded, so a slow load never reads as "missing".
+  const setupSteps = useMemo(
+    () =>
+      project && dashboardData
+        ? deriveSetupChecklist({
+            auditCount: auditRows.length,
+            description: project.description,
+            documentCount: documents.filter((d) => typeof d.content === "string" && d.content.trim()).length,
+            competitorCount: contextCompetitors.length,
+          })
+        : [],
+    [project, dashboardData, auditRows, documents, contextCompetitors],
+  );
+  // Hidden while the setup run is still in flight: its steps are running, not missing.
+  const showSetupCard = !setupRunning && setupSteps.some((s) => !s.optional);
 
   useEffect(() => {
     if (contextError) {
@@ -125,15 +148,15 @@ export default function ContextPanel({
   useEffect(() => {
     if (documentsVersion === seenDocumentsVersion.current) return;
     seenDocumentsVersion.current = documentsVersion;
-    refreshContext();
-  }, [documentsVersion, refreshContext]);
+    void refreshDatasets(["project_documents"]);
+  }, [documentsVersion, refreshDatasets]);
 
   const seenCompetitorsVersion = useRef(competitorsVersion);
   useEffect(() => {
     if (competitorsVersion === seenCompetitorsVersion.current) return;
     seenCompetitorsVersion.current = competitorsVersion;
-    refreshContext();
-  }, [competitorsVersion, refreshContext]);
+    void refreshDatasets(["project_competitors"]);
+  }, [competitorsVersion, refreshDatasets]);
 
   async function handleAddCompetitor() {
     const url = newCompetitorUrl.trim();
@@ -152,7 +175,7 @@ export default function ContextPanel({
       const data = await res.json();
       setNewCompetitorUrl("");
       setAddingCompetitor(false);
-      await refreshContext();
+      await refreshDatasets(["project_competitors"]);
     } catch {
       show("Failed to add competitor.");
     }
@@ -191,7 +214,7 @@ export default function ContextPanel({
           `${data.usedWebSearch ? "Searched the web and found" : "Based on your site's own content, found"} ${added.length} real competitor${added.length === 1 ? "" : "s"}: ${names}.`
         );
         show(`Found ${added.length} competitor${added.length === 1 ? "" : "s"}.`);
-        await refreshContext();
+        await refreshDatasets(["project_competitors"]);
       }
     } catch {
       log("⚠ Couldn't reach the competitor discovery service.");
@@ -201,16 +224,71 @@ export default function ContextPanel({
     }
   }
 
+  async function handleRetryStep(id: SetupStepId) {
+    if (!project || retryingStep) return;
+    if (id === "documents") {
+      // Document generation lives in the document panel (stream, check, save).
+      setProductInfoOpen(true);
+      return;
+    }
+    if (id === "competitors") {
+      await handleDiscoverCompetitors();
+      return;
+    }
+    setRetryingStep(id);
+    try {
+      if (id === "audit") {
+        log("Re-running the site audit...");
+        const res = await fetch("/api/agents/seo/audit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: project.url }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          show(data.error || "The site audit failed. Try again in a moment.");
+          return;
+        }
+        notifyAuditChanged();
+        await refreshDatasets(["seo_audits"]);
+        show("Site audit complete.");
+      } else if (id === "description") {
+        const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
+        if (!primaryModel || !providerId) {
+          show("Connect a model in Settings to generate a description.");
+          return;
+        }
+        const res = await fetch(`/api/project/${project.id}/generate-description`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: primaryModel, providerId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || typeof data.description !== "string") {
+          show(data.error || "Couldn't generate a description. Run the site audit first, then try again.");
+          return;
+        }
+        // The route already saved it; this refreshes the project in the store.
+        await updateProject(project.id, { description: data.description });
+        show("Description generated.");
+      }
+    } catch {
+      show("That step failed. Try again in a moment.");
+    } finally {
+      setRetryingStep(null);
+    }
+  }
+
   async function handleRemoveCompetitor(id: string) {
     try {
       const res = await fetch(`/api/project/competitors?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       if (!res.ok) {
         throw new Error("Failed to remove competitor");
       }
-      await refreshContext();
+      await refreshDatasets(["project_competitors"]);
     } catch {
       show("Failed to remove competitor — it may still be saved.");
-      await refreshContext();
+      await refreshDatasets(["project_competitors"]);
     }
   }
 
@@ -220,16 +298,18 @@ export default function ContextPanel({
         <RailButton icon={<Globe size={15} />} label="Brand" onClick={onToggle} />
         <RailButton icon={<FolderOpen size={15} />} label="Docs" onClick={onToggle} />
         <RailButton icon={<Users size={15} />} label="Comps" onClick={onToggle} />
-        <div className="mt-auto pt-2">
-          <button
-            onClick={onToggle}
-            className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#00ab92] text-[11px] font-semibold text-[#00ab92]"
-            title="On-Page Score: 97"
-          >
-            97
-          </button>
-          <div className="mt-1 text-center text-[9px] font-medium text-gray-400">SEO</div>
-        </div>
+        {onPageScore !== null && (
+          <div className="mt-auto pt-2">
+            <button
+              onClick={onToggle}
+              className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#00ab92] text-[11px] font-semibold text-[#00ab92]"
+              title={`On-Page Score: ${onPageScore}`}
+            >
+              {onPageScore}
+            </button>
+            <div className="mt-1 text-center text-[9px] font-medium text-gray-400">SEO</div>
+          </div>
+        )}
       </CollapsedRail>
     );
   }
@@ -274,7 +354,12 @@ export default function ContextPanel({
                 <span className="h-6 w-6 rounded-full bg-indigo-400" />
                 <span className="text-[13px] font-semibold text-gray-900">{project.name}</span>
               </div>
-              <button onClick={() => show("Edit project name — coming soon.")} className="text-gray-400 hover:text-gray-700">
+              <button
+                onClick={() => router.push("/settings/websites")}
+                title="Edit in Settings → Websites"
+                aria-label="Edit project in Settings, Websites"
+                className="text-gray-400 hover:text-gray-700"
+              >
                 <Pencil size={13} />
               </button>
             </div>
@@ -299,24 +384,43 @@ export default function ContextPanel({
               </a>
             </div>
 
-            <div className="mb-3 flex flex-wrap gap-2">
-              <button
-                onClick={() => show("Team size & category form — coming soon.")}
-                className="flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
-              >
-                <Plus size={11} /> Add team size &amp; category
-              </button>
-              <button
-                onClick={() => show("Rewriting project description...")}
-                className="flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
-              >
-                <RefreshCw size={11} /> Improve writing quality
-              </button>
-            </div>
+            {!project.category && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                <button
+                  onClick={() => router.push("/settings/websites")}
+                  className="flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
+                >
+                  <Plus size={11} /> Add category in Settings
+                </button>
+              </div>
+            )}
 
             {project.description && (
               <ProjectDescription text={project.description} />
             )}
+          </div>
+        )}
+
+        {showSetupCard && (
+          <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3" aria-label="Finish setup">
+            <p className="mb-2 text-[12px] font-semibold text-amber-900">Finish setup</p>
+            <ul className="space-y-1.5">
+              {setupSteps.map((step) => (
+                <li key={step.id} className="flex items-center justify-between gap-2 text-[12px] text-amber-900">
+                  <span>{step.label}</span>
+                  <button
+                    onClick={() => handleRetryStep(step.id)}
+                    disabled={retryingStep !== null || (step.id === "competitors" && discovering)}
+                    className="dash-focus flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    {retryingStep === step.id || (step.id === "competitors" && discovering) ? (
+                      <Loader2 size={11} className="animate-spin" />
+                    ) : null}
+                    {step.action}
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -492,7 +596,7 @@ export default function ContextPanel({
         <ProductInfoPanel
           onClose={() => {
             setProductInfoOpen(false);
-            refreshContext();
+            void refreshDatasets(["project_documents"]);
           }}
         />
       )}
@@ -500,7 +604,7 @@ export default function ContextPanel({
         <MarketingStrategyPanel
           onClose={() => {
             setMarketingStrategyOpen(false);
-            refreshContext();
+            void refreshDatasets(["project_documents"]);
           }}
         />
       )}
@@ -508,7 +612,7 @@ export default function ContextPanel({
         <CompetitorAnalysisPanel
           onClose={() => {
             setCompetitorAnalysisOpen(false);
-            refreshContext();
+            void refreshDatasets(["project_documents"]);
           }}
         />
       )}
@@ -517,7 +621,7 @@ export default function ContextPanel({
         <ContentStrategyPanel
           onClose={() => {
             setContentStrategyOpen(false);
-            refreshContext();
+            void refreshDatasets(["project_documents"]);
           }}
         />
       )}
@@ -525,7 +629,7 @@ export default function ContextPanel({
         <DesignGuidePanel
           onClose={() => {
             setDesignGuideOpen(false);
-            refreshContext();
+            void refreshDatasets(["project_documents"]);
           }}
         />
       )}

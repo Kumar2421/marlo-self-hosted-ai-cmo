@@ -4,14 +4,16 @@
 
 import { CREDENTIALS_PATH } from "@/lib/settingsPaths";
 import { useEffect, useState } from "react";
-import { Check } from "lucide-react";
+import { AlertTriangle, Check } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useToast } from "@/components/dashboard/Toast";
 import BrandIcon from "@/components/settings/BrandIcon";
 import { useProject } from "@/lib/project-store";
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/client";
-import { GOOGLE_ANALYTICS_SCOPES } from "@/lib/googleOAuthScopes";
+import { googleOAuthQueryParams, scopesFor } from "@/lib/googleOAuthScopes";
+import { useGoogleConnection } from "@/lib/query/useGoogleConnection";
+import GoogleReconnectLink from "@/components/settings/GoogleReconnectLink";
 
 type Resource = { resourceId: string; resourceName: string; selected: boolean };
 type IntegrationResources = {
@@ -38,6 +40,7 @@ export default function GoogleAnalyticsCard() {
   const [resources, setResources] = useState<IntegrationResources[]>([]);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const health = useGoogleConnection(project?.id);
 
   async function load() {
     try {
@@ -68,8 +71,8 @@ export default function GoogleAnalyticsCard() {
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/api/auth/callback?next=${CREDENTIALS_PATH}`,
-        scopes: GOOGLE_ANALYTICS_SCOPES,
-        queryParams: { access_type: "offline", prompt: "consent" },
+        scopes: scopesFor("google-data"),
+        queryParams: googleOAuthQueryParams("google-data"),
       },
     });
     if (error) {
@@ -107,7 +110,12 @@ export default function GoogleAnalyticsCard() {
           <div>
             <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
               Google Analytics &amp; Search Console
-              {connected && (
+              {connected && health.state === "needs_reconnect" && health.badge && (
+                <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                  <AlertTriangle size={10} /> {health.badge.label}
+                </span>
+              )}
+              {connected && health.state !== "needs_reconnect" && (
                 <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">
                   <Check size={10} /> Connected
                 </span>
@@ -126,6 +134,12 @@ export default function GoogleAnalyticsCard() {
         </div>
       ) : !loaded ? null : connected ? (
         <div className="space-y-3">
+          {health.showReconnect && (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+              <span className="min-w-0">{health.message}</span>
+              <GoogleReconnectLink returnTo="settings" />
+            </div>
+          )}
           <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
             {[gsc, ga4].map((i) => i?.resources.find((r) => r.selected)?.resourceName).filter(Boolean).join(" · ") ||
               "No site or property chosen yet."}{" "}

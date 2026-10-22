@@ -86,11 +86,13 @@ body {
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
+  gap: 0.5rem;
   border-bottom: 1px solid #e5e7eb;
   padding: 0 1rem;
 }
 .dash-title {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 0.5rem;
   font-size: 13px;

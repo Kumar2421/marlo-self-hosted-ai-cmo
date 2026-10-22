@@ -36,6 +36,19 @@ export type GeoStatus = {
   rows: Array<{ query: string; found: boolean; matchedUrl?: string }>;
 } | null;
 
+/** Latest stored SEO audit of the project's site, boiled down for the model. */
+export type AuditSummary = {
+  url: string;
+  checkedAt: string;
+  errors: number;
+  warnings: number;
+  indexable: boolean;
+  /** Top issues, errors first. */
+  topIssues: Array<{ label: string; level: "Warning" | "Error" }>;
+  /** Lighthouse category scores (0-100, mobile) - null when no PageSpeed data was captured. */
+  scores: { performance: number; accessibility: number; bestPractices: number; seo: number } | null;
+} | null;
+
 export type ChatPorts = {
   getSearchSnapshot(): Promise<{ snapshotDate: string; payload: SearchSnapshotPayload } | null>;
   listFindings(): Promise<Finding[]>;
@@ -46,6 +59,10 @@ export type ChatPorts = {
   listActionsWithOutcomes(findingId?: string): Promise<ActionWithOutcomeLite[]>;
   getLeadSummary(recentLimit: number): Promise<LeadSummary>;
   getGeoStatus(): Promise<GeoStatus>;
+  /** Latest SEO audit for this project, or null when it was never audited. */
+  getAuditSummary(): Promise<AuditSummary>;
+  /** Competitor site URLs the user tracks (empty when none). */
+  listCompetitors(): Promise<string[]>;
   now(): Date;
 };
 
@@ -109,6 +126,18 @@ export const CHAT_TOOLS: ToolSpec[] = [
     name: "get_geo_status",
     label: "AI-search (GEO) check",
     description: "Whether the site is being cited for the queries checked by the latest GEO (AI search) citation check.",
+    parameters: noArgs,
+  },
+  {
+    name: "get_audit_summary",
+    label: "site audit",
+    description: "The latest SEO audit of the site: when it ran, how many errors and warnings, the top issues, indexability and PageSpeed scores if captured. Use for 'what is wrong with my site' and to tell 'never audited' from 'audited and clean'.",
+    parameters: noArgs,
+  },
+  {
+    name: "list_competitors",
+    label: "competitors",
+    description: "Competitor sites the user tracks for this project (URLs only).",
     parameters: noArgs,
   },
 ];
@@ -195,10 +224,34 @@ export async function runTool(ports: ChatPorts, name: string, args: Record<strin
         const status = typeof args.status === "string" ? args.status : null;
         if (status && !(FINDING_STATUSES as readonly string[]).includes(status)) return { ok: false, content: `Unknown status "${status}".` };
         const all = await ports.listFindings();
+        if (all.length === 0) {
+          // Zero rows is ambiguous: never audited vs audited and clean. Say which.
+          const audit = await ports.getAuditSummary();
+          if (!audit) {
+            return pack({
+              available: false, neverAudited: true, totalFindings: 0,
+              note: "No SEO audit has been run for this project yet, so there are no findings. This does NOT mean the site is fine. Tell the user to run an SEO audit first.",
+            });
+          }
+          return pack({
+            asOf: ports.now().toISOString().slice(0, 10), totalFindings: 0, byStatus: {}, findings: [], auditedAt: audit.checkedAt,
+            note: "The site was audited and no findings are stored for it. Use get_audit_summary for the audit itself.",
+          });
+        }
         const rows = status ? all.filter((f) => f.status === (status as FindingStatus)) : all;
         const byStatus: Record<string, number> = {};
         for (const f of all) byStatus[f.status] = (byStatus[f.status] ?? 0) + 1;
         return pack({ asOf: ports.now().toISOString().slice(0, 10), totalFindings: all.length, byStatus, shown: Math.min(rows.length, MAX_ROWS), findings: rows.slice(0, MAX_ROWS).map(findingRow) });
+      }
+      case "get_audit_summary": {
+        const a = await ports.getAuditSummary();
+        if (!a) return { ok: true, content: JSON.stringify({ available: false, neverAudited: true, what: "site audit", note: "No SEO audit has been run for this project yet. Tell the user to run one; do not guess what is wrong with the site." }) };
+        return pack({ ...a, topIssues: a.topIssues.slice(0, MAX_ROWS) });
+      }
+      case "list_competitors": {
+        const urls = await ports.listCompetitors();
+        if (urls.length === 0) return noData("competitors", "No competitors are tracked for this project yet.");
+        return pack({ total: urls.length, competitors: urls.slice(0, MAX_ROWS) });
       }
       case "get_finding": {
         const id = typeof args.id === "string" ? args.id : "";

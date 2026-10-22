@@ -8,7 +8,7 @@ import { useToast } from "@/components/dashboard/Toast";
 import BrandIcon from "@/components/settings/BrandIcon";
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/client";
-import { GOOGLE_ANALYTICS_SCOPES } from "@/lib/googleOAuthScopes";
+import { googleOAuthQueryParams, scopesFor } from "@/lib/googleOAuthScopes";
 
 /** Self-host: two real steps, not one — (1) app-level OAuth Client ID/Secret,
  * written to .env.local, only takes effect after a real server restart
@@ -90,8 +90,8 @@ export default function GmailCard() {
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/api/auth/callback?next=${CREDENTIALS_PATH}`,
-        scopes: GOOGLE_ANALYTICS_SCOPES,
-        queryParams: { access_type: "offline", prompt: "consent" },
+        scopes: scopesFor("gmail"),
+        queryParams: googleOAuthQueryParams("gmail"),
       },
     });
     if (error) {

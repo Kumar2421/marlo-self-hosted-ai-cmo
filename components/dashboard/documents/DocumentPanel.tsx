@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { FileText, Copy, Pencil, Download, ChevronsLeft, X, Loader2, RefreshCw } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { useProviders, findProviderForModel } from "@/lib/providers-store";
 import { useToast } from "@/components/dashboard/Toast";
 import { useTerminalLog } from "@/lib/terminal-log-store";
+import { assessGeneratedDocument } from "@/lib/domain/project/setupRun";
+import { splitMarkdownTables, type TableAlign } from "@/lib/markdown-tables";
 
 // No Tailwind Typography plugin in this project (nothing else here uses
 // `prose`), so style each markdown element explicitly instead of relying on
@@ -40,6 +42,65 @@ const MARKDOWN_COMPONENTS: Components = {
   td: ({ children }) => <td className="border-b border-gray-100 px-3 py-2 align-top text-gray-700">{children}</td>,
 };
 
+// Cell text can carry inline markdown (bold, links) but not block wrappers.
+const CELL_COMPONENTS: Components = {
+  ...MARKDOWN_COMPONENTS,
+  p: ({ children }) => <>{children}</>,
+};
+
+/** GFM pipe tables. Pure parsing lives in lib/markdown-tables; this only draws them. */
+function MarkdownTable({ header, align, rows }: { header: string[]; align: TableAlign[]; rows: string[][] }) {
+  const alignClass = (c: number) =>
+    align[c] === "right" ? "text-right" : align[c] === "center" ? "text-center" : "text-left";
+  return (
+    <div className="mb-3 overflow-x-auto rounded-lg border border-gray-200">
+      <table className="w-full border-collapse text-[13px]">
+        <thead className="bg-gray-50">
+          <tr>
+            {header.map((cell, c) => (
+              <th
+                key={c}
+                scope="col"
+                className={`border-b border-gray-200 px-3 py-2 text-[11px] font-semibold text-gray-500 ${alignClass(c)}`}
+              >
+                <ReactMarkdown components={CELL_COMPONENTS}>{cell}</ReactMarkdown>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, r) => (
+            <tr key={r}>
+              {row.map((cell, c) => (
+                <td key={c} className={`border-b border-gray-100 px-3 py-2 align-top text-gray-700 ${alignClass(c)}`}>
+                  <ReactMarkdown components={CELL_COMPONENTS}>{cell}</ReactMarkdown>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DocumentBody({ source }: { source: string }) {
+  const segments = useMemo(() => splitMarkdownTables(source), [source]);
+  return (
+    <>
+      {segments.map((seg, i) =>
+        seg.kind === "table" ? (
+          <MarkdownTable key={i} header={seg.header} align={seg.align} rows={seg.rows} />
+        ) : (
+          <ReactMarkdown key={i} components={MARKDOWN_COMPONENTS}>
+            {seg.text}
+          </ReactMarkdown>
+        )
+      )}
+    </>
+  );
+}
+
 export type DocumentPanelProps = {
   /** Display title in the panel header + empty/generate-button copy. */
   title: string;
@@ -57,6 +118,10 @@ export type DocumentPanelProps = {
  * component drives all of them instead of copy-pasting per document. */
 export default function DocumentPanel({ title, apiPath, downloadName, onClose }: DocumentPanelProps) {
   const [content, setContent] = useState<string | null>(null);
+  // Text of a generation in progress. The saved `content` stays on screen
+  // until the new stream completes AND saves, so a failed run loses nothing.
+  const [streamText, setStreamText] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -71,16 +136,24 @@ export default function DocumentPanel({ title, apiPath, downloadName, onClose }:
     setLoading(true);
     try {
       const res = await fetch(base);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // A failed load is not "no document yet": say so and offer a retry.
+        setLoadError(data.error || `Couldn't load ${title} (HTTP ${res.status}).`);
+        return;
+      }
+      setLoadError(null);
       if (data.document?.content) setContent(data.document.content);
     } catch {
-      // route unreachable — falls through to the "not generated yet" state
+      setLoadError(`Couldn't reach the server to load ${title}.`);
     } finally {
       setLoading(false);
     }
-  }, [base]);
+  }, [base, title]);
 
   useEffect(() => {
+    // Fetch-on-mount: setState runs after an await, not synchronously (pre-existing; surfaced by touching this file).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadExisting();
   }, [loadExisting]);
 
@@ -95,8 +168,15 @@ export default function DocumentPanel({ title, apiPath, downloadName, onClose }:
       return;
     }
 
+    if (
+      content &&
+      !window.confirm(`Regenerate ${title}? This replaces the saved version, including any edits you made. The old version is kept if generation fails.`)
+    ) {
+      return;
+    }
+
     setGenerating(true);
-    setContent("");
+    setStreamText("");
     log(`Generating ${title} with ${primaryModel}...`);
 
     try {
@@ -111,7 +191,19 @@ export default function DocumentPanel({ title, apiPath, downloadName, onClose }:
         const errText = data.error || `Failed to generate ${title}.`;
         log(`⚠ ${errText}`);
         show(errText);
-        setContent(null);
+        return;
+      }
+
+      // A non-streaming route answers JSON ({ text }) and saves it itself.
+      if ((res.headers.get("content-type") ?? "").includes("application/json")) {
+        const data = await res.json().catch(() => ({}));
+        if (typeof data.text === "string" && data.text.trim()) {
+          setContent(data.text);
+          logDone(`${title} saved.`);
+          show(`${title} saved.`);
+        } else {
+          show(`${title} came back empty — your previous version was kept.`);
+        }
         return;
       }
 
@@ -129,25 +221,40 @@ export default function DocumentPanel({ title, apiPath, downloadName, onClose }:
           }
           const chunk = decoder.decode(value, { stream: true });
           finalContent += chunk;
-          setContent((prev) => (prev ?? "") + chunk);
+          setStreamText((prev) => (prev ?? "") + chunk);
         }
       }
 
-      if (finalContent) {
-        await fetch(`${base}/save`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: finalContent }),
-        });
-        logDone(`${title} saved.`);
-        show(`${title} saved.`);
+      // Empty or cut-off output must never replace a saved document.
+      const check = assessGeneratedDocument(finalContent);
+      if (!check.ok) {
+        const msg = `${title} wasn't saved: ${check.reason}.${content ? " Your previous version was kept." : ""}`;
+        log(`⚠ ${msg}`);
+        show(msg);
+        return;
       }
+
+      const saveRes = await fetch(`${base}/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: finalContent }),
+      });
+      if (!saveRes.ok) {
+        const data = await saveRes.json().catch(() => ({}));
+        const msg = `${title} was generated but couldn't be saved (${data.error ?? `HTTP ${saveRes.status}`}).${content ? " Your previous version was kept." : ""}`;
+        log(`⚠ ${msg}`);
+        show(msg);
+        return;
+      }
+      setContent(finalContent);
+      logDone(`${title} saved.`);
+      show(`${title} saved.`);
     } catch (err) {
       const errText = err instanceof Error ? err.message : `Failed to generate ${title}.`;
       log(`⚠ ${errText}`);
-      show(`Failed to generate ${title}.`);
-      setContent(null);
+      show(`Failed to generate ${title}.${content ? " Your previous version was kept." : ""}`);
     } finally {
+      setStreamText(null);
       setGenerating(false);
     }
   }
@@ -166,6 +273,15 @@ export default function DocumentPanel({ title, apiPath, downloadName, onClose }:
     } catch {
       show("Failed to save changes.");
     }
+  }
+
+  // While a new version streams in, show it; otherwise the saved one.
+  const shown = streamText ? streamText : content;
+  const dirty = editing && content !== null && draft !== content;
+
+  function handleClose() {
+    if (dirty && !window.confirm("You have unsaved changes. Close and discard them?")) return;
+    onClose();
   }
 
   function handleCopy() {
@@ -212,10 +328,10 @@ export default function DocumentPanel({ title, apiPath, downloadName, onClose }:
               </button>
             </>
           )}
-          <button onClick={onClose} title="Collapse" className="hover:text-gray-700">
+          <button onClick={handleClose} title="Collapse" className="hover:text-gray-700">
             <ChevronsLeft size={16} />
           </button>
-          <button onClick={onClose} title="Close" className="hover:text-gray-700">
+          <button onClick={handleClose} title="Close" className="hover:text-gray-700">
             <X size={16} />
           </button>
         </div>
@@ -232,9 +348,21 @@ export default function DocumentPanel({ title, apiPath, downloadName, onClose }:
             onChange={(e) => setDraft(e.target.value)}
             className="h-full min-h-[60vh] w-full resize-none rounded-lg border border-gray-200 p-3 font-mono text-[13px] text-gray-800 outline-none focus:border-black"
           />
-        ) : content ? (
+        ) : loadError && !content ? (
+          <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 text-center">
+            <FileText size={28} className="text-gray-300" />
+            <p className="text-[14px] font-medium text-gray-900">Couldn&apos;t load {title}</p>
+            <p className="max-w-xs text-[13px] text-gray-500">{loadError}</p>
+            <button
+              onClick={loadExisting}
+              className="mt-2 flex items-center gap-2 rounded-lg bg-[#111111] px-4 py-2 text-[13px] font-medium text-white hover:bg-black"
+            >
+              <RefreshCw size={14} /> Retry
+            </button>
+          </div>
+        ) : shown ? (
           <article className="max-w-none text-[13px] leading-relaxed text-gray-700">
-            <ReactMarkdown components={MARKDOWN_COMPONENTS}>{content}</ReactMarkdown>
+            <DocumentBody source={shown} />
           </article>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
@@ -255,7 +383,7 @@ export default function DocumentPanel({ title, apiPath, downloadName, onClose }:
           </div>
         )}
 
-        {generating && content !== null && content !== "" && (
+        {generating && shown && (
           <p className="mt-3 flex items-center gap-1.5 text-[12px] text-gray-400">
             <Loader2 size={11} className="animate-spin" /> Writing...
           </p>

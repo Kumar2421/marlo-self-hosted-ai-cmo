@@ -6,7 +6,7 @@ import { Mail, Lock, KeyRound, ArrowLeft } from "lucide-react";
 import GhostLoader from "@/components/shared/GhostLoader";
 import { createClient } from "@/utils/supabase/client";
 import { FEATURES } from "@/lib/features";
-import { GOOGLE_ANALYTICS_SCOPES } from "@/lib/googleOAuthScopes";
+import { scopesFor } from "@/lib/googleOAuthScopes";
 import type { AuditFunnelPayload } from "@/lib/analytics/auditFunnel";
 import {
   friendlyAuthError,
@@ -17,6 +17,9 @@ import {
   OTP_MAX_LENGTH,
   isOtpComplete,
   REPEATED_SIGNUP_MESSAGE,
+  EMAIL_NOT_CONFIRMED_MESSAGE,
+  RESEND_COOLDOWN_SECONDS,
+  isEmailNotConfirmed,
 } from "@/lib/domain/auth/authMessages";
 import {
   GoogleSearchConsoleIcon,
@@ -134,15 +137,25 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
-  // Google/OAuth failures come back as ?error=auth (our callback) or as a
-  // #error=...&error_code=... hash (Supabase). Show a plain message, keep the
-  // raw Supabase text out of the page, and drop the params so a refresh does
-  // not show the same error again.
+  // Counts the resend cooldown down one second at a time. The timeout is
+  // scheduled from an effect, so state is only updated from the timer.
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const id = window.setTimeout(() => setResendCooldown((s) => s - 1), 1000);
+    return () => window.clearTimeout(id);
+  }, [resendCooldown]);
+
+  // Google/OAuth failures come back as ?error=... from our callback (with
+  // optional error_code / error_description) or as a #error=... hash from
+  // Supabase. Read both, show a plain message, keep the raw Supabase text out
+  // of the page, and drop the params so a refresh does not show it again.
   useEffect(() => {
     const url = new URL(window.location.href);
-    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    const friendly = friendlyAuthError(url.searchParams.get("error"), hashParams);
+    const params = new URLSearchParams(url.search);
+    new URLSearchParams(window.location.hash.replace(/^#/, "")).forEach((value, key) => params.set(key, value));
+    const friendly = friendlyAuthError(params.get("error"), params);
     if (!friendly) return;
     if (friendly.raw) console.warn("[login] auth error:", friendly.raw);
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -193,6 +206,8 @@ export default function LoginPage() {
         setError(REPEATED_SIGNUP_MESSAGE);
       } else if (!data.session) {
         setOtpCode("");
+        // Supabase just sent the confirmation email, so hold off on a resend.
+        setResendCooldown(RESEND_COOLDOWN_SECONDS);
         setMode("verify-signup");
       } else {
         trackSignupCompleted();
@@ -202,7 +217,12 @@ export default function LoginPage() {
     } else {
       const supabase = createClient();
       const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
-      if (authError) {
+      if (authError && isEmailNotConfirmed(authError)) {
+        // Account exists but was never confirmed: send the user to the code screen, where Resend lives.
+        setOtpCode("");
+        setError(EMAIL_NOT_CONFIRMED_MESSAGE);
+        setMode("verify-signup");
+      } else if (authError) {
         setError(authError.message);
       } else {
         router.push("/dashboard");
@@ -236,8 +256,10 @@ export default function LoginPage() {
   };
 
   const handleResendSignupOtp = async () => {
+    if (resendCooldown > 0) return;
     setError(null);
     setNotice(null);
+    setResendCooldown(RESEND_COOLDOWN_SECONDS);
     const supabase = createClient();
     const { error: resendError } = await supabase.auth.resend({ type: "signup", email });
     if (resendError) setError(friendlyEmailSendError(resendError));
@@ -313,7 +335,7 @@ export default function LoginPage() {
       options: {
         redirectTo: `${window.location.origin}/api/auth/callback`,
         ...(provider === "google" && FEATURES.PLATFORM_MODE
-          ? { scopes: GOOGLE_ANALYTICS_SCOPES, queryParams: { access_type: "offline", prompt: "consent" } }
+          ? { scopes: scopesFor("login") }
           : {}),
       },
     });
@@ -399,8 +421,13 @@ export default function LoginPage() {
 
                 <div className="mt-4 flex items-center justify-between text-sm">
                   {mode === "verify-signup" ? (
-                    <button type="button" onClick={handleResendSignupOtp} className="font-medium text-gray-900 hover:underline">
-                      Resend code
+                    <button
+                      type="button"
+                      onClick={handleResendSignupOtp}
+                      disabled={resendCooldown > 0}
+                      className="font-medium text-gray-900 hover:underline disabled:opacity-50 disabled:no-underline"
+                    >
+                      {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend code"}
                     </button>
                   ) : (
                     <span />

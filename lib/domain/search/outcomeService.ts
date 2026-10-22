@@ -36,9 +36,12 @@ export type OutcomePorts = {
   projectUrl: string | null;
 };
 
-export type ServiceResult<T> = { ok: true; value: T } | { ok: false; status: number; error: string };
+/** `warning` is set when the main step worked but a follow-up did not, so the caller can tell the user. */
+export type ServiceResult<T> = { ok: true; value: T; warning?: string } | { ok: false; status: number; error: string };
 
 const fail = (status: number, error: string): ServiceResult<never> => ({ ok: false, status, error });
+
+export const FINDING_NOT_UPDATED_WARNING = "The change is saved, but its finding could not be marked as fixed. Update the finding by hand.";
 
 export const UNDO_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -110,11 +113,12 @@ export async function implementAction(
   const completed = await ports.completeAction(action.id, result);
   if (!completed) return fail(404, "Action not found.");
 
-  // Keep the finding's lifecycle in step with the change; failures here must not undo the saved action.
+  // Keep the finding's lifecycle in step with the change; failures here must not undo the saved action,
+  // but they must not be silent either: the action is done while the finding may still read as open.
   try {
     for (const next of pathToFixed(finding.status)) await ports.moveFinding(finding.id, next);
   } catch {
-    // The action is saved either way; the user can still move the finding by hand.
+    return { ok: true, value: completed, warning: FINDING_NOT_UPDATED_WARNING };
   }
   return { ok: true, value: completed };
 }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { countFindings, findingTitle, pagePath } from "../lib/domain/findings/findingDisplay.ts";
+import { countFindings, explainPriority, findingTitle, mergedPullRequestNote, pagePath } from "../lib/domain/findings/findingDisplay.ts";
 
 test("findingTitle prefers the audit label", () => {
   assert.equal(findingTitle({ evidence: { label: "  Missing meta description " }, recommendation: "Add one. It helps." }), "Missing meta description");
@@ -30,9 +30,38 @@ test("countFindings: verified no longer needs attention, severities count only o
     { severity: "warning", status: "failed" },
     { severity: "info", status: "acknowledged" },
   ]);
-  assert.deepEqual(counts, { needsAttention: 4, critical: 1, warning: 2, verified: 1 });
+  assert.deepEqual(counts, { needsAttention: 4, awaitingVerification: 0, critical: 1, warning: 2, verified: 1 });
 });
 
 test("countFindings on nothing", () => {
-  assert.deepEqual(countFindings([]), { needsAttention: 0, critical: 0, warning: 0, verified: 0 });
+  assert.deepEqual(countFindings([]), { needsAttention: 0, awaitingVerification: 0, critical: 0, warning: 0, verified: 0 });
+});
+
+test("countFindings: fixed findings are awaiting verification, not unresolved and not verified", () => {
+  const counts = countFindings([
+    { severity: "critical", status: "fixed" },
+    { severity: "warning", status: "fixed" },
+    { severity: "critical", status: "failed" },
+    { severity: "warning", status: "verified" },
+  ]);
+  assert.deepEqual(counts, { needsAttention: 1, awaitingVerification: 2, critical: 1, warning: 0, verified: 1 });
+  assert.equal(counts.needsAttention + counts.awaitingVerification + counts.verified, 4);
+});
+
+test("explainPriority spells out why a finding ranks where it does", () => {
+  assert.equal(explainPriority({ severity: "critical", status: "new", url: "https://example.com/" }), "Critical, new, on your homepage");
+  assert.equal(explainPriority({ severity: "warning", status: "failed", url: "https://example.com/blog/post?x=1" }), "Warning, still detected after a fix, on /blog/post");
+  assert.equal(explainPriority({ severity: "info", status: "fixing", url: null }), "Info, being fixed");
+  assert.equal(explainPriority({ severity: "critical", status: "fixed", url: "https://example.com" }), "Critical, awaiting re-check, on your homepage");
+});
+
+test("mergedPullRequestNote only promises what Marlo really does", () => {
+  const base = { category: "x", entityId: "e", url: "https://example.com/", evidence: {} as Record<string, unknown> };
+  const recheck = "Merged. Marlo re-checks this page about 24 hours after the merge and will mark it verified or still detected.";
+  assert.equal(mergedPullRequestNote({ ...base, source: "seo-audit", entityId: "meta-title-missing" }), recheck);
+  assert.equal(mergedPullRequestNote({ ...base, source: "geo", category: "geo_readiness", entityId: "llms-txt" }), recheck);
+  assert.equal(mergedPullRequestNote({ ...base, source: "search-console", evidence: { opportunity: { type: "ctr" } } }), "Merged. Marlo is measuring what the change did.");
+  // Lighthouse findings need a PageSpeed run, so they are never re-checked automatically.
+  assert.match(mergedPullRequestNote({ ...base, source: "seo-audit", category: "lighthouse", entityId: "lighthouse-mobile-image-alt" }), /use Re-check/);
+  assert.match(mergedPullRequestNote({ ...base, source: "search-console" }), /use Re-check/);
 });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveGeoContext } from "@/lib/domain/geo/geoContext";
 import { runProjectGeo } from "@/lib/domain/geo/geoService";
+import { summariseRun } from "@/lib/domain/geo/runner";
 
 export const maxDuration = 60;
 
@@ -19,7 +20,8 @@ export async function POST() {
     if (summary.inFlight) {
       return NextResponse.json({ error: "A check is already running for this project. Try again in a minute." }, { status: 409 });
     }
-    return NextResponse.json({ summary });
+    // `outcome` is the honest one-liner (what failed and why); `summary` keeps the detail.
+    return NextResponse.json({ summary, outcome: summariseRun(summary) });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 502 });
   }

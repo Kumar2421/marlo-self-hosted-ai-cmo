@@ -14,6 +14,8 @@ export async function tavilySearchRaw(apiKey: string, query: string, maxResults 
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({ query, max_results: maxResults, search_depth: "basic" }),
+    // A hung search must cost one call, not the whole function budget.
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!res.ok) throw new Error(`Tavily search failed: HTTP ${res.status}`);

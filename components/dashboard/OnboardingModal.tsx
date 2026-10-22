@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import GhostLoader from "@/components/shared/GhostLoader";
 import { useProject } from "@/lib/project-store";
@@ -54,6 +55,7 @@ async function saveSetting(key: string, value: string) {
 export default function OnboardingModal({ onDone }: { onDone: () => void }) {
   const { show } = useToast();
   const { createProject } = useProject();
+  const router = useRouter();
 
   const [source, setSource] = useState(SOURCE_OPTIONS[0]);
   const [role, setRole] = useState(ROLE_OPTIONS[0]);
@@ -62,7 +64,15 @@ export default function OnboardingModal({ onDone }: { onDone: () => void }) {
   );
   const [saving, setSaving] = useState(false);
 
+  // The modal cannot be closed, so give the user a way out (for example, signed in with the wrong account).
+  async function handleSignOut() {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    router.push("/login");
+    router.refresh();
+  }
+
   async function handleContinue() {
+    if (saving) return;
     if (!url.trim()) {
       show("Enter your website URL to get started.");
       return;
@@ -72,9 +82,10 @@ export default function OnboardingModal({ onDone }: { onDone: () => void }) {
       await Promise.all([
         saveSetting("onboarding_source", source),
         saveSetting("personalization_role", role),
-        saveSetting("onboarding_completed", "true"),
       ]);
       await createProject({ name: deriveProjectName(url.trim()), url: url.trim() });
+      // Only after the project exists: a failed first attempt must not count as onboarded.
+      await saveSetting("onboarding_completed", "true");
       localStorage.removeItem("marlo:pending-audit-url");
       onDone();
     } catch (err) {
@@ -147,6 +158,14 @@ export default function OnboardingModal({ onDone }: { onDone: () => void }) {
           We&apos;ll crawl your site for real SEO, content, and competitor data. You can rename or add more sites
           later in Settings → Websites.
         </p>
+
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="mt-2 text-[11px] font-medium text-gray-500 hover:text-gray-900 hover:underline"
+        >
+          Sign out
+        </button>
       </div>
     </div>
   );

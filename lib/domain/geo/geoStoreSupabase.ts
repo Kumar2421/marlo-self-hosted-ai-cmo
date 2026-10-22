@@ -101,3 +101,52 @@ export async function lastRunByProject(db: SupabaseClient, projectIds: string[])
   }
   return out;
 }
+
+const PAGE = 1000;
+
+/** Every active tracked prompt on the platform (cron). Paged, because PostgREST returns at most 1000 rows per request. */
+export async function listAllActivePrompts(db: SupabaseClient): Promise<Array<{ projectId: string; userId: string; prompt: string }>> {
+  const out: Array<{ projectId: string; userId: string; prompt: string }> = [];
+  for (let from = 0; from < 50 * PAGE; from += PAGE) {
+    const { data, error } = await db
+      .from("geo_prompts")
+      .select("project_id, user_id, prompt")
+      .eq("active", true)
+      .order("project_id", { ascending: true })
+      .order("prompt", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    for (const r of data ?? []) out.push({ projectId: String(r.project_id), userId: String(r.user_id), prompt: String(r.prompt) });
+    if ((data ?? []).length < PAGE) break;
+  }
+  return out;
+}
+
+/** Prompts of these projects with at least one stored run since `sinceIso` (any method). Paged for the same reason. */
+export async function promptsRunSince(db: SupabaseClient, projectIds: string[], sinceIso: string): Promise<Array<{ projectId: string; prompt: string }>> {
+  const seen = new Set<string>();
+  const out: Array<{ projectId: string; prompt: string }> = [];
+  for (let i = 0; i < projectIds.length; i += 20) {
+    const chunk = projectIds.slice(i, i + 20);
+    for (let from = 0; from < 20 * PAGE; from += PAGE) {
+      const { data, error } = await db
+        .from("geo_runs")
+        .select("project_id, prompt, run_at")
+        .in("project_id", chunk)
+        .gte("run_at", sinceIso)
+        .order("run_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw new Error(error.message);
+      for (const r of data ?? []) {
+        const key = `${r.project_id}\u0000${r.prompt}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          out.push({ projectId: String(r.project_id), prompt: String(r.prompt) });
+        }
+      }
+      if ((data ?? []).length < PAGE) break;
+    }
+  }
+  return out;
+}

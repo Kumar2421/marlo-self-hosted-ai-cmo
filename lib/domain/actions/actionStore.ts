@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { getDb } from "@/lib/db";
 import { getProjectFinding } from "@/lib/domain/findings/findingStore";
 import type { Action, ActionStatus, ActionType } from "./actionTypes";
-import { canTransitionAction } from "./actionTypes";
+import { canTransitionAction, invalidActionTransitionError, staleActionError } from "./actionTypes";
 
 type ActionRow = {
   id: string; project_id: string; finding_id: string; recommendation_id: string | null;
@@ -51,15 +51,17 @@ export function createAction(input: {
   return getProjectAction(input.projectId, id)!;
 }
 
-export function transitionAction(projectId: string, id: string, status: ActionStatus, result: Record<string, unknown> | null = null): Action | null {
+export function transitionAction(projectId: string, id: string, status: ActionStatus, result: Record<string, unknown> | null = null, from?: ActionStatus): Action | null {
   const existing = getProjectAction(projectId, id);
   if (!existing) return null;
-  if (!canTransitionAction(existing.status, status)) throw new Error(`Invalid action status transition: ${existing.status} -> ${status}`);
+  if (from && existing.status !== from) throw staleActionError();
+  if (!canTransitionAction(existing.status, status)) throw invalidActionTransitionError(existing.status, status);
   const now = new Date().toISOString();
   const startedAt = status === "running" ? now : existing.startedAt;
   const completedAt = ["completed", "failed", "cancelled"].includes(status) ? now : existing.completedAt;
-  getDb().prepare("UPDATE actions SET status = ?, result = ?, started_at = ?, completed_at = ? WHERE project_id = ? AND id = ?")
-    .run(status, result === null ? null : JSON.stringify(result), startedAt, completedAt, projectId, id);
+  const changed = getDb().prepare("UPDATE actions SET status = ?, result = ?, started_at = ?, completed_at = ? WHERE project_id = ? AND id = ? AND status = ?")
+    .run(status, result === null ? null : JSON.stringify(result), startedAt, completedAt, projectId, id, existing.status).changes;
+  if (changed === 0) throw staleActionError();
   return getProjectAction(projectId, id);
 }
 

@@ -4,6 +4,17 @@ import { createContext, useContext, useEffect, useState, useCallback } from "rea
 import { useTerminalLog } from "./terminal-log-store";
 import { useProviders, findProviderForModel } from "./providers-store";
 import { FEATURES } from "./features";
+import {
+  assessGeneratedDocument,
+  blockedBy,
+  finalSetupLine,
+  isSetupRunning,
+  settleSetupRun,
+  summarizeDocumentRun,
+  type DocKey,
+  type DocOutcome,
+} from "./domain/project/setupRun";
+import { createClient } from "@/utils/supabase/client";
 
 export type ActiveProject = {
   id: string;
@@ -20,6 +31,10 @@ type Ctx = {
    * first. Powers the project switcher's dropdown list. */
   projects: ActiveProject[];
   loading: boolean;
+  /** True while the active project's setup run is in flight (crawl, description,
+   * competitors, leads, and the background documents). Context hides its
+   * "Finish setup" card and Analytics disables re-running the audit meanwhile. */
+  setupRunning: boolean;
   /** Creates a NEW project, makes it active, saves it, triggers a real SEO
    * crawl of the URL, and logs real progress lines to the shared terminal
    * log — same flow whether called from the top project switcher or
@@ -54,6 +69,9 @@ type Ctx = {
    * finishes — LeadsPanel watches this to refresh without polling. Always 0
    * on self-host (the feature never runs there). */
   leadsVersion: number;
+  /** Call after a manual audit re-run (e.g. Context's "Finish setup" retry) so
+   * panels keyed on auditVersion, like Analytics, refetch. */
+  notifyAuditChanged: () => void;
 };
 
 /** Runs right after a successful crawl during project creation — real
@@ -150,6 +168,15 @@ async function generateAndSaveDocument(
       return false;
     }
 
+    // A route whose generator does not stream answers JSON ({ text }) and has
+    // already saved the document itself; saving the raw JSON body would store
+    // `{"text":...}` as the document.
+    if ((res.headers.get("content-type") ?? "").includes("application/json")) {
+      await res.json().catch(() => ({}));
+      log(`${title} ready.`);
+      return true;
+    }
+
     const reader = res.body?.getReader();
     const decoder = new TextDecoder("utf-8");
     let finalContent = "";
@@ -161,13 +188,23 @@ async function generateAndSaveDocument(
       }
     }
 
-    if (!finalContent) return false;
+    // Never overwrite a saved document with an empty or truncated stream.
+    const check = assessGeneratedDocument(finalContent);
+    if (!check.ok) {
+      log(`Couldn't auto-generate ${title} (${check.reason}) — your existing document, if any, was kept. Generate it manually in the Context panel.`);
+      return false;
+    }
 
-    await fetch(`${base}/save`, {
+    const saveRes = await fetch(`${base}/save`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: finalContent }),
     });
+    if (!saveRes.ok) {
+      const data = await saveRes.json().catch(() => ({}));
+      log(`Generated ${title} but couldn't save it (${data.error ?? `HTTP ${saveRes.status}`}) — generate it again from the Context panel.`);
+      return false;
+    }
     log(`${title} ready.`);
     return true;
   } catch {
@@ -252,14 +289,19 @@ async function autoGenerateContextDocuments(
   hasCompetitors: boolean,
   log: (text: string) => void,
   logDone: (text: string) => void,
-  onSaved: () => void
+  onSaved: () => void,
+  /** Problems already found earlier in setup (crawl, description...). The
+   * final "Setup complete" / "Setup finished with problems" line is written
+   * here because this is the last step to finish. */
+  priorProblems: string[] = []
 ): Promise<void> {
-  if (!primaryModel) {
+  const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
+  if (!primaryModel || !providerId) {
     log("Skipping auto-generated context documents — connect a model in Settings to enable it.");
+    const last = finalSetupLine([...priorProblems, "no documents (connect a model in Settings)"]);
+    log(`⚠ ${last.text}`);
     return;
   }
-  const providerId = findProviderForModel(primaryModel);
-  if (!providerId) return;
 
   /** Bails out if the user switched/created a project mid-run — see
    * stillActiveProject. Returning false stops the remaining documents. */
@@ -269,31 +311,59 @@ async function autoGenerateContextDocuments(
     return false;
   };
 
-  /** Bumps documentsVersion after a successful save so the Context panel
-   * picks the document up — generation runs in the background, after the
-   * dashboard's initial refresh has already happened. */
-  const saved = (ok: boolean): boolean => {
+  const outcomes: DocOutcome[] = [];
+
+  /** Runs one document unless a prerequisite failed (then it is skipped and
+   * the reason is logged), records the outcome, and bumps documentsVersion on
+   * a real save so the Context panel picks it up. */
+  const step = async (
+    key: DocKey,
+    title: string,
+    run: () => Promise<boolean>
+  ): Promise<void> => {
+    const blocker = blockedBy(key, outcomes);
+    if (blocker) {
+      log(`Skipping ${title} — ${blocker} didn't finish, and ${title} is written from it. Retry ${blocker} in the Context panel first.`);
+      outcomes.push({ key, title, status: "blocked" });
+      return;
+    }
+    const ok = await run();
     if (ok) onSaved();
-    return ok;
+    outcomes.push({ key, title, status: ok ? "ready" : "failed" });
   };
+  const generate = (key: DocKey, title: string) =>
+    step(key, title, () => generateAndSaveDocument(key, title, primaryModel, providerId, log));
 
   log("Writing your Context documents — Product Information, Marketing Strategy, Competitor Analysis, Competitor Comparison, Content Strategy, and Design Guide...");
-  saved(await generateAndSaveDocument("product-info", "Product Information", primaryModel, providerId, log));
+  await generate("product-info", "Product Information");
   if (!(await guard())) return;
-  saved(await generateAndSaveDocument("marketing-strategy", "Marketing Strategy", primaryModel, providerId, log));
+  await generate("marketing-strategy", "Marketing Strategy");
   if (!(await guard())) return;
   if (hasCompetitors) {
-    saved(await generateAndSaveDocument("competitor-analysis", "Competitor Analysis", primaryModel, providerId, log));
+    await generate("competitor-analysis", "Competitor Analysis");
     if (!(await guard())) return;
-    saved(await generateSelfSavingDocument("competitor-comparison", "Competitor Comparison", primaryModel, providerId, log));
+    await step("competitor-comparison", "Competitor Comparison", () =>
+      generateSelfSavingDocument("competitor-comparison", "Competitor Comparison", primaryModel, providerId, log)
+    );
     if (!(await guard())) return;
   } else {
     log("Skipping Competitor Analysis and Competitor Comparison — no competitors found or added yet.");
+    outcomes.push({ key: "competitor-analysis", title: "Competitor Analysis", status: "skipped" });
+    outcomes.push({ key: "competitor-comparison", title: "Competitor Comparison", status: "skipped" });
   }
-  saved(await generateAndSaveDocument("content-strategy", "Content Strategy", primaryModel, providerId, log));
+  await generate("content-strategy", "Content Strategy");
   if (!(await guard())) return;
-  saved(await generateAndSaveDocument("design-guide", "Design Guide", primaryModel, providerId, log));
-  logDone("Context documents ready — review and edit anytime in the Context panel.");
+  await generate("design-guide", "Design Guide");
+
+  const summary = summarizeDocumentRun(outcomes);
+  if (summary.hasProblems) log(`⚠ ${summary.text}`);
+  else logDone(`Context documents: ${summary.text} Review and edit anytime in the Context panel.`);
+
+  const problems = [...priorProblems];
+  if (summary.hasProblems) problems.push(summary.text.replace(/: open Context to retry\.$/, ""));
+  const last = finalSetupLine(problems);
+  if (last.ok) logDone(last.text);
+  else log(`⚠ ${last.text}`);
 }
 
 const ProjectCtx = createContext<Ctx | null>(null);
@@ -312,14 +382,29 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
   const [auditVersion, setAuditVersion] = useState(0);
   const [documentsVersion, setDocumentsVersion] = useState(0);
   const [leadsVersion, setLeadsVersion] = useState(0);
+  /** Project whose setup run is in flight. See settleSetupRun / isSetupRunning. */
+  const [setupRunningId, setSetupRunningId] = useState<string | null>(null);
   const { log, logDone } = useTerminalLog();
   const { primaryModel } = useProviders();
+
+  const notifyAuditChanged = useCallback(() => setAuditVersion((v) => v + 1), []);
 
   const refresh = useCallback(async () => {
     try {
       const res = await fetch("/api/project");
-      const data = await res.json();
-      setProject(data.project);
+      let data = await res.json();
+      // Projects exist but none is active (pointer lost/cleared): activate the
+      // newest instead of leaving the user with a dashboard that reports
+      // "No active project" (and, formerly, the new-user onboarding modal).
+      if (!data.project && Array.isArray(data.projects) && data.projects.length > 0) {
+        const switched = await fetch("/api/project/switch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: data.projects[0].id }),
+        }).catch(() => null);
+        if (switched?.ok) data = await fetch("/api/project").then((r) => r.json());
+      }
+      setProject(data.project ?? null);
       setProjects(data.projects ?? []);
     } catch {
       // backend unreachable — leave project as-is, UI shows empty/setup state
@@ -336,6 +421,27 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
     // changed-files lint.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
+  }, [refresh]);
+
+  // This provider sits in the root layout and fetches /api/project once while
+  // the visitor may still be logged out; login navigates client-side, so it is
+  // not remounted. Re-read on sign-in, and forget the account's projects on
+  // sign-out so the next user never sees them.
+  useEffect(() => {
+    let mounted = true;
+    const { data: authListener } = createClient().auth.onAuthStateChange((event) => {
+      if (!mounted) return;
+      if (event === "SIGNED_IN") void refresh();
+      if (event === "SIGNED_OUT") {
+        setProject(null);
+        setProjects([]);
+        setSetupRunningId(null);
+      }
+    });
+    return () => {
+      mounted = false;
+      authListener.subscription.unsubscribe();
+    };
   }, [refresh]);
 
   const createProject = useCallback(
@@ -359,15 +465,19 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
       const data = await res.json();
       setProject(data.project);
       setProjects((prev) => [data.project, ...prev.filter((p) => p.id !== data.project.id)]);
+      setSetupRunningId(data.project.id);
 
       log("Starting my deep dive — crawling your pages for SEO, content, and growth signals.");
 
+      // Everything required that did not work, in plain words. Drives the
+      // final line: "Setup complete" only when this stays empty.
+      const problems: string[] = [];
       let crawlSucceeded = false;
       try {
         const auditRes = await fetch("/api/agents/seo/audit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: data.project.url }),
+          body: JSON.stringify({ url: data.project.url, quick: true }),
         });
 
         if (auditRes.ok) {
@@ -382,14 +492,18 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
         } else {
           const err = await auditRes.json().catch(() => ({}));
           log(`Couldn't fully crawl the site (${err.error ?? "unknown error"}) — agents will still use the URL directly.`);
+          problems.push("the site crawl failed, so there is no audit yet");
         }
       } catch {
         log("Couldn't reach the crawl service — agents will still use the URL directly.");
+        problems.push("the site crawl could not be reached, so there is no audit yet");
       }
 
       if (crawlSucceeded) {
         const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
-        if (primaryModel && providerId) {
+        if (input.description?.trim()) {
+          // The user wrote their own description: never overwrite it with a generated one.
+        } else if (primaryModel && providerId) {
           try {
             log("Writing a real description from what's actually on the page...");
             const descRes = await fetch(`/api/project/${data.project.id}/generate-description`, {
@@ -402,10 +516,18 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
               setProject((prev) => (prev && prev.id === data.project.id ? { ...prev, description } : prev));
               setProjects((prev) => prev.map((p) => (p.id === data.project.id ? { ...p, description } : p)));
               logDone(`Description: "${description}"`);
+            } else {
+              const err = await descRes.json().catch(() => ({}));
+              log(`Couldn't write a description (${err.error ?? `HTTP ${descRes.status}`}) — generate it from Context, or edit it in Settings → Websites.`);
+              problems.push("no description");
             }
           } catch {
             // non-fatal — description stays blank, editable manually in Settings → Websites
+            log("Couldn't reach the description service — generate it from Context, or edit it in Settings → Websites.");
+            problems.push("no description");
           }
+        } else {
+          problems.push("no description (connect a model in Settings)");
         }
 
         const hasCompetitors = await maybeDiscoverCompetitors(
@@ -431,9 +553,12 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
               } else {
                 log(message ? `${message} Search manually in the Leads panel, or check back tomorrow.` : "No confident leads found yet — search manually in the Leads panel, or check back tomorrow.");
               }
+            } else {
+              log("Couldn't find leads automatically — search manually in the Leads panel.");
             }
           } catch {
             // non-fatal -- leads can always be found manually in the Leads panel
+            log("Couldn't reach the lead finder — search manually in the Leads panel.");
           }
         }
 
@@ -454,16 +579,26 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
           hasCompetitors,
           log,
           logDone,
-          () => setDocumentsVersion((v) => v + 1)
-        ).catch(() => {
-          log("Couldn't finish writing your context documents — generate them from the Context panel.");
-        });
+          () => setDocumentsVersion((v) => v + 1),
+          problems
+        )
+          .catch(() => {
+            log("⚠ Setup finished with problems: couldn't finish writing your context documents. Open Context to finish setup.");
+          })
+          .finally(() => setSetupRunningId((cur) => settleSetupRun(cur, data.project.id)));
+        // The final "Setup complete" / "Setup finished with problems" line is
+        // written by autoGenerateContextDocuments once the documents settle:
+        // saying "complete" here would be a claim about work still running.
+        log("Core setup done — documents are being written in the background.");
+        return;
       }
 
-      // Context documents may still be generating in the background (see the
-      // un-awaited call above); autoGenerateContextDocuments logs its own
-      // completion, so this only marks setup itself as finished.
-      logDone("Setup complete — your dashboard is ready.");
+      // Documents will not run (crawl failed): nothing is still in flight, so
+      // the outcome is known now.
+      setSetupRunningId((cur) => settleSetupRun(cur, data.project.id));
+      const last = finalSetupLine(problems);
+      if (last.ok) logDone(last.text);
+      else log(`⚠ ${last.text}`);
     },
     [log, logDone, primaryModel]
   );
@@ -523,7 +658,7 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
 
   return (
     <ProjectCtx.Provider
-      value={{ project, projects, loading, createProject, switchProject, updateProject, deleteProject, competitorsVersion, auditVersion, documentsVersion, leadsVersion }}
+      value={{ project, projects, loading, setupRunning: isSetupRunning(setupRunningId, project?.id), createProject, switchProject, updateProject, deleteProject, competitorsVersion, auditVersion, documentsVersion, leadsVersion, notifyAuditChanged }}
     >
       {children}
     </ProjectCtx.Provider>
