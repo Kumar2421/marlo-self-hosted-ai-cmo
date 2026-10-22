@@ -1,5 +1,6 @@
 "use client";
 
+import { plainError } from "@/lib/plainError";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ExternalLink, Loader2, Send, Wrench } from "lucide-react";
@@ -67,7 +68,10 @@ function PreviewPanel({ finding, fix, onClose, approve }: { finding: Finding; fi
       { ticket: fix.ticket, changes, edited: JSON.stringify(changes) !== JSON.stringify(fix.changes) },
       {
         onSuccess: (data) => logDone(`Applied fix: ${data.summary}.${data.tracked ? " Marlo is now measuring what it did." : ""}`),
-        onError: (error) => logDone(`Couldn't update ${fix.cmsLabel}: ${error.message}`),
+        onError: (error) => {
+          console.error("[cms-fix] update failed", error);
+          logDone(`⚠ Couldn't update ${fix.cmsLabel}: ${plainError(error, "Try again in a moment.")}`);
+        },
       },
     );
   };
@@ -146,7 +150,10 @@ export default function FindingCmsFix({ finding, cms, cmsLabel, label }: { findi
           setFix(data);
         } else logDone("This one needs a manual change.");
       },
-      onError: (error) => logDone(`Couldn't prepare a fix: ${error.message}`),
+      onError: (error) => {
+        console.error("[cms-fix] prepare failed", error);
+        logDone(`⚠ Couldn't prepare a fix: ${plainError(error, "Try again in a moment.")}`);
+      },
     });
   };
 

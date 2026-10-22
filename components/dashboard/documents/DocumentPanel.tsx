@@ -1,5 +1,6 @@
 "use client";
 
+import { plainError } from "@/lib/plainError";
 import { useState, useEffect, useCallback, useId, useMemo } from "react";
 import { FileText, Copy, Pencil, Download, ChevronsLeft, X, Loader2, RefreshCw } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
@@ -252,7 +253,8 @@ export default function DocumentPanel({ title, apiPath, downloadName, onClose }:
       logDone(`${title} saved.`);
       show(`${title} saved.`);
     } catch (err) {
-      const errText = err instanceof Error ? err.message : `Failed to generate ${title}.`;
+      console.error("[document] generate failed", err);
+      const errText = plainError(err, `Failed to generate ${title}.`);
       log(`⚠ ${errText}`);
       show(`Failed to generate ${title}.${content ? " Your previous version was kept." : ""}`);
     } finally {

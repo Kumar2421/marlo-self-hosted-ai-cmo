@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback } from "react";
 import type { LogLine } from "./mock-terminal";
-import { doneLineType } from "@/lib/domain/integrations/logLine";
+import { lineType, stripWarning } from "@/lib/domain/integrations/logLine";
 
 type Ctx = {
   lines: LogLine[];
@@ -10,6 +10,8 @@ type Ctx = {
    * scripted/fake, callers pass text describing the real request in flight. */
   log: (text: string) => void;
   logDone: (text: string) => void;
+  /** Append a failure line. The warning sign is added/normalised here, so callers pass plain text. */
+  logError: (message: string) => void;
 };
 
 const TerminalLogCtx = createContext<Ctx | null>(null);
@@ -24,12 +26,16 @@ export default function TerminalLogProvider({ children }: { children: React.Reac
   const [lines, setLines] = useState<LogLine[]>([]);
 
   const log = useCallback((text: string) => {
-    setLines((prev) => [...prev, { type: "cmd", text }]);
+    setLines((prev) => [...prev, { type: lineType(text, "cmd"), text, at: Date.now() }]);
   }, []);
 
   const logDone = useCallback((text: string) => {
-    setLines((prev) => [...prev, { type: doneLineType(text), text }]);
+    setLines((prev) => [...prev, { type: lineType(text, "done"), text, at: Date.now() }]);
   }, []);
 
-  return <TerminalLogCtx.Provider value={{ lines, log, logDone }}>{children}</TerminalLogCtx.Provider>;
+  const logError = useCallback((message: string) => {
+    setLines((prev) => [...prev, { type: "error", text: `⚠ ${stripWarning(message)}`, at: Date.now() }]);
+  }, []);
+
+  return <TerminalLogCtx.Provider value={{ lines, log, logDone, logError }}>{children}</TerminalLogCtx.Provider>;
 }
