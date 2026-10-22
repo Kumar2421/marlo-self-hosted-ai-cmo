@@ -8,10 +8,13 @@ import {
   assessGeneratedDocument,
   blockedBy,
   finalSetupLine,
+  isSetupRunning,
+  settleSetupRun,
   summarizeDocumentRun,
   type DocKey,
   type DocOutcome,
 } from "./domain/project/setupRun";
+import { createClient } from "@/utils/supabase/client";
 
 export type ActiveProject = {
   id: string;
@@ -28,6 +31,10 @@ type Ctx = {
    * first. Powers the project switcher's dropdown list. */
   projects: ActiveProject[];
   loading: boolean;
+  /** True while the active project's setup run is in flight (crawl, description,
+   * competitors, leads, and the background documents). Context hides its
+   * "Finish setup" card and Analytics disables re-running the audit meanwhile. */
+  setupRunning: boolean;
   /** Creates a NEW project, makes it active, saves it, triggers a real SEO
    * crawl of the URL, and logs real progress lines to the shared terminal
    * log — same flow whether called from the top project switcher or
@@ -375,6 +382,8 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
   const [auditVersion, setAuditVersion] = useState(0);
   const [documentsVersion, setDocumentsVersion] = useState(0);
   const [leadsVersion, setLeadsVersion] = useState(0);
+  /** Project whose setup run is in flight. See settleSetupRun / isSetupRunning. */
+  const [setupRunningId, setSetupRunningId] = useState<string | null>(null);
   const { log, logDone } = useTerminalLog();
   const { primaryModel } = useProviders();
 
@@ -395,7 +404,7 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
         }).catch(() => null);
         if (switched?.ok) data = await fetch("/api/project").then((r) => r.json());
       }
-      setProject(data.project);
+      setProject(data.project ?? null);
       setProjects(data.projects ?? []);
     } catch {
       // backend unreachable — leave project as-is, UI shows empty/setup state
@@ -412,6 +421,27 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
     // changed-files lint.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
+  }, [refresh]);
+
+  // This provider sits in the root layout and fetches /api/project once while
+  // the visitor may still be logged out; login navigates client-side, so it is
+  // not remounted. Re-read on sign-in, and forget the account's projects on
+  // sign-out so the next user never sees them.
+  useEffect(() => {
+    let mounted = true;
+    const { data: authListener } = createClient().auth.onAuthStateChange((event) => {
+      if (!mounted) return;
+      if (event === "SIGNED_IN") void refresh();
+      if (event === "SIGNED_OUT") {
+        setProject(null);
+        setProjects([]);
+        setSetupRunningId(null);
+      }
+    });
+    return () => {
+      mounted = false;
+      authListener.subscription.unsubscribe();
+    };
   }, [refresh]);
 
   const createProject = useCallback(
@@ -435,6 +465,7 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
       const data = await res.json();
       setProject(data.project);
       setProjects((prev) => [data.project, ...prev.filter((p) => p.id !== data.project.id)]);
+      setSetupRunningId(data.project.id);
 
       log("Starting my deep dive — crawling your pages for SEO, content, and growth signals.");
 
@@ -550,9 +581,11 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
           logDone,
           () => setDocumentsVersion((v) => v + 1),
           problems
-        ).catch(() => {
-          log("⚠ Setup finished with problems: couldn't finish writing your context documents. Open Context to finish setup.");
-        });
+        )
+          .catch(() => {
+            log("⚠ Setup finished with problems: couldn't finish writing your context documents. Open Context to finish setup.");
+          })
+          .finally(() => setSetupRunningId((cur) => settleSetupRun(cur, data.project.id)));
         // The final "Setup complete" / "Setup finished with problems" line is
         // written by autoGenerateContextDocuments once the documents settle:
         // saying "complete" here would be a claim about work still running.
@@ -562,6 +595,7 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
 
       // Documents will not run (crawl failed): nothing is still in flight, so
       // the outcome is known now.
+      setSetupRunningId((cur) => settleSetupRun(cur, data.project.id));
       const last = finalSetupLine(problems);
       if (last.ok) logDone(last.text);
       else log(`⚠ ${last.text}`);
@@ -624,7 +658,7 @@ export default function ProjectProvider({ children }: { children: React.ReactNod
 
   return (
     <ProjectCtx.Provider
-      value={{ project, projects, loading, createProject, switchProject, updateProject, deleteProject, competitorsVersion, auditVersion, documentsVersion, leadsVersion, notifyAuditChanged }}
+      value={{ project, projects, loading, setupRunning: isSetupRunning(setupRunningId, project?.id), createProject, switchProject, updateProject, deleteProject, competitorsVersion, auditVersion, documentsVersion, leadsVersion, notifyAuditChanged }}
     >
       {children}
     </ProjectCtx.Provider>
