@@ -2,6 +2,7 @@ import {
   InstallationGoneError,
   exchangeUserCode,
   installUrl,
+  authorizeUrl,
   createInstallState,
   listInstallationRepos,
   listUserInstallationIds,
@@ -10,6 +11,7 @@ import {
   verifyInstallState,
   type FetchLike,
   type GithubAppConfig,
+  type InstallState,
   type InstallationRepo,
 } from "./githubApp.ts";
 
@@ -31,8 +33,14 @@ export type GithubAppDeps = { cfg: GithubAppConfig; store: GithubAppStorePort; f
 
 export type InstallStart = { ok: true; url: string } | { ok: false; error: string };
 
-export function startInstall(cfg: GithubAppConfig, input: { userId: string; projectId: string; returnTo?: string | null }, now = Date.now()): InstallStart {
+/**
+ * With a callback URL (and user authorization configured) the user first authorizes the app so the
+ * callback can find an installation they already have; GitHub never redirects back from the
+ * install page of an app that is already installed. Without it, go straight to the install page.
+ */
+export function startInstall(cfg: GithubAppConfig, input: { userId: string; projectId: string; returnTo?: string | null; callbackUrl?: string }, now = Date.now()): InstallStart {
   const state = createInstallState(cfg, { userId: input.userId, projectId: input.projectId, returnTo: input.returnTo ?? null }, now);
+  if (input.callbackUrl && cfg.clientId && cfg.clientSecret) return { ok: true, url: authorizeUrl(cfg.clientId, input.callbackUrl, state) };
   return { ok: true, url: installUrl(cfg.slug, state) };
 }
 
@@ -54,11 +62,23 @@ export async function completeInstall(
   const installationId = Number(input.installationId);
   if (!Number.isSafeInteger(installationId) || installationId <= 0) return { ok: false, error: "GitHub did not return an installation." };
   if (!input.code) return { ok: false, error: "GitHub did not confirm who installed the app. Turn on \"Request user authorization during installation\" for the app." };
+  return finalizeInstall(deps, state, installationId, input.code, now);
+}
+
+const NO_INSTALLATION = "no-installation";
+
+/** Proves ownership through the one-time code, then stores the link. installationId "discover" picks one the user already has. */
+async function finalizeInstall(deps: GithubAppDeps, state: InstallState, installationId: number | "discover", code: string, now: number): Promise<InstallResult> {
   let allowedRepos: string[];
   try {
-    const userToken = await exchangeUserCode(deps.cfg, input.code, deps.fetch);
+    const userToken = await exchangeUserCode(deps.cfg, code, deps.fetch);
     const owned = await listUserInstallationIds(userToken, deps.fetch);
-    if (!owned.includes(installationId)) return { ok: false, error: "That installation isn't on your GitHub account." };
+    if (installationId === "discover") {
+      if (owned.length === 0) return { ok: false, error: NO_INSTALLATION };
+      const current = await deps.store.get(state.projectId);
+      // Several installations (personal + orgs): keep the project's current one if still valid, else the first.
+      installationId = current && owned.includes(current.installationId) ? current.installationId : owned[0];
+    } else if (!owned.includes(installationId)) return { ok: false, error: "That installation isn't on your GitHub account." };
     // Installation access is not repo access: remember only the repos this user can really see.
     allowedRepos = await listUserInstallationRepos(userToken, installationId, deps.fetch);
   } catch (err) {
@@ -73,6 +93,42 @@ export async function completeInstall(
     connectedAt: new Date(now).toISOString(),
   });
   return { ok: true, projectId: state.projectId, returnTo: state.returnTo };
+}
+
+export type CallbackOutcome =
+  | { kind: "connected"; returnTo: string | null }
+  | { kind: "redirect"; url: string }
+  | { kind: "error"; error: string; returnTo: string | null };
+
+/**
+ * Entry point for the GitHub callback. Never trusts a client-supplied installation id:
+ * - code, no installation_id: user authorized first. Find their installations of this app via the
+ *   user token; connect one, or send them to the install page (same signed state) if none.
+ * - installation_id + code: fresh install or setup_action=update; verified by completeInstall.
+ * - installation_id, no code: unproven; go through user authorization to get proof.
+ */
+export async function handleInstallCallback(
+  deps: GithubAppDeps,
+  input: { userId: string; state: string | null; installationId: string | null; code: string | null; callbackUrl: string },
+): Promise<CallbackOutcome> {
+  const now = deps.now?.() ?? Date.now();
+  const state = verifyInstallState(deps.cfg, input.state, now);
+  if (!state) return { kind: "error", error: "This GitHub link expired or was not started from Marlo. Please try connecting again.", returnTo: null };
+  const fail = (error: string): CallbackOutcome => ({ kind: "error", error, returnTo: state.returnTo });
+  if (state.userId !== input.userId) return fail("This GitHub link belongs to a different Marlo account.");
+  const signed = input.state as string;
+  if (!input.code) {
+    if (input.installationId && deps.cfg.clientId && deps.cfg.clientSecret) return { kind: "redirect", url: authorizeUrl(deps.cfg.clientId, input.callbackUrl, signed) };
+    return fail("GitHub did not confirm who installed the app. Turn on \"Request user authorization (OAuth) during installation\" for the app.");
+  }
+  let result: InstallResult;
+  if (input.installationId) {
+    result = await completeInstall(deps, input);
+  } else {
+    result = await finalizeInstall(deps, state, "discover", input.code, now);
+    if (!result.ok && result.error === NO_INSTALLATION) return { kind: "redirect", url: installUrl(deps.cfg.slug, signed) };
+  }
+  return result.ok ? { kind: "connected", returnTo: result.returnTo } : fail(result.error);
 }
 
 export type GithubAccess =

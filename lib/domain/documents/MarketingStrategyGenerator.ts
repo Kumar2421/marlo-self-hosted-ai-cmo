@@ -1,3 +1,4 @@
+import { GROUNDING_RULES } from "./grounding.ts";
 import type { LlmDriver, CompletionResult } from "@/lib/llm";
 
 export type MarketingStrategyRequest = {
@@ -22,7 +23,14 @@ export type MarketingStrategyRequest = {
  * ICP or messaging that isn't defensible from what's actually on the page.
  */
 export class MarketingStrategyGenerator {
-  constructor(private driver: LlmDriver, private apiKey: string, private baseUrl?: string) {}
+  private driver: LlmDriver;
+  private apiKey: string;
+  private baseUrl?: string;
+  constructor(driver: LlmDriver, apiKey: string, baseUrl?: string) {
+    this.driver = driver;
+    this.apiKey = apiKey;
+    this.baseUrl = baseUrl;
+  }
 
   async generate(req: MarketingStrategyRequest): Promise<CompletionResult> {
     const system = `You are a B2B marketing strategist writing an internal "Marketing Strategy"
@@ -35,7 +43,9 @@ Information provided below. Where the page gives real signal (target
 audience language, pricing model, competitor mentions), use it. Where it
 doesn't, write reasonable, clearly-labeled inferences rather than confident
 invented specifics — never state a percentage, dollar figure, or customer
-count you weren't given.`;
+count you weren't given.
+
+${GROUNDING_RULES}`;
 
     const prompt = `Website: ${req.url}
 Meta title: ${req.metaTitle || "(none found)"}

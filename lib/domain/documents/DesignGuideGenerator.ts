@@ -1,3 +1,4 @@
+import { GROUNDING_RULES } from "./grounding.ts";
 import type { LlmDriver, CompletionResult } from "@/lib/llm";
 
 export type DesignGuideRequest = {
@@ -28,7 +29,14 @@ export type DesignGuideRequest = {
  * signals support.
  */
 export class DesignGuideGenerator {
-  constructor(private driver: LlmDriver, private apiKey: string, private baseUrl?: string) {}
+  private driver: LlmDriver;
+  private apiKey: string;
+  private baseUrl?: string;
+  constructor(driver: LlmDriver, apiKey: string, baseUrl?: string) {
+    this.driver = driver;
+    this.apiKey = apiKey;
+    this.baseUrl = baseUrl;
+  }
 
   async generate(req: DesignGuideRequest): Promise<CompletionResult> {
     const system = `You are a senior brand/creative director writing an internal "Design Guide" brief
@@ -38,7 +46,9 @@ name, logo description, or "brand personality" claim beyond what's actually
 provided. Where a signal is missing, say so plainly (write exactly "Not
 stated on the page") instead of guessing what it probably looks like. A
 static HTML crawl can't see computed CSS styles, so plenty of real sites will
-legitimately have gaps here — that's expected, not a failure to report.`;
+legitimately have gaps here — that's expected, not a failure to report.
+
+${GROUNDING_RULES}`;
 
     const prompt = `Product: ${req.projectName} (${req.url})
 

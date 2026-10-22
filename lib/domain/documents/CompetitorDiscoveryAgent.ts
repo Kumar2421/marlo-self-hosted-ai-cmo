@@ -1,5 +1,5 @@
 import type { LlmDriver } from "@/lib/llm";
-import { buildWebSearchTool, tavilySearchRaw } from "@/lib/domain/shared/webSearchTool";
+import { buildWebSearchTool, tavilySearchRaw } from "../shared/webSearchTool.ts";
 import { buildDiscoveryQueries, extractCompetitorCandidates, isDeniedDomain } from "./competitorCandidates";
 
 export type CompetitorDiscoveryRequest = {
