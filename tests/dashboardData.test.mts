@@ -12,7 +12,7 @@ import {
 type Call = { table: string; columns: string; orderColumn: string; limit: number; projectId: string; inColumn?: string; inValues?: string[] };
 
 /** Fake Supabase client: every query takes `delayMs`, and the active/peak query counts are tracked. */
-function fakeClient(opts: { delayMs?: number; failTable?: string; rows?: Record<string, unknown[]> } = {}) {
+function fakeClient(opts: { delayMs?: number; gate?: Promise<void>; failTable?: string; rows?: Record<string, unknown[]> } = {}) {
   const calls: Call[] = [];
   let active = 0;
   let peak = 0;
@@ -39,16 +39,19 @@ function fakeClient(opts: { delayMs?: number; failTable?: string; rows?: Record<
                       calls.push(call as Call);
                       active++;
                       peak = Math.max(peak, active);
-                      return new Promise((resolve) =>
-                        setTimeout(() => {
+                      return new Promise((resolve) => {
+                        const finish = () => {
                           active--;
                           resolve(
                             table === opts.failTable
                               ? { data: null, error: { message: "boom" } }
                               : { data: opts.rows?.[table] ?? [], error: null }
                           );
-                        }, opts.delayMs ?? 0)
-                      );
+                        };
+                        // A gate holds every query until the test opens it; otherwise a plain delay.
+                        if (opts.gate) void opts.gate.then(finish);
+                        else setTimeout(finish, opts.delayMs ?? 0);
+                      });
                     },
                   };
                 },
@@ -60,7 +63,7 @@ function fakeClient(opts: { delayMs?: number; failTable?: string; rows?: Record<
       };
     },
   };
-  return { client, calls, peak: () => peak };
+  return { client, calls, peak: () => peak, started: () => calls.length };
 }
 
 const REMOVED_TABLES = ["link_checks", "geo_checks", "site_crawls", "traffic_checks", "findings", "code_fixes", "leads"];
@@ -126,13 +129,18 @@ test("every dataset is queried for the project, newest first, with a row cap", a
 });
 
 test("the dataset queries run concurrently, not one after another", async () => {
-  const { client, peak } = fakeClient({ delayMs: 40 });
-  const started = Date.now();
-  await loadPlatformDatasets(client, "p1");
-  const elapsed = Date.now() - started;
+  // Deterministic: a gate keeps every query unresolved until all of them have been started.
+  // A sequential loader awaits the first query before issuing the second, so it never gets there.
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const { client, peak, started } = fakeClient({ gate });
+  const pending = loadPlatformDatasets(client, "p1");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(started(), Object.keys(DATASETS).length, "all queries started before any resolved");
   assert.equal(peak(), Object.keys(DATASETS).length, "all queries in flight at once");
-  // Sequential would be 3 x 40ms = 120ms; concurrent is ~40ms.
-  assert.ok(elapsed < 110, `took ${elapsed}ms`);
+  release();
+  const result = await pending;
+  assert.ok("data" in result);
 });
 
 test("rows are returned per table and null data becomes an empty list", async () => {

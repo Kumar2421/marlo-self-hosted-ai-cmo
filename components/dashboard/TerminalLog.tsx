@@ -21,8 +21,9 @@ import {
 } from "lucide-react";
 import { user as mockUser } from "@/lib/mock-data";
 import { useTerminalLog } from "@/lib/terminal-log-store";
+import { stripWarning } from "@/lib/domain/integrations/logLine";
 import { useProject } from "@/lib/project-store";
-import { headerStatus } from "@/lib/headerStatus";
+import { headerStatus, statusExpiresAt } from "@/lib/headerStatus";
 import { useAuthUser } from "@/lib/useAuthUser";
 import { useToast } from "./Toast";
 import NotificationBell from "./notifications/NotificationBell";
@@ -355,7 +356,16 @@ export default function TerminalLog() {
   }, [lines, logOpen]);
 
   // Idle renders nothing in this slot (no text, no live region), so nothing is announced to screen readers.
-  const status = headerStatus(lines);
+  // Done/error lines go quiet after a while. One timeout per latest line (no interval, no layout
+  // change: the bar is a fixed 48px row and the status button is the flexible middle).
+  const [now, setNow] = useState(() => Date.now());
+  const expiresAt = statusExpiresAt(lines);
+  useEffect(() => {
+    if (expiresAt === null) return;
+    const id = setTimeout(() => setNow(Date.now()), Math.max(0, expiresAt - Date.now()) + 20);
+    return () => clearTimeout(id);
+  }, [expiresAt]);
+  const status = headerStatus(lines, now);
 
   return (
     <div ref={ref} className="relative z-30 shrink-0 bg-white px-3 pb-1 pt-2">
@@ -428,7 +438,7 @@ export default function TerminalLog() {
               return (
                 <div key={i} className="flex items-center gap-1.5 text-amber-400">
                   <AlertTriangle size={13} className="shrink-0" />
-                  {line.text.replace(/^s*⚠s*/, "")}
+                  {stripWarning(line.text)}
                 </div>
               );
             }
