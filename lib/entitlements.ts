@@ -1,202 +1,109 @@
 import { FEATURES } from "./features.ts";
+import { limit, resolvePlan } from "./domain/plans/planPolicy.ts";
+import type { PlanId } from "./domain/plans/planMatrix.ts";
 
 /**
- * Entitlements and plan limits.
+ * Entitlements: thin server-side adapter over the plan matrix
+ * (lib/domain/plans/planMatrix.ts + planPolicy.ts), which is the single source
+ * of truth for what each plan includes.
  * Rule: logic is open, operations/scale are paid; self-host (OSS) must never be crippled.
  *
- * Plans mapped from profiles.plan_tier:
- * - 'free' -> free (1 project, 10 daily leads)
- * - 'lite' -> lite (3 projects, 50 daily leads)
- * - 'pro' -> pro (unlimited projects, unlimited daily leads)
- * - selfhost mode -> selfhost (all unlimited)
+ * Enforcement is OFF by default (app_config.billing_enabled = false): every
+ * hosted account is treated as "pro" (everything unlocked) and self-host is
+ * always "selfhost". When enforcement is on, the plan comes from
+ * profiles.plan_tier and a failed lookup fails CLOSED to "free".
+ *
+ * With enforcement on, the Free plan allows 1 website for NEW creates;
+ * accounts that already have more projects are grandfathered (the cap only
+ * blocks creating another, nothing is removed).
  */
 
-export type Plan = "free" | "lite" | "pro" | "selfhost";
+export type Plan = PlanId | "selfhost";
 
-export type Limits = {
-  projects: number;
-  daily_leads: number;
-  gsc_history_retention_days: number;
-  auto_evaluated_outcomes: boolean;
-  notifications_digest: "daily" | "real-time";
-  managed_keys: number;
-};
+type Entitlement = { plan: Plan; enforced: boolean };
 
-export type EntitlementContext = {
-  userId: string;
-  plan?: Plan;
-};
-
-// Plan definitions and their limits
-const PLAN_LIMITS: Record<Plan, Limits> = {
-  free: {
-    projects: 4,
-    daily_leads: 10,
-    gsc_history_retention_days: 30,
-    auto_evaluated_outcomes: false,
-    notifications_digest: "daily",
-    managed_keys: 1,
-  },
-  lite: {
-    projects: 10,
-    daily_leads: 50,
-    gsc_history_retention_days: 60,
-    auto_evaluated_outcomes: true,
-    notifications_digest: "daily",
-    managed_keys: 3,
-  },
-  pro: {
-    projects: -1, // unlimited
-    daily_leads: -1, // unlimited
-    gsc_history_retention_days: -1, // unlimited
-    auto_evaluated_outcomes: true,
-    notifications_digest: "real-time",
-    managed_keys: -1, // unlimited
-  },
-  selfhost: {
-    projects: -1, // unlimited
-    daily_leads: -1, // unlimited
-    gsc_history_retention_days: -1, // unlimited
-    auto_evaluated_outcomes: true,
-    notifications_digest: "real-time",
-    managed_keys: -1, // unlimited
-  },
-};
+const UNGATED: Entitlement = { plan: "pro", enforced: false };
 
 /**
- * Get user's current plan from profiles.plan_tier.
- * Platform mode: reads from Supabase profiles table.
- * Self-host: always "selfhost".
- *
- * Fails open: on error, returns "pro" (most permissive paid tier) to avoid
- * capping paying users. Logs warning without PII.
+ * Resolves the plan and whether limits are enforced for this user.
+ * Self-host: "selfhost", never enforced.
+ * Hosted: enforcement is read from app_config.billing_enabled. If that flag
+ * cannot be read we keep today's unlocked behavior (the flag ships dark);
+ * once it reads true, a failed plan lookup resolves to "free".
  */
-export async function getUserPlan(userId: string): Promise<Plan> {
-  // Self-host always has unlimited plan
+async function loadEntitlement(userId: string): Promise<Entitlement> {
   if (!FEATURES.PLATFORM_MODE) {
-    return "selfhost";
+    return { plan: "selfhost", enforced: false };
   }
 
   try {
     // Lazy-load Supabase client to avoid import issues in tests
     const { createServiceClient } = await import("@/utils/supabase/serviceClient.ts");
     const db = createServiceClient();
-    const { data, error } = await db
-      .from("profiles")
-      .select("plan_tier")
-      .eq("id", userId)
-      .maybeSingle();
+    const [config, profile] = await Promise.all([
+      db.from("app_config").select("billing_enabled").eq("id", true).maybeSingle(),
+      db.from("profiles").select("plan_tier").eq("id", userId).maybeSingle(),
+    ]);
 
-    if (error) {
-      // Fail open: on lookup error, allow the action and warn
-      console.warn("Could not verify user plan tier:", error.code);
-      return "pro";
+    if (config.error) {
+      console.warn("Could not read billing enforcement flag:", config.error.code);
+      return UNGATED;
     }
+    const enforcement = config.data?.billing_enabled === true;
+    if (!enforcement) return UNGATED;
 
-    if (!data) {
-      // Profile missing — treat as free only if completely missing
-      return "free";
-    }
-
-    // Map database tier to plan
-    const tier = data.plan_tier as string;
-    if (tier === "lite") return "lite";
-    if (tier === "pro") return "pro";
-    return "free"; // default
+    const lookupFailed = Boolean(profile.error);
+    if (lookupFailed) console.warn("Could not verify user plan tier:", profile.error?.code);
+    const plan = resolvePlan({
+      enforcement,
+      selfHost: false,
+      rawPlan: profile.data?.plan_tier,
+      lookupFailed,
+    });
+    return { plan, enforced: true };
   } catch {
-    // Fail open: on any unexpected error, allow the action and warn
     console.warn("Entitlements lookup error");
-    return "pro";
+    return UNGATED;
   }
 }
 
 /**
- * Check if a feature is available for the user's plan.
- * Returns true if feature is available, false otherwise.
+ * Get the plan to apply for a user. "selfhost" on self-host, "pro" while
+ * enforcement is off, otherwise profiles.plan_tier (fail closed to "free").
  */
-export function can(ctx: EntitlementContext, feature: keyof Limits): boolean {
-  const plan = ctx.plan || "free";
-
-  // Self-host mode: all features available except those explicitly false
-  if (!FEATURES.PLATFORM_MODE) {
-    const limits = PLAN_LIMITS.selfhost;
-    const limit = limits[feature];
-
-    if (feature === "auto_evaluated_outcomes" || feature === "notifications_digest") {
-      return true;
-    }
-    return limit !== false && limit !== 0;
-  }
-
-  const limits = PLAN_LIMITS[plan];
-  const limit = limits[feature];
-
-  // For boolean features
-  if (typeof limit === "boolean") {
-    return limit;
-  }
-
-  // For string features (notifications_digest)
-  if (feature === "notifications_digest") {
-    return true;
-  }
-
-  // For numeric features (projects, daily_leads, managed_keys)
-  return limit !== 0;
+export async function getUserPlan(userId: string): Promise<Plan> {
+  return (await loadEntitlement(userId)).plan;
 }
 
-/**
- * Get the limit value for a feature.
- * Returns -1 for unlimited, or the numeric/string value.
- * For self-host in platform mode, returns unlimited (-1).
- */
-export function limitFor(ctx: EntitlementContext, key: keyof Limits): Limits[keyof Limits] {
-  const plan = ctx.plan || "free";
-
-  // Self-host mode: all limits are unlimited for numeric/scale features
-  if (!FEATURES.PLATFORM_MODE) {
-    return PLAN_LIMITS.selfhost[key];
-  }
-
-  return PLAN_LIMITS[plan][key];
-}
-
-/**
- * Get all limits for a user's plan.
- */
-export function getLimits(ctx: EntitlementContext): Limits {
-  const plan = ctx.plan || "free";
-
-  if (!FEATURES.PLATFORM_MODE) {
-    return PLAN_LIMITS.selfhost;
-  }
-
-  return PLAN_LIMITS[plan];
-}
-
-/**
- * Check if user has reached a project limit.
- * Returns { allowed: boolean, remaining: number, limit: number, message?: string }
- */
-export async function canCreateProject(userId: string): Promise<{
+type LimitCheck = {
   allowed: boolean;
   remaining: number;
   limit: number;
   message?: string;
-}> {
-  // Self-host: always allowed
-  if (!FEATURES.PLATFORM_MODE) {
-    return { allowed: true, remaining: -1, limit: -1 };
-  }
+};
 
-  const plan = await getUserPlan(userId);
-  const ctx = { userId, plan };
-  const projectLimit = limitFor(ctx, "projects") as number;
+const UNLIMITED_CHECK: LimitCheck = { allowed: true, remaining: -1, limit: -1 };
 
-  // -1 means unlimited
-  if (projectLimit === -1) {
-    return { allowed: true, remaining: -1, limit: -1 };
-  }
+/**
+ * Check whether the user may create another project (website).
+ * Only blocks NEW creates; existing projects are never touched (grandfathered).
+ */
+export async function canCreateProject(userId: string): Promise<LimitCheck> {
+  const { plan, enforced } = await loadEntitlement(userId);
+  if (!enforced || plan === "selfhost") return UNLIMITED_CHECK;
+
+  const projectLimit = limit(plan, "websites");
+  if (projectLimit === -1) return UNLIMITED_CHECK;
+
+  const blocked = (count: number): LimitCheck => ({
+    allowed: false,
+    remaining: 0,
+    limit: projectLimit,
+    message:
+      count >= projectLimit
+        ? `Website limit reached (${projectLimit} per plan). Upgrade your plan to add more.`
+        : "Could not verify your website count. Try again.",
+  });
 
   try {
     // Lazy-load Supabase client to avoid import issues in tests
@@ -208,53 +115,33 @@ export async function canCreateProject(userId: string): Promise<{
       .eq("owner_id", userId);
 
     if (error) {
-      // Fail open: on lookup error, allow and warn
       console.warn("Could not verify project count:", error.code);
-      return { allowed: true, remaining: projectLimit, limit: projectLimit };
+      return blocked(0); // enforcement is on: fail closed
     }
 
     const projectCount = count || 0;
-    const remaining = Math.max(0, projectLimit - projectCount);
-
-    if (projectCount >= projectLimit) {
-      return {
-        allowed: false,
-        remaining: 0,
-        limit: projectLimit,
-        message: `Project limit reached (${projectLimit} projects). Upgrade your plan to create more.`,
-      };
-    }
-
-    return { allowed: true, remaining, limit: projectLimit };
+    if (projectCount >= projectLimit) return blocked(projectCount);
+    return { allowed: true, remaining: Math.max(0, projectLimit - projectCount), limit: projectLimit };
   } catch {
-    // Fail open: on unexpected error, allow and warn
     console.warn("Project limit check error");
-    return { allowed: true, remaining: projectLimit, limit: projectLimit };
+    return blocked(0);
   }
 }
 
 /**
  * Check if user can fetch more leads today.
- * Returns { allowed: boolean, remaining: number, limit: number, message?: string }
+ * Unlimited while enforcement is off and on self-host.
  */
-export async function canFetchLeadsToday(userId: string): Promise<{
-  allowed: boolean;
-  remaining: number;
-  limit: number;
-  message?: string;
-}> {
-  // Self-host: always allowed
-  if (!FEATURES.PLATFORM_MODE) {
-    return { allowed: true, remaining: -1, limit: -1 };
-  }
+export async function canFetchLeadsToday(userId: string): Promise<LimitCheck> {
+  const { plan, enforced } = await loadEntitlement(userId);
+  if (!enforced || plan === "selfhost") return UNLIMITED_CHECK;
 
-  const plan = await getUserPlan(userId);
-  const ctx = { userId, plan };
-  const dailyLeadsLimit = limitFor(ctx, "daily_leads") as number;
+  const dailyLeadsLimit = limit(plan, "daily_leads");
+  if (dailyLeadsLimit === -1) return UNLIMITED_CHECK;
 
-  // -1 means unlimited
-  if (dailyLeadsLimit === -1) {
-    return { allowed: true, remaining: -1, limit: -1 };
+  const blocked = (message: string): LimitCheck => ({ allowed: false, remaining: 0, limit: dailyLeadsLimit, message });
+  if (dailyLeadsLimit === 0) {
+    return blocked("Lead search is available on the Pro plan. Upgrade to find leads.");
   }
 
   try {
@@ -266,11 +153,15 @@ export async function canFetchLeadsToday(userId: string): Promise<{
     const todayStr = today.toISOString();
 
     // Count leads created by this user's projects today
-    const { data: projects } = await db
+    const { data: projects, error: projectsError } = await db
       .from("projects")
       .select("id")
       .eq("owner_id", userId);
 
+    if (projectsError) {
+      console.warn("Could not verify projects for lead count:", projectsError.code);
+      return blocked("Could not verify your daily lead allowance. Try again.");
+    }
     if (!projects || projects.length === 0) {
       return { allowed: true, remaining: dailyLeadsLimit, limit: dailyLeadsLimit };
     }
@@ -284,69 +175,17 @@ export async function canFetchLeadsToday(userId: string): Promise<{
       .gte("created_at", todayStr);
 
     if (error) {
-      // Fail open: on lookup error, allow and warn
       console.warn("Could not verify daily leads count:", error.code);
-      return { allowed: true, remaining: dailyLeadsLimit, limit: dailyLeadsLimit };
+      return blocked("Could not verify your daily lead allowance. Try again.");
     }
 
     const leadsCount = count || 0;
-    const remaining = Math.max(0, dailyLeadsLimit - leadsCount);
-
     if (leadsCount >= dailyLeadsLimit) {
-      return {
-        allowed: false,
-        remaining: 0,
-        limit: dailyLeadsLimit,
-        message: `Daily lead limit reached (${dailyLeadsLimit} leads). Check back tomorrow or upgrade your plan.`,
-      };
+      return blocked(`Daily lead limit reached (${dailyLeadsLimit} leads). Check back tomorrow or upgrade your plan.`);
     }
-
-    return { allowed: true, remaining, limit: dailyLeadsLimit };
+    return { allowed: true, remaining: Math.max(0, dailyLeadsLimit - leadsCount), limit: dailyLeadsLimit };
   } catch {
-    // Fail open: on unexpected error, allow and warn
     console.warn("Daily leads limit check error");
-    return { allowed: true, remaining: dailyLeadsLimit, limit: dailyLeadsLimit };
-  }
-}
-
-/**
- * Get GSC history retention days for snapshot pruning.
- * Returns the number of days to keep, or -1 for unlimited.
- */
-export async function getGscHistoryRetentionDays(userId: string): Promise<number> {
-  // Self-host: unlimited
-  if (!FEATURES.PLATFORM_MODE) {
-    return -1;
-  }
-
-  const plan = await getUserPlan(userId);
-  const ctx = { userId, plan };
-  return limitFor(ctx, "gsc_history_retention_days") as number;
-}
-
-/**
- * Error classes for entitlements violations
- */
-export class ProjectLimitExceededError extends Error {
-  limit: number;
-  remaining: number;
-
-  constructor(limit: number, remaining: number) {
-    super(`project_limit_exceeded`);
-    this.name = "ProjectLimitExceededError";
-    this.limit = limit;
-    this.remaining = remaining;
-  }
-}
-
-export class DailyLeadsLimitExceededError extends Error {
-  limit: number;
-  remaining: number;
-
-  constructor(limit: number, remaining: number) {
-    super(`daily_leads_limit_exceeded`);
-    this.name = "DailyLeadsLimitExceededError";
-    this.limit = limit;
-    this.remaining = remaining;
+    return blocked("Could not verify your daily lead allowance. Try again.");
   }
 }
