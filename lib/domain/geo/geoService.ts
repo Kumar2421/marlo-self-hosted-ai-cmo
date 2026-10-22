@@ -156,10 +156,14 @@ export async function ensurePrompts(ctx: GeoContext, project: ProjectInfo): Prom
   return merged;
 }
 
-export async function runProjectGeo(ctx: GeoContext, opts: { budgetMs?: number; now?: Date } = {}): Promise<RunSummary & { noEngines?: boolean; noPrompts?: boolean }> {
+export async function runProjectGeo(
+  ctx: GeoContext,
+  opts: { budgetMs?: number; now?: Date; maxRunsPerPrompt?: number; onlyPrompts?: string[] } = {},
+): Promise<RunSummary & { noEngines?: boolean; noPrompts?: boolean }> {
   const project = await loadProject(ctx);
   if (!project) throw new Error("No project website linked yet. Add one in the project switcher first.");
-  const prompts = activePrompts(await ensurePrompts(ctx, project));
+  const only = opts.onlyPrompts ? new Set(opts.onlyPrompts) : null;
+  const prompts = activePrompts(await ensurePrompts(ctx, project)).filter((p) => !only || only.has(p));
   if (prompts.length === 0) return { ...emptySummary(), noPrompts: true };
   const ports = buildPorts(await resolveKeys(ctx));
   if (ports.length === 0) return { ...emptySummary(), noEngines: true };
@@ -176,6 +180,7 @@ export async function runProjectGeo(ctx: GeoContext, opts: { budgetMs?: number; 
       simulated: resolveSimulatedDailyCap(ctx.mode === "platform", process.env.SIMULATED_DAILY_CAP),
     },
     budgetMs: opts.budgetMs,
+    maxRunsPerPrompt: opts.maxRunsPerPrompt,
     now: now ? () => now : undefined,
   });
 }
@@ -191,6 +196,8 @@ export type PromptRow = {
     citedRate: number;
     trend: Trend;
     previousRate: number | null;
+    /** UTC day (YYYY-MM-DD) of the run day `previousRate` comes from; can be weeks before `lastRunAt`. Null when there is no earlier day. */
+    previousDate: string | null;
     /** Competitors named in at least one run of the latest day. */
     competitors: string[];
     lastRunAt: string;
@@ -228,6 +235,7 @@ export async function getOverview(ctx: GeoContext, now = new Date()): Promise<Ge
           citedRate: agg.citedRate,
           trend: t.trend,
           previousRate: t.previous,
+          previousDate: t.previousDate,
           competitors: Object.keys(agg.competitorRates),
           lastRunAt: latestRuns.map((r) => r.runAt).sort().reverse()[0],
         };

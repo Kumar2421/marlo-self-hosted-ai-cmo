@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import Database from "better-sqlite3";
 import { promptsThatFit, resolveSimulatedDailyCap, runsPerPromptFor } from "../lib/domain/geo/dailyCap.ts";
-import { selectDueGeoProjects, utcWeekStart } from "../lib/domain/geo/dueProjects.ts";
+import { runPool, selectDueGeoWork, utcWeekStart } from "../lib/domain/geo/dueProjects.ts";
 import type { AnswerPort } from "../lib/domain/geo/engines.ts";
 import { sqliteRunStore } from "../lib/domain/geo/geoStore.ts";
 import { crawlerBlocked, evaluateReadiness, type Fetched } from "../lib/domain/geo/readiness.ts";
@@ -247,17 +247,52 @@ test("simulated engine has its own per-user daily cap on hosted only", async () 
 
 // --- 3. weekly cron ordering ---
 
-test("cron: skips projects run this week and orders oldest last run first", () => {
+test("cron: only prompts without a run this week are due, oldest last run first", () => {
   const weekStart = utcWeekStart(new Date("2026-10-07T10:00:00Z"));
   assert.equal(weekStart, "2026-10-05T00:00:00.000Z");
-  const connected = ["a", "b", "c", "d", "b"].map((p) => ({ projectId: p, userId: "u" }));
+  const active = [
+    { projectId: "a", userId: "u", prompt: "a1" }, // fully run this week: not due
+    { projectId: "b", userId: "u", prompt: "b1" },
+    { projectId: "b", userId: "u", prompt: "b2" },
+    { projectId: "c", userId: "u", prompt: "c1" },
+    { projectId: "d", userId: "u", prompt: "d1" }, // never run
+  ];
+  const ranThisWeek = [{ projectId: "a", prompt: "a1" }, { projectId: "b", prompt: "b1" }];
   const last = new Map([
-    ["a", "2026-10-06T00:00:00.000Z"], // this week: skip
-    ["b", "2026-09-20T00:00:00.000Z"],
+    ["a", "2026-10-06T00:00:00.000Z"],
+    ["b", "2026-10-06T00:00:00.000Z"],
     ["c", "2026-09-28T00:00:00.000Z"],
   ]);
-  const due = selectDueGeoProjects(connected, last, weekStart).map((t) => t.projectId);
-  assert.deepEqual(due, ["d", "b", "c"]); // never run first, then oldest
+  const due = selectDueGeoWork(active, ranThisWeek, last);
+  assert.deepEqual(due.map((w) => w.projectId), ["d", "c", "b"]);
+  assert.deepEqual(due.find((w) => w.projectId === "b")?.prompts, ["b2"], "b is due for its one unrun prompt only");
+});
+
+test("cron: a project without Search Console is due as soon as it has an active manual prompt", () => {
+  const due = selectDueGeoWork([{ projectId: "manual", userId: "u", prompt: "best crm?" }], [], new Map());
+  assert.deepEqual(due, [{ projectId: "manual", userId: "u", prompts: ["best crm?"] }]);
+});
+
+test("cron: pool runs 3 at a time, isolates failures and skips what the budget cannot start", async () => {
+  let live = 0;
+  let peak = 0;
+  const seen: number[] = [];
+  const r = await runPool([1, 2, 3, 4, 5, 6, 7], 3, async (n) => {
+    live += 1;
+    peak = Math.max(peak, live);
+    await new Promise((res) => setTimeout(res, 5));
+    live -= 1;
+    seen.push(n);
+    if (n === 2) throw new Error("boom");
+  }, { budgetMs: 10_000 });
+  assert.equal(peak, 3);
+  assert.equal(r.processed, 6);
+  assert.deepEqual(r.failed.map((f) => f.error), ["boom"]);
+  assert.equal(r.skipped, 0);
+  let t = 0;
+  const cut = await runPool([1, 2, 3, 4], 2, async () => {}, { budgetMs: 10, now: () => (t += 4) });
+  assert.equal(cut.processed + cut.skipped, 4);
+  assert.ok(cut.skipped > 0);
 });
 
 test("cron: week boundaries are Monday 00:00 UTC", () => {
