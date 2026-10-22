@@ -36,8 +36,9 @@ test("rankNextActions - returns plain-language action cards", () => {
   assert.strictEqual(actions.length, 3);
   assert.strictEqual(actions[0].findingId, "f1", "should link to matching finding");
   assert.ok(actions[0].title.includes("test search"), "should include search query in title");
-  assert.ok(actions[0].why.includes("1000"), "should include impression count in plain language");
-  assert.ok(actions[0].expectedImpact.includes("clicks"), "should mention expected impact");
+  assert.ok(actions[0].why.includes("1,000"), "should include impression count in plain language");
+  assert.ok(!/~|could add|could lift/.test(actions[0].expectedImpact), "no invented forecast");
+  assert.ok(actions[0].expectedImpact.includes("1,000 views"), "states measured numbers only");
 });
 
 test("rankNextActions - skips fixed findings", () => {
@@ -70,8 +71,7 @@ test("rankNextActions - skips fixed findings", () => {
 
   const actions = rankNextActions(findings, opportunities, 3);
 
-  assert.strictEqual(actions.length, 1);
-  assert.ok(!actions[0].findingId, "should not link to fixed finding");
+  assert.strictEqual(actions.length, 0, "a fixed finding produces no card");
 });
 
 test("rankNextActions - respects limit", () => {

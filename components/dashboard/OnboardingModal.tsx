@@ -63,6 +63,7 @@ export default function OnboardingModal({ onDone }: { onDone: () => void }) {
   const [saving, setSaving] = useState(false);
 
   async function handleContinue() {
+    if (saving) return;
     if (!url.trim()) {
       show("Enter your website URL to get started.");
       return;
@@ -72,9 +73,10 @@ export default function OnboardingModal({ onDone }: { onDone: () => void }) {
       await Promise.all([
         saveSetting("onboarding_source", source),
         saveSetting("personalization_role", role),
-        saveSetting("onboarding_completed", "true"),
       ]);
       await createProject({ name: deriveProjectName(url.trim()), url: url.trim() });
+      // Only after the project exists: a failed first attempt must not count as onboarded.
+      await saveSetting("onboarding_completed", "true");
       localStorage.removeItem("marlo:pending-audit-url");
       onDone();
     } catch (err) {

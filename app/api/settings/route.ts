@@ -4,6 +4,7 @@ import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
 import { redactSettingsForClient } from "@/lib/domain/shared/settingsRedaction";
+import { validateSettingWrite } from "@/lib/domain/settings/settingsWriteRules";
 
 /** Generic per-user KV settings (primaryModel, non-secret preferences) — the
  * platform-mode analogue of the SQLite `settings` table. OAuth tokens never
@@ -144,8 +145,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid body" }, { status: 400 });
 
-  const { key, value } = body;
-  if (!key) return NextResponse.json({ error: "Missing key" }, { status: 400 });
+  const { key: rawKey, value: rawValue } = body;
+  if (!rawKey) return NextResponse.json({ error: "Missing key" }, { status: 400 });
   if ([
     "ga_access_token",
     "ga_refresh_token",
@@ -154,18 +155,18 @@ export async function POST(req: NextRequest) {
     "gsc_site_url",
     "ga_property_id",
     "ga_property_name",
-  ].includes(key)) {
+  ].includes(rawKey)) {
     return NextResponse.json({ error: "Google connection data is project-scoped and cannot be stored in generic settings." }, { status: 400 });
   }
 
   if (FEATURES.PLATFORM_MODE) {
-    if (OAUTH_TOKEN_KEYS.has(key)) {
+    if (OAUTH_TOKEN_KEYS.has(rawKey)) {
       // These only ever get written by the dedicated OAuth callback / key
       // creation routes, which route them through Vault. Accepting them here
       // would mean a raw token landing in a plaintext user_settings.value
       // column.
       return NextResponse.json(
-        { error: `"${key}" is managed by its integration's connect flow, not by generic settings.` },
+        { error: `"${rawKey}" is managed by its integration's connect flow, not by generic settings.` },
         { status: 400 }
       );
     }
@@ -174,10 +175,16 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
+    // Allow-list: server-owned keys (active_project_id, primaryModel, *_secret_id, ...) are
+    // written only by their own routes, never through this generic writer.
+    const checked = validateSettingWrite(rawKey, rawValue, { platform: true });
+    if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: checked.status });
+    const { key, value } = checked;
+
     try {
       const db = createServiceClient();
       const { error } = await db.from("user_settings").upsert(
-        { user_id: user.id, key, value: String(value ?? ""), updated_at: new Date().toISOString() },
+        { user_id: user.id, key, value, updated_at: new Date().toISOString() },
         { onConflict: "user_id,key" }
       );
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -187,6 +194,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: raw }, { status: 500 });
     }
   }
+
+  const checked = validateSettingWrite(rawKey, rawValue, { platform: false });
+  if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: checked.status });
+  const { key, value } = checked;
 
   try {
     const db = getDb();

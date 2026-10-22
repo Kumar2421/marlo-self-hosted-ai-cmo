@@ -4,7 +4,11 @@ import { upsertFinding } from "@/lib/domain/findings/findingStore";
 import { upsertFinding as upsertFindingSupabase } from "@/lib/domain/findings/findingStoreSupabase";
 import { sqliteFindingRepository, supabaseFindingRepository } from "@/lib/domain/findings/findingRepositories";
 import { deriveSearchFinding } from "@/lib/domain/findings/findingRules";
-import { applyRecheck, getFinding, listFindings, transitionFinding } from "@/lib/domain/findings/findingService";
+import { applyRecheck, getFinding, listFindings, transitionFinding, type FindingRepository } from "@/lib/domain/findings/findingService";
+import { findingErrorResponse } from "@/lib/domain/findings/findingHttp";
+import { isFindingStatus, type Finding } from "@/lib/domain/findings/findingTypes";
+import { checkedDecision, decideRecheck, type RecheckDecision } from "@/lib/domain/findings/recheckDecision";
+import { checkReadiness } from "@/lib/domain/geo/geoService";
 import {
   findExistingFinding,
   isOpportunityType,
@@ -16,7 +20,6 @@ import type { OpportunityType } from "@/lib/domain/search/searchOpportunities";
 import { getLatestSnapshot } from "@/lib/domain/search/searchSnapshotStore";
 import { getLatestSnapshot as getLatestSnapshotSupabase } from "@/lib/domain/search/searchSnapshotStoreSupabase";
 import { SEOAgent } from "@/lib/domain/seo/SEOAgent";
-import { reconcileSeoAuditRecheck } from "@/lib/domain/seo/reconcileRecheck";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import { resolvePlatformApiKey } from "@/lib/domain/shared/resolvePlatformApiKey";
 import { FEATURES } from "@/lib/features";
@@ -51,22 +54,6 @@ function projectPageUrl(projectUrl: string, pageUrl: string): URL | null {
   } catch {
     return null;
   }
-}
-
-// SEO-audit findings (source: "seo-audit", entityId: the original issueId)
-// must be rechecked against their own issue, not the unrelated
-// indexable/canonical/relevance/TTFB rule runRecheck() below evaluates for
-// analytics findings — otherwise rechecking e.g. a "meta title too long"
-// finding could mark it "verified" while the title is still too long,
-// because the wrong condition was checked. Re-run the audit and delegate
-// the actual reconciliation to a pure, independently tested function.
-async function runSeoAuditRecheck(
-  finding: { url: string | null; entityId: string; severity: "info" | "warning" | "critical" },
-  pageSpeedApiKey: string | undefined,
-) {
-  if (!finding.url) throw new Error("Finding has no page URL.");
-  const audit = await new SEOAgent(pageSpeedApiKey).audit(finding.url);
-  return reconcileSeoAuditRecheck(finding.entityId, audit.findings, finding.severity);
 }
 
 async function runRecheck(finding: { url: string | null; evidence: Record<string, unknown> }, pageSpeedApiKey: string | undefined) {
@@ -163,7 +150,8 @@ async function createFromOpportunity(type: OpportunityType, query: string) {
     if (existing) return NextResponse.json({ finding: existing, existing: true });
     return NextResponse.json({ finding: upsertFinding(built.input), existing: false });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 502 });
+    const { status, error } = findingErrorResponse(err, "The page could not be audited right now. Try again.");
+    return NextResponse.json({ error }, { status });
   }
 }
 
@@ -227,16 +215,68 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({ finding });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 502 });
+    const { status, error } = findingErrorResponse(err, "The page could not be audited right now. Try again.");
+    return NextResponse.json({ error }, { status });
   }
 }
 
+/** The Re-check decision for one finding: search snapshots, the search-console page audit, or the verifyFinding rules for everything else. */
+async function recheckDecisionFor(
+  finding: Finding,
+  pageSpeedApiKey: string | undefined,
+  latestSnapshot: () => Promise<Parameters<typeof recheckOpportunityFinding>[1]>,
+): Promise<RecheckDecision> {
+  if (opportunityEvidenceOf(finding.evidence)) return checkedDecision(recheckOpportunityFinding(finding, await latestSnapshot()));
+  if (finding.source === "search-console") {
+    const r = await runRecheck(finding, pageSpeedApiKey);
+    return checkedDecision({
+      issueDetected: Boolean(r.rule),
+      severity: r.rule?.severity ?? finding.severity,
+      recommendation: r.rule?.recommendation ?? "Issue no longer detected. Keep the page under observation and re-check if it changes.",
+      evidence: r.evidence,
+    });
+  }
+  const agent = new SEOAgent(pageSpeedApiKey);
+  return decideRecheck(
+    {
+      runSeoAudit: async (url) => {
+        const audit = await agent.audit(url);
+        return { findings: audit.findings, finalUrl: audit.finalUrl, hasPageSpeed: Boolean(audit.pageSpeed || audit.lighthouseIssues) };
+      },
+      runGeoReadiness: async (url) => (await checkReadiness(new URL(url).hostname)).checks,
+    },
+    finding,
+    new Date(),
+    { allowPageSpeed: Boolean(pageSpeedApiKey) },
+  );
+}
+
+async function handlePut(
+  repo: FindingRepository,
+  projectId: string,
+  finding: Finding,
+  body: { id: string; action: string; status: string },
+  recheck: () => Promise<RecheckDecision>,
+) {
+  if (body.action === "recheck") {
+    const decision = await recheck();
+    // A check that could not prove anything changes nothing and says why.
+    if (decision.kind === "skipped") return NextResponse.json({ finding, skipped: true, reason: decision.reason });
+    const updated = await applyRecheck(repo, projectId, body.id, decision.result);
+    return NextResponse.json({ finding: updated, verification: { status: decision.outcome, changed: decision.outcome === "verified" } });
+  }
+  if (!isFindingStatus(body.status)) return NextResponse.json({ error: "Invalid finding status." }, { status: 400 });
+  return NextResponse.json({ finding: await transitionFinding(repo, projectId, body.id, body.status) });
+}
+
 export async function PUT(req: NextRequest) {
-  const body = await req.json().catch(() => null);
-  const id = typeof body?.id === "string" ? body.id : "";
-  const action = typeof body?.action === "string" ? body.action : "";
-  const status = typeof body?.status === "string" ? body.status : "";
-  if (!id) return NextResponse.json({ error: "Finding id is required." }, { status: 400 });
+  const raw = await req.json().catch(() => null);
+  const body = {
+    id: typeof raw?.id === "string" ? raw.id : "",
+    action: typeof raw?.action === "string" ? raw.action : "",
+    status: typeof raw?.status === "string" ? raw.status : "",
+  };
+  if (!body.id) return NextResponse.json({ error: "Finding id is required." }, { status: 400 });
 
   try {
     if (FEATURES.PLATFORM_MODE) {
@@ -247,63 +287,24 @@ export async function PUT(req: NextRequest) {
       const { data: setting } = await db.from("user_settings").select("value").eq("user_id", user.id).eq("key", "active_project_id").maybeSingle();
       const projectId = setting?.value;
       if (!projectId) return NextResponse.json({ error: "No active project." }, { status: 422 });
-      const finding = await getFinding(supabaseFindingRepository(db, user.id), projectId, id);
+      const repo = supabaseFindingRepository(db, user.id);
+      const finding = await getFinding(repo, projectId, body.id);
       if (!finding) return NextResponse.json({ error: "Finding not found." }, { status: 404 });
-
-      if (action === "recheck") {
-        const pageSpeedApiKey = await resolvePlatformPageSpeedKey(db, user.id);
-        const result = opportunityEvidenceOf(finding.evidence)
-          ? recheckOpportunityFinding(finding, await getLatestSnapshotSupabase(db, user.id, projectId))
-          : finding.source === "seo-audit"
-          ? await runSeoAuditRecheck(finding, pageSpeedApiKey)
-          : await runRecheck(finding, pageSpeedApiKey).then((r) => ({
-              issueDetected: Boolean(r.rule),
-              severity: r.rule?.severity ?? finding.severity,
-              recommendation: r.rule?.recommendation ?? "Issue no longer detected. Keep the page under observation and re-check if it changes.",
-              evidence: r.evidence,
-            }));
-        const nextStatus = result.issueDetected ? "failed" : "verified";
-        const updated = await applyRecheck(supabaseFindingRepository(db, user.id), projectId, id, result);
-        return NextResponse.json({ finding: updated, verification: { status: nextStatus, changed: nextStatus === "verified" } });
-      }
-
-      if (!["new", "acknowledged", "fixing", "fixed", "verified", "failed"].includes(status)) {
-        return NextResponse.json({ error: "Invalid finding status." }, { status: 400 });
-      }
-      const updated = await transitionFinding(supabaseFindingRepository(db, user.id), projectId, id, status as typeof finding.status);
-      return NextResponse.json({ finding: updated });
+      return await handlePut(repo, projectId, finding, body, async () =>
+        recheckDecisionFor(finding, await resolvePlatformPageSpeedKey(db, user.id), () => getLatestSnapshotSupabase(db, user.id, projectId)));
     }
 
     const projectId = getActiveProjectId();
     if (!projectId) return NextResponse.json({ error: "No active project." }, { status: 422 });
-    const finding = await getFinding(sqliteFindingRepository(), projectId, id);
+    const repo = sqliteFindingRepository();
+    const finding = await getFinding(repo, projectId, body.id);
     if (!finding) return NextResponse.json({ error: "Finding not found." }, { status: 404 });
-
-    if (action === "recheck") {
+    return await handlePut(repo, projectId, finding, body, async () => {
       const stored = getDb().prepare("SELECT value FROM settings WHERE key = 'pagespeed_api_key'").get() as { value: string } | undefined;
-      const pageSpeedApiKey = stored?.value || process.env.PAGESPEED_API_KEY || undefined;
-      const result = opportunityEvidenceOf(finding.evidence)
-        ? recheckOpportunityFinding(finding, getLatestSnapshot(getDb(), projectId))
-        : finding.source === "seo-audit"
-        ? await runSeoAuditRecheck(finding, pageSpeedApiKey)
-        : await runRecheck(finding, pageSpeedApiKey).then((r) => ({
-            issueDetected: Boolean(r.rule),
-            severity: r.rule?.severity ?? finding.severity,
-            recommendation: r.rule?.recommendation ?? "Issue no longer detected. Keep the page under observation and re-check if it changes.",
-            evidence: r.evidence,
-          }));
-      const nextStatus = result.issueDetected ? "failed" : "verified";
-      const updated = await applyRecheck(sqliteFindingRepository(), projectId, id, result);
-      return NextResponse.json({ finding: updated, verification: { status: nextStatus, changed: nextStatus === "verified" } });
-    }
-
-    if (!["new", "acknowledged", "fixing", "fixed", "verified", "failed"].includes(status)) {
-      return NextResponse.json({ error: "Invalid finding status." }, { status: 400 });
-    }
-    return NextResponse.json({ finding: await transitionFinding(sqliteFindingRepository(), projectId, id, status as typeof finding.status) });
+      return recheckDecisionFor(finding, stored?.value || process.env.PAGESPEED_API_KEY || undefined, async () => getLatestSnapshot(getDb(), projectId));
+    });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const statusCode = message.startsWith("Invalid finding status transition") ? 409 : 502;
-    return NextResponse.json({ error: message }, { status: statusCode });
+    const { status, error } = findingErrorResponse(err, "The check could not be completed. Try again.");
+    return NextResponse.json({ error }, { status });
   }
 }

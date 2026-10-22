@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { implementAction, readOutcomes, undoImplementation, UNDO_WINDOW_MS, type OutcomePorts } from "../lib/domain/search/outcomeService.ts";
+import { FINDING_NOT_UPDATED_WARNING, implementAction, readOutcomes, undoImplementation, UNDO_WINDOW_MS, type OutcomePorts } from "../lib/domain/search/outcomeService.ts";
 import { implementationOf, savedOutcomeOf } from "../lib/domain/search/actionOutcome.ts";
 import { findingForOpportunity } from "../lib/domain/search/opportunityFinding.ts";
 import { snapshotRanges, type SearchSnapshotPayload } from "../lib/domain/search/searchSnapshot.ts";
@@ -227,4 +227,19 @@ test("a CMS publish starts outcome tracking with via cms_publish and the pre-cha
   assert.ok(h.state.moves.length > 0, "finding moves toward fixed");
   const legacy = implementationOf({ implementation: { via: "weird", implementedAt: T0.toISOString() } });
   assert.equal(legacy?.via, "manual", "unknown via values still read as manual");
+});
+
+test("implementAction warns when the finding could not be moved (D11), and the action stays saved", async () => {
+  const { ports, state } = harness({ fingerprints: [fp("Old")] });
+  ports.moveFinding = async () => { throw new Error("db down"); };
+  const res = await implementAction(ports, { actionId: "a1", now: T0 });
+  assert.equal(res.ok, true);
+  if (res.ok) assert.equal(res.warning, FINDING_NOT_UPDATED_WARNING);
+  assert.equal(state.action.status, "completed");
+});
+
+test("implementAction has no warning when the finding moved", async () => {
+  const { ports } = harness({ fingerprints: [fp("Old")] });
+  const res = await implementAction(ports, { actionId: "a1", now: T0 });
+  assert.equal(res.ok && res.warning, undefined);
 });

@@ -5,6 +5,7 @@ import { FEATURES } from "@/lib/features";
 import { getConnectedEmail, discoverGoogleResources } from "@/lib/domain/shared/googleAnalyticsOAuth";
 import { getConnectedEmail as getGmailConnectedEmail } from "@/lib/domain/shared/gmailOAuth";
 import { fetchGrantedScopes } from "@/lib/domain/shared/googleTokenInfo";
+import { grantedServices } from "@/lib/googleOAuthScopes";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import {
   upsertProjectIntegration,
@@ -199,25 +200,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${base}/login?error=auth`);
     }
 
-    if (data.session?.provider_token) {
+    // Plain sign-in (identity scopes only) also returns a provider_token, so
+    // only treat the session as a service connect when Google granted
+    // Gmail or Analytics/Search Console scopes.
+    const providerToken = data.session?.provider_token;
+    const services = providerToken
+      ? grantedServices(await fetchGrantedScopes(providerToken), !!data.session?.provider_refresh_token)
+      : { gmail: false, googleData: false };
+    if (providerToken && (services.gmail || services.googleData)) {
       try {
         if (FEATURES.PLATFORM_MODE) {
-          if (data.session.provider_refresh_token && data.user) {
-            const result = await persistGoogleServiceTokensSupabase(
-              data.user.id,
-              data.session.provider_token,
-              data.session.provider_refresh_token
-            );
-            hasGoogleServiceScopes = result.persisted && result.problems.length === 0;
-            if (result.problems.length > 0) googleProblem = result.problems.join(" ");
-            await persistPlatformGmailTokens(
-              data.user.id,
-              data.session.provider_token,
-              data.session.provider_refresh_token
-            );
+          if (data.session?.provider_refresh_token && data.user) {
+            if (services.googleData) {
+              const result = await persistGoogleServiceTokensSupabase(data.user.id, providerToken, data.session.provider_refresh_token);
+              hasGoogleServiceScopes = result.persisted && result.problems.length === 0;
+              if (result.problems.length > 0) googleProblem = result.problems.join(" ");
+            }
+            if (services.gmail) {
+              await persistPlatformGmailTokens(data.user.id, providerToken, data.session.provider_refresh_token);
+              if (!services.googleData) hasGoogleServiceScopes = true;
+            }
           }
-        } else {
-          const result = await persistGoogleServiceTokens(data.session.provider_token, data.session.provider_refresh_token ?? undefined);
+        } else if (services.googleData) {
+          const result = await persistGoogleServiceTokens(providerToken, data.session?.provider_refresh_token ?? undefined);
           hasGoogleServiceScopes = result.persisted && result.problems.length === 0;
           if (result.problems.length > 0) googleProblem = result.problems.join(" ");
         }

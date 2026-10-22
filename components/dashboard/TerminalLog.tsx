@@ -171,6 +171,7 @@ export function NewProjectModal({ onClose }: { onClose: () => void }) {
   const { show } = useToast();
 
   async function handleCreate() {
+    if (saving) return;
     if (!name.trim() || !url.trim()) {
       show("Enter a project name and website URL.");
       return;

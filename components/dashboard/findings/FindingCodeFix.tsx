@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Check, ExternalLink, GitPullRequest, Loader2, Wrench } from "lucide-react";
 import type { Finding } from "@/lib/domain/findings/findingTypes";
 import { classifyFinding } from "@/lib/domain/codefix/fixCatalog";
+import { mergedPullRequestNote } from "@/lib/domain/findings/findingDisplay";
 import { CMS_LABEL, classifyForCms } from "@/lib/domain/cms/cmsFixCatalog";
 import type { FixChange } from "@/lib/domain/codefix/catalogFix";
 import { closedPullRequestOf, pullRequestUrlOf } from "@/lib/domain/fixes/linkPullRequest";
@@ -302,7 +303,7 @@ export default function FindingCodeFix({ finding, actions }: { finding: Finding;
               {merged ? "Merged" : "Open"}
             </span>
           </div>
-          <p className="mt-1 text-[11px] text-gray-500">{merged ? "Marlo is measuring what the change did." : "Review and merge it on GitHub. Marlo never merges for you."}</p>
+          <p className="mt-1 text-[11px] text-gray-500">{merged ? mergedPullRequestNote(finding) : "Review and merge it on GitHub. Marlo never merges for you."}</p>
         </div>
         <a href={prUrl} target="_blank" rel="noreferrer" className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-blue-600 hover:underline">
           View <ExternalLink size={11} />

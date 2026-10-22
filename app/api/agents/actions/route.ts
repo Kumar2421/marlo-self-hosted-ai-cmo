@@ -1,7 +1,7 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { createAction, getProjectAction, listProjectActions, transitionAction } from "@/lib/domain/actions/actionStore";
 import { createAction as createActionSupabase, getProjectAction as getProjectActionSupabase, listProjectActions as listProjectActionsSupabase, transitionAction as transitionActionSupabase } from "@/lib/domain/actions/actionStoreSupabase";
-import { isActionStatus, isActionType } from "@/lib/domain/actions/actionTypes";
+import { ActionLifecycleError, isActionStatus, isActionType } from "@/lib/domain/actions/actionTypes";
 import { deriveActionType } from "@/lib/domain/actions/deriveActionType";
 import { getProjectFinding } from "@/lib/domain/findings/findingStore";
 import { getProjectFinding as getProjectFindingSupabase } from "@/lib/domain/findings/findingStoreSupabase";
@@ -27,8 +27,14 @@ function selfHostPorts(projectId: string): OutcomePorts {
   return selfHostOutcomePorts(projectId, project?.url ?? null);
 }
 
+/** Lifecycle errors are the caller's to resolve (409); anything else never leaks its raw message. */
+function lifecycleOrGeneric(err: unknown, fallback: string) {
+  if (err instanceof ActionLifecycleError) return NextResponse.json({ error: err.message }, { status: 409 });
+  return NextResponse.json({ error: fallback }, { status: 502 });
+}
+
 function serviceResponse(result: Awaited<ReturnType<typeof implementAction>>) {
-  return result.ok ? NextResponse.json({ action: result.value }) : NextResponse.json({ error: result.error }, { status: result.status });
+  return result.ok ? NextResponse.json(result.warning ? { action: result.value, warning: result.warning } : { action: result.value }) : NextResponse.json({ error: result.error }, { status: result.status });
 }
 
 export async function GET(req: NextRequest) {
@@ -125,8 +131,10 @@ export async function POST(req: NextRequest) {
     const type = isActionType(body.type) ? body.type : deriveActionType(finding);
     return NextResponse.json({ action: createAction({ projectId, type, ...baseInput }) }, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: message === "Finding not found." ? 404 : 500 });
+    // "Finding not found." / "Project not found." are domain messages; everything else stays generic.
+    const message = err instanceof Error ? err.message : "";
+    if (message === "Finding not found." || message === "Project not found.") return NextResponse.json({ error: message }, { status: 404 });
+    return NextResponse.json({ error: "Could not create the action. Try again." }, { status: 500 });
   }
 }
 
@@ -155,7 +163,7 @@ export async function PUT(req: NextRequest) {
       if (!projectId) return NextResponse.json({ error: "No active project." }, { status: 422 });
       return serviceResponse(await run(selfHostPorts(projectId)));
     } catch (err) {
-      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 502 });
+      return lifecycleOrGeneric(err, "Could not update the change. Try again.");
     }
   }
 
@@ -177,7 +185,6 @@ export async function PUT(req: NextRequest) {
     const action = transitionAction(projectId, body.id, body.status, body.result ?? null);
     return action ? NextResponse.json({ action }) : NextResponse.json({ error: "Action not found." }, { status: 404 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: message.startsWith("Invalid action status transition") ? 409 : 502 });
+    return lifecycleOrGeneric(err, "Could not update the action. Try again.");
   }
 }

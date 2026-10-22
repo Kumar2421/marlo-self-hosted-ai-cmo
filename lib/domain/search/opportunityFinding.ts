@@ -181,20 +181,39 @@ export function opportunityFindingFromSnapshot(args: {
   };
 }
 
-/** Re-check an opportunity finding against the latest snapshot, in the shape the finding service expects. */
+/** Search Console data lags: a snapshot must be captured this long after the change to say anything about it. */
+export const RECHECK_LAG_DAYS = 3;
+export const TOO_EARLY_REASON = "Too early; Google data lags. Check again after the next search data refresh.";
+
+/**
+ * Re-check an opportunity finding against the latest snapshot, in the shape the finding service expects.
+ *
+ * `changedAt` is when the finding was marked fixed. If the latest snapshot was
+ * captured less than RECHECK_LAG_DAYS after that, the numbers predate the fix:
+ * the result has `tooEarly: true` and callers must NOT change the finding's
+ * status (neither verified nor failed).
+ */
 export function recheckOpportunityFinding(
   finding: { severity: "info" | "warning" | "critical"; recommendation: string; evidence: Record<string, unknown> },
   snapshot: { snapshotDate: string; payload: SearchSnapshotPayload } | null,
   now: Date = new Date(),
+  changedAt: string | null = null,
 ) {
+  const changedMs = changedAt ? Date.parse(changedAt) : NaN;
+  const capturedMs = snapshot ? Date.parse(snapshot.payload.capturedAt) : NaN;
+  const tooEarly =
+    Number.isFinite(changedMs) && snapshot !== null && !(capturedMs >= changedMs + RECHECK_LAG_DAYS * 86_400_000);
   const evidence = opportunityEvidenceOf(finding.evidence);
   const wanted = evidence ? normalizeQuery(evidence.query) : "";
   const current = snapshot?.payload.windows.d28.queries.find((q) => normalizeQuery(q.query) === wanted) ?? null;
-  const verdict = evidence
+  const verdict = tooEarly
+    ? { resolved: false, reason: TOO_EARLY_REASON }
+    : evidence
     ? evaluateOpportunity(evidence, current)
     : { resolved: false, reason: "This finding has no search data to compare." };
 
   return {
+    tooEarly,
     issueDetected: !verdict.resolved,
     severity: finding.severity,
     recommendation: finding.recommendation,

@@ -2,6 +2,7 @@
 
 import { AlertTriangle, Check, ChevronRight } from "lucide-react";
 import type { Finding, FindingStatus } from "@/lib/domain/findings/findingTypes";
+import { explainPriority } from "@/lib/domain/findings/findingDisplay";
 import { autoVerificationLine, evidenceRowsForFinding, whyItMattersForFinding } from "@/lib/domain/findings/evidenceDisplay";
 import { SkeletonLines } from "@/components/shared/Skeleton";
 import FindingActionsSection from "../FindingActionsSection";
@@ -112,6 +113,7 @@ export default function FindingDetail({
 
       <section>
         <SectionTitle>Why this was flagged</SectionTitle>
+        <p className="mb-2 text-[11px] text-gray-500">Priority: {explainPriority(finding)}</p>
         {why && <p className="mb-2 rounded-xl border border-gray-200 bg-gray-50 p-3 text-[12px] leading-5 text-gray-700">{why}</p>}
         {evidenceRows.length > 0 && (
           <div className="overflow-hidden rounded-xl border border-gray-200">
