@@ -23,7 +23,7 @@ import { SkeletonCard, SkeletonLines, SkeletonStats } from "@/components/shared/
 import { qk } from "@/lib/query/keys";
 import { useFindings } from "@/components/dashboard/findings/useFindings";
 import { countFindings, findingCountSentence, stripInlineCode } from "@/lib/domain/findings/findingDisplay";
-import { encodingLabel, lastAuditedLabel } from "@/lib/domain/seo/auditDisplay";
+import { auditOverviewTiles, encodingLabel, lastAuditedLabel } from "@/lib/domain/seo/auditDisplay";
 import { lighthouseScoreLabel } from "@/lib/domain/seo/lighthouseAudits";
 import GoogleSourcesCard from "@/components/dashboard/search/GoogleSourcesCard";
 import GoogleSummary from "@/components/dashboard/search/GoogleSummary";
@@ -934,21 +934,17 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                   )}
                   {auditedLabel && <p className="mb-3 text-[11px] text-gray-500">{auditedLabel}</p>}
                   <div className="grid grid-cols-[repeat(auto-fit,minmax(88px,1fr))] gap-2">
-                    <button onClick={() => setTab("Findings")} className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
-                      <div className="truncate text-[10px] uppercase tracking-wide text-gray-400">Findings</div>
-                      <div className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{findingCounts ? findingCounts.needsAttention : "—"}</div>
-                      <div className="mt-0.5 text-[11px] text-gray-500">Needs attention</div>
-                    </button>
-                    <button onClick={() => setTab("Findings")} className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
-                      <div className="truncate text-[10px] uppercase tracking-wide text-gray-400">Lighthouse</div>
-                      <div className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{auditData.lighthouseIssues ? auditData.lighthouseIssues.desktop.length + auditData.lighthouseIssues.mobile.length : 0}</div>
-                      <div className="mt-0.5 text-[11px] text-gray-500">Measured issues</div>
-                    </button>
-                    <button onClick={() => setTab("Findings")} className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
-                      <div className="truncate text-[10px] uppercase tracking-wide text-gray-400">Audit issues</div>
-                      <div className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{auditData.issues.length}</div>
-                      <div className="mt-0.5 text-[11px] text-gray-500">Detected on page</div>
-                    </button>
+                    {auditOverviewTiles({
+                      needsAttention: findingCounts ? findingCounts.needsAttention : null,
+                      lighthouse: auditData.lighthouseIssues ? auditData.lighthouseIssues.desktop.length + auditData.lighthouseIssues.mobile.length : 0,
+                      onPage: auditData.issues.length,
+                    }).map((tile) => (
+                      <button key={tile.key} onClick={() => chooseTab("Findings")} data-testid={`overview-tile-${tile.key}`} className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
+                        <div className="truncate text-[10px] uppercase tracking-wide text-gray-400">{tile.label}</div>
+                        <div className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{tile.value ?? "—"}</div>
+                        <div className="mt-0.5 text-[11px] text-gray-500">{tile.caption}</div>
+                      </button>
+                    ))}
                   </div>
                   {(findingCounts?.needsAttention ?? 0) > 0 && (
                     <button onClick={() => setTab("Findings")} className="mt-3 flex w-full items-center justify-between rounded-xl bg-[#111111] px-3 py-2.5 text-[12px] font-medium text-white hover:bg-black">
