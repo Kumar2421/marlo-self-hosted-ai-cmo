@@ -6,6 +6,9 @@ import { Send, Loader2, Plus, Zap, Users, Mail, FileText } from "lucide-react";
 import { useToast } from "./Toast";
 import { useProviders, findProviderForModel } from "@/lib/providers-store";
 
+type SendOutcome = { status: string };
+type LeadRef = { id: string; name?: string; company?: string; title?: string };
+
 type Message = {
   id: string;
   role: "user" | "assistant";
@@ -258,10 +261,10 @@ export default function AgentsChatPanel() {
 
       const result = await res.json();
       const sent = result.results.filter(
-        (r: any) => r.status === "sent"
+        (r: SendOutcome) => r.status === "sent"
       ).length;
       const failed = result.results.filter(
-        (r: any) => r.status === "failed"
+        (r: SendOutcome) => r.status === "failed"
       ).length;
 
       const statusMsg: Message = {
@@ -327,7 +330,7 @@ export default function AgentsChatPanel() {
           result.leads.length > 0
             ? `Found ${result.leads.length} lead${result.leads.length !== 1 ? "s" : ""}:\n\n${result.leads
                 .slice(0, 5)
-                .map((l: any) => `• ${l.name} at ${l.company} (${l.title})`)
+                .map((l: LeadRef) => `• ${l.name} at ${l.company} (${l.title})`)
                 .join("\n")}${result.leads.length > 5 ? `\n\n... and ${result.leads.length - 5} more` : ""}`
             : "No leads found matching your criteria.";
 
@@ -348,7 +351,7 @@ export default function AgentsChatPanel() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              leadIds: leads.map((l: any) => l.id),
+              leadIds: leads.map((l: LeadRef) => l.id),
               context: input,
               tone: "professional",
               model: primaryModel,
