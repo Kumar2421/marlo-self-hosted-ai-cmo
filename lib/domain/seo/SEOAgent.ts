@@ -25,6 +25,8 @@ export type Finding = {
 
 export type SEOAuditPayload = {
   url: string;
+  /** When this audit ran (ISO). Not produced by the crawl: the dashboard attaches the stored row's time (or the moment a fresh audit returns). */
+  auditedAt?: string;
   /** Where the crawl ended up after redirects, when known. */
   finalUrl?: string;
   meta: {
@@ -450,6 +452,7 @@ export class SEOAgent {
                 score: issue.score,
                 displayValue: issue.displayValue ?? null,
                 auditId: issue.id,
+                lighthouseCategory: issue.category ?? null,
               },
               autoFixable: false,
             });
