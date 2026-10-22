@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { AlertTriangle, Check, Mail } from "lucide-react";
 import { FEATURES } from "@/lib/features";
-import { GOOGLE_ANALYTICS_SCOPES } from "@/lib/googleOAuthScopes";
+import { googleOAuthQueryParams, scopesFor } from "@/lib/googleOAuthScopes";
 import { createClient } from "@/utils/supabase/client";
 import { useGmailStatus } from "./useGmailStatus";
 
@@ -29,8 +29,8 @@ export default function GmailOutreachBar() {
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/api/auth/callback?next=/dashboard`,
-        scopes: GOOGLE_ANALYTICS_SCOPES,
-        queryParams: { access_type: "offline", prompt: "consent" },
+        scopes: scopesFor("gmail"),
+        queryParams: googleOAuthQueryParams("gmail"),
       },
     });
     if (oauthError) {

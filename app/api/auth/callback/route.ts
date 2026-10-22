@@ -5,6 +5,7 @@ import { FEATURES } from "@/lib/features";
 import { getConnectedEmail, listSearchConsoleSites, listGA4Properties } from "@/lib/domain/shared/googleAnalyticsOAuth";
 import { getConnectedEmail as getGmailConnectedEmail } from "@/lib/domain/shared/gmailOAuth";
 import { fetchGrantedScopes } from "@/lib/domain/shared/googleTokenInfo";
+import { grantedServices } from "@/lib/googleOAuthScopes";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import {
   upsertProjectIntegration,
@@ -191,24 +192,27 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${base}/login?error=auth`);
     }
 
-    if (data.session?.provider_token) {
+    // Plain sign-in (identity scopes only) also returns a provider_token, so
+    // only treat the session as a service connect when Google granted
+    // Gmail or Analytics/Search Console scopes.
+    const providerToken = data.session?.provider_token;
+    const services = providerToken
+      ? grantedServices(await fetchGrantedScopes(providerToken), !!data.session?.provider_refresh_token)
+      : { gmail: false, googleData: false };
+    if (providerToken && (services.gmail || services.googleData)) {
       hasGoogleServiceScopes = true;
       try {
         if (FEATURES.PLATFORM_MODE) {
-          if (data.session.provider_refresh_token && data.user) {
-            await persistGoogleServiceTokensSupabase(
-              data.user.id,
-              data.session.provider_token,
-              data.session.provider_refresh_token
-            );
-            await persistPlatformGmailTokens(
-              data.user.id,
-              data.session.provider_token,
-              data.session.provider_refresh_token
-            );
+          if (data.session?.provider_refresh_token && data.user) {
+            if (services.googleData) {
+              await persistGoogleServiceTokensSupabase(data.user.id, providerToken, data.session.provider_refresh_token);
+            }
+            if (services.gmail) {
+              await persistPlatformGmailTokens(data.user.id, providerToken, data.session.provider_refresh_token);
+            }
           }
-        } else {
-          await persistGoogleServiceTokens(data.session.provider_token, data.session.provider_refresh_token ?? undefined);
+        } else if (services.googleData) {
+          await persistGoogleServiceTokens(providerToken, data.session?.provider_refresh_token ?? undefined);
         }
       } catch (err) {
         // Login itself succeeded — don't fail the whole sign-in over GA/GSC
