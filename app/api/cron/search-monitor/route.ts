@@ -20,6 +20,7 @@ import { listProjectActions as listProjectActionsSupabase } from "@/lib/domain/a
 import { platformOutcomePorts } from "@/lib/domain/search/outcomePorts";
 import { fixDeliveryGithub } from "@/lib/domain/fixes/fixDeliveryGithub";
 import { reconcileAllProjects, type ReconcileAllSummary } from "@/lib/domain/fixes/reconcileAllProjects";
+import { pruneOldMarkers } from "@/lib/domain/project/markerRetention";
 import { hostedGithubToken } from "@/lib/githubAppServer";
 
 // Hobby caps cron functions at 60s. Stop a little short of it and resume on
@@ -228,6 +229,7 @@ export async function GET(req: NextRequest) {
     });
   } finally {
     await cleanupRateLimitCounters(db);
+    await pruneMarkers(db);
   }
 }
 
@@ -238,5 +240,14 @@ async function cleanupRateLimitCounters(db: ReturnType<typeof createServiceClien
     if (cleanupError) console.warn("[rate-limits] cleanup failed:", cleanupError.message);
   } catch {
     console.warn("[rate-limits] cleanup failed");
+  }
+}
+
+/** Retention for cron marker rows in project_documents (older than 30 days, bounded batch). Never throws. */
+async function pruneMarkers(db: ReturnType<typeof createServiceClient>): Promise<void> {
+  try {
+    await pruneOldMarkers(db, new Date(), { budgetMs: 3_000 });
+  } catch {
+    console.warn("[markers] retention failed");
   }
 }

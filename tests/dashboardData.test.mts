@@ -9,7 +9,7 @@ import {
   type DatasetClient,
 } from "../lib/domain/project/dashboardData.ts";
 
-type Call = { table: string; columns: string; orderColumn: string; limit: number; projectId: string };
+type Call = { table: string; columns: string; orderColumn: string; limit: number; projectId: string; inColumn?: string; inValues?: string[] };
 
 /** Fake Supabase client: every query takes `delayMs`, and the active/peak query counts are tracked. */
 function fakeClient(opts: { delayMs?: number; failTable?: string; rows?: Record<string, unknown[]> } = {}) {
@@ -25,8 +25,13 @@ function fakeClient(opts: { delayMs?: number; failTable?: string; rows?: Record<
           return {
             eq(_column, value) {
               call.projectId = value;
-              return {
-                order(column) {
+              const filterable: ReturnType<ReturnType<ReturnType<DatasetClient["from"]>["select"]>["eq"]> = {
+                in(column: string, values: readonly string[]) {
+                  call.inColumn = column;
+                  call.inValues = [...values];
+                  return filterable;
+                },
+                order(column: string) {
                   call.orderColumn = column;
                   return {
                     limit(count) {
@@ -48,6 +53,7 @@ function fakeClient(opts: { delayMs?: number; failTable?: string; rows?: Record<
                   };
                 },
               };
+              return filterable;
             },
           };
         },

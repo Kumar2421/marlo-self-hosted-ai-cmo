@@ -7,9 +7,9 @@ import { SOCIAL_PLATFORMS, isoDay } from "./dailyDrafts.ts";
 // (unique per project and doc_type), the same pattern as the daily proposals job.
 // Every query is scoped to the project explicitly.
 
-const CLAIM_PREFIX = "social_daily_claim:";
-const ATTEMPT_PREFIX = "social_daily_attempt:";
-const DONE_PREFIX = "social_daily_done:";
+export const CLAIM_PREFIX = "social_daily_claim:";
+export const ATTEMPT_PREFIX = "social_daily_attempt:";
+export const DONE_PREFIX = "social_daily_done:";
 const CLAIM_STALE_MS = 10 * 60 * 1000;
 /** Markers older than this do not affect rotation order. */
 const MARKER_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
