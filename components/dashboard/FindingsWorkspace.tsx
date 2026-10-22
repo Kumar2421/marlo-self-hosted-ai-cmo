@@ -39,11 +39,25 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: "ba
  * detail (evidence, what to do, tracked actions, progress) opens in a
  * slide-over so it has room, with the main actions pinned at the bottom.
  */
-export default function FindingsWorkspace({ onRunAudit, auditRunning = false }: { onRunAudit?: () => void; auditRunning?: boolean }) {
+export default function FindingsWorkspace({
+  onRunAudit,
+  auditRunning = false,
+  openRequest = null,
+}: {
+  onRunAudit?: () => void;
+  auditRunning?: boolean;
+  /** Asks the workspace to open one finding's drawer (e.g. from the "Fix first" strip). */
+  openRequest?: { id: string; n: number } | null;
+}) {
   const { list, update } = useFindings();
   const { show } = useToast();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [verification, setVerification] = useState<"verified" | "failed" | null>(null);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (openRequest) setSelectedId(openRequest.id);
+  }, [openRequest]);
 
   const findings = useMemo(() => list.data ?? [], [list.data]);
   const counts = useMemo(() => countFindings(findings), [findings]);

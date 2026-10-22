@@ -103,6 +103,22 @@ export function evidenceRowsForFinding(finding: { source: string; evidence: Reco
   ];
 }
 
+/** Rows that describe how a check ran (mode, raw score, device, audit id) rather than what is wrong. */
+const TECHNICAL_EVIDENCE_KEYS = new Set(["mode", "score", "device", "auditId"]);
+
+/**
+ * Splits evidence rows into what the user reads ("main") and the technical run details kept behind a
+ * collapsed "Details" disclosure. Only Lighthouse-style evidence (it carries an `auditId`) has run
+ * details; every other finding keeps all its rows in "main". Nothing is dropped.
+ */
+export function splitEvidenceRows(rows: EvidenceRow[]): { main: EvidenceRow[]; details: EvidenceRow[] } {
+  if (!rows.some((r) => r.key === "auditId")) return { main: rows, details: [] };
+  return {
+    main: rows.filter((r) => !TECHNICAL_EVIDENCE_KEYS.has(r.key)),
+    details: rows.filter((r) => TECHNICAL_EVIDENCE_KEYS.has(r.key)),
+  };
+}
+
 export function whyItMattersForFinding(finding: { source: string; evidence: Record<string, unknown> }): string | null {
   if (finding.source === "seo-audit" && typeof finding.evidence.whyItMatters === "string") {
     return finding.evidence.whyItMatters;

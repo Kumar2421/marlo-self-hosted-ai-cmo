@@ -11,6 +11,7 @@ export type GoogleHealthInput = {
   needsReconnect?: boolean;
   needs_reconnect?: boolean;
   reason?: string | null;
+  lastSyncAt?: string | null;
 };
 
 export type GoogleHealthState = "unknown" | "not_connected" | "needs_reconnect" | "connected";
@@ -22,22 +23,26 @@ export type GoogleHealthView = {
   /** Plain-language sentence for the state; null when healthy and nothing to add. */
   message: string | null;
   showReconnect: boolean;
+  /** When Google data last synced for this project; null when never or unknown. */
+  lastSyncAt: string | null;
 };
 
 export const RECONNECT_TEXT = "Google connection needs to be reconnected.";
 
 export function googleHealthView(google: GoogleHealthInput | null | undefined): GoogleHealthView {
-  if (!google) return { state: "unknown", badge: null, message: null, showReconnect: false };
-  if (google.connected !== true) return { state: "not_connected", badge: null, message: null, showReconnect: false };
+  if (!google) return { state: "unknown", badge: null, message: null, showReconnect: false, lastSyncAt: null };
+  if (google.connected !== true) return { state: "not_connected", badge: null, message: null, showReconnect: false, lastSyncAt: null };
+  const lastSyncAt = google.lastSyncAt ?? null;
   if (google.needsReconnect === true || google.needs_reconnect === true) {
     return {
       state: "needs_reconnect",
       badge: { label: "Needs reconnect", tone: "warn" },
       message: google.reason?.trim() || RECONNECT_TEXT,
       showReconnect: true,
+      lastSyncAt,
     };
   }
-  return { state: "connected", badge: { label: "Connected", tone: "ok" }, message: google.reason?.trim() || null, showReconnect: false };
+  return { state: "connected", badge: { label: "Connected", tone: "ok" }, message: google.reason?.trim() || null, showReconnect: false, lastSyncAt };
 }
 
 /** The existing Google connect flow (one route for platform and self-host). */

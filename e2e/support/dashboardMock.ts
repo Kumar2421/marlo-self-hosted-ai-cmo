@@ -60,7 +60,7 @@ const FINDINGS = Array.from({ length: 12 }, (_, i) => ({
   resolvedAt: null,
 }));
 
-const SEO_AUDIT = {
+export const SEO_AUDIT = {
   url: PROJECT.url,
   meta: { title: "Acme Invoice", description: "Invoicing for freelancers.", canonical: PROJECT.url, robots: "index,follow", indexable: true },
   headings: { h1: 1, h2: 4, h3: 6 },

@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { BarChart2, ChevronLeft, ChevronRight, Link2, X, Lock, Search, Cpu, Globe2, Check, Loader2, RefreshCw, AlertTriangle, ExternalLink, TrendingUp, Code2 } from "lucide-react";
 import CollapsedRail, { RailButton } from "./CollapsedRail";
 import { useToast } from "./Toast";
 import ScoreCircle from "./ScoreCircle";
 import FindingsWorkspace from "./FindingsWorkspace";
+import FixFirstStrip from "./FixFirstStrip";
+import { ANALYTICS_TAB_STORAGE_KEY, buildFixFirstView, pickInitialTab } from "@/lib/domain/overview/fixFirst";
 import { nextTabIndex } from "@/lib/tabKeys";
 import type { SEOAuditPayload } from "@/lib/domain/seo/SEOAgent";
 import type { Finding as AnalyticsFinding } from "@/lib/domain/findings/findingTypes";
@@ -21,7 +23,7 @@ import { SkeletonCard, SkeletonLines, SkeletonStats } from "@/components/shared/
 import { qk } from "@/lib/query/keys";
 import { useFindings } from "@/components/dashboard/findings/useFindings";
 import { countFindings, findingCountSentence, stripInlineCode } from "@/lib/domain/findings/findingDisplay";
-import { encodingLabel, lastAuditedLabel } from "@/lib/domain/seo/auditDisplay";
+import { auditOverviewTiles, encodingLabel, lastAuditedLabel } from "@/lib/domain/seo/auditDisplay";
 import { lighthouseScoreLabel } from "@/lib/domain/seo/lighthouseAudits";
 import GoogleSourcesCard from "@/components/dashboard/search/GoogleSourcesCard";
 import GoogleSummary from "@/components/dashboard/search/GoogleSummary";
@@ -123,6 +125,9 @@ function DeltaBadge({ change, lowerIsBetter = false }: { change: number | null; 
 
 export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onToggle: () => void; }) {
   const [tab, setTab] = useState<Tab>("SEO");
+  // Set once the user (or a deep link) has decided the tab, so the findings-based default never overrides it.
+  const tabDecided = useRef(false);
+  const [openFinding, setOpenFinding] = useState<{ id: string; n: number } | null>(null);
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
   const [loading, setLoading] = useState(false);
   const [linksChecking, setLinksChecking] = useState(false);
@@ -165,6 +170,16 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
   const storedFindings = useFindings({ enabled: open }).list;
   const findingCounts = storedFindings.data ? countFindings(storedFindings.data) : null;
   const auditedLabel = lastAuditedLabel(auditData?.auditedAt);
+  const fixFirstView = buildFixFirstView({
+    hasWebsite: Boolean(project?.url),
+    findings: storedFindings.isError
+      ? { status: "error" }
+      : storedFindings.data
+        ? { status: "ready", data: storedFindings.data }
+        : { status: "pending" },
+    audit: auditQuery.isError ? "error" : auditQuery.isPending ? "pending" : auditData ? "present" : "missing",
+    now: new Date(),
+  });
   const auditLoading = auditQuery.isPending && open && Boolean(project?.url);
   const setAuditData = (value: SEOAuditPayload | null) => queryClient.setQueryData(auditKey, value);
 
@@ -218,6 +233,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
     const connected = searchParams.get("ga_connected");
     if (error) show(`Google Analytics connect failed: ${error}`);
     if (connected) {
+      tabDecided.current = true;
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setTab("SEO");
       show("Google connected — choose your site below.");
@@ -235,9 +251,40 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
 
   // Returning from the GitHub App install lands on the finding that started it.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (searchParams.get("finding")) setTab("Findings");
+    if (searchParams.get("finding")) {
+      tabDecided.current = true;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTab("Findings");
+    }
   }, [searchParams]);
+
+  /** A tab picked by the user: remembered for next time and never overridden by the default below. */
+  const chooseTab = (next: Tab) => {
+    tabDecided.current = true;
+    setTab(next);
+    try {
+      window.localStorage.setItem(ANALYTICS_TAB_STORAGE_KEY, next);
+    } catch {
+      /* storage can be blocked; the tab still switches */
+    }
+  };
+
+  // First load: the last tab the user chose, else Findings when something is open, else SEO.
+  const openFindingCount = storedFindings.data ? countFindings(storedFindings.data).needsAttention : null;
+  useEffect(() => {
+    if (tabDecided.current) return;
+    let saved: string | null = null;
+    try {
+      saved = window.localStorage.getItem(ANALYTICS_TAB_STORAGE_KEY);
+    } catch {
+      saved = null;
+    }
+    const initial = pickInitialTab({ saved, tabs: TABS, openFindings: storedFindings.isError ? 0 : openFindingCount, fallback: "SEO", findingsTab: "Findings" });
+    if (initial === null) return;
+    tabDecided.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTab(initial);
+  }, [openFindingCount, storedFindings.isError]);
 
   const handleInspectRankingPage = async (url: string) => {
     if (pageEvidence[url]) return;
@@ -409,7 +456,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
     const next = nextTabIndex(e.key, TABS.indexOf(tab), TABS.length);
     if (next === null) return;
     e.preventDefault();
-    setTab(TABS[next]);
+    chooseTab(TABS[next]);
     document.getElementById(`analytics-tab-${TABS[next]}`)?.focus();
   };
 
@@ -445,12 +492,12 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
   if (!open) {
     return (
       <CollapsedRail onExpand={onToggle}>
-        <RailButton icon={<Search size={15} />} label="SEO" active={tab === "SEO"} onClick={() => { setTab("SEO"); onToggle(); }} />
-        <RailButton icon={<Link2 size={15} />} label="Links" active={tab === "Links"} onClick={() => { setTab("Links"); onToggle(); }} />
-        <RailButton icon={<Cpu size={15} />} label="Technical" active={tab === "Technical"} onClick={() => { setTab("Technical"); onToggle(); }} />
-        <RailButton icon={<Globe2 size={15} />} label="GEO" active={tab === "GEO"} onClick={() => { setTab("GEO"); onToggle(); }} />
-        <RailButton icon={<TrendingUp size={15} />} label="Traffic" active={tab === "Traffic"} onClick={() => { setTab("Traffic"); onToggle(); }} />
-        <RailButton icon={<Check size={15} />} label="Findings" active={tab === "Findings"} onClick={() => { setTab("Findings"); onToggle(); }} />
+        <RailButton icon={<Search size={15} />} label="SEO" active={tab === "SEO"} onClick={() => { chooseTab("SEO"); onToggle(); }} />
+        <RailButton icon={<Link2 size={15} />} label="Links" active={tab === "Links"} onClick={() => { chooseTab("Links"); onToggle(); }} />
+        <RailButton icon={<Cpu size={15} />} label="Technical" active={tab === "Technical"} onClick={() => { chooseTab("Technical"); onToggle(); }} />
+        <RailButton icon={<Globe2 size={15} />} label="GEO" active={tab === "GEO"} onClick={() => { chooseTab("GEO"); onToggle(); }} />
+        <RailButton icon={<TrendingUp size={15} />} label="Traffic" active={tab === "Traffic"} onClick={() => { chooseTab("Traffic"); onToggle(); }} />
+        <RailButton icon={<Check size={15} />} label="Findings" active={tab === "Findings"} onClick={() => { chooseTab("Findings"); onToggle(); }} />
       </CollapsedRail>
     );
   }
@@ -489,6 +536,20 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
         </div>
       )}
 
+      <FixFirstStrip
+        view={fixFirstView}
+        onOpen={(id) => {
+          tabDecided.current = true;
+          setTab("Findings");
+          setOpenFinding((prev) => ({ id, n: (prev?.n ?? 0) + 1 }));
+        }}
+        onRetry={() => void storedFindings.refetch()}
+        onShowAll={() => chooseTab("Findings")}
+        retrying={storedFindings.isFetching}
+        onRunAudit={handleRunAudit}
+        auditRunning={loading || setupRunning}
+      />
+
       {/* Equal-width tabs that fit the panel; below ~300px they scroll sideways with the scrollbar hidden. */}
       <div
         role="tablist"
@@ -505,7 +566,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
             aria-selected={tab === t}
             aria-controls="analytics-tabpanel"
             tabIndex={tab === t ? 0 : -1}
-            onClick={() => setTab(t)}
+            onClick={() => chooseTab(t)}
             className={`min-w-fit flex-1 truncate rounded-lg px-1 py-1.5 text-center text-[11px] font-medium @[20rem]:px-1.5 @[20rem]:text-[12px] transition-colors ${tab === t ? "bg-gray-100 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}
           >
             {t}
@@ -515,7 +576,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
 
       <div id="analytics-tabpanel" role="tabpanel" aria-labelledby={`analytics-tab-${tab}`} className="okara-scroll flex-1 overflow-y-auto p-4">
         {tab === "Findings" ? (
-          <FindingsWorkspace onRunAudit={handleRunAudit} auditRunning={loading || setupRunning} />
+          <FindingsWorkspace onRunAudit={handleRunAudit} auditRunning={loading || setupRunning} openRequest={openFinding} />
         ) : tab === "Traffic" ? (
           <Section
             title="Traffic"
@@ -874,21 +935,17 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                   )}
                   {auditedLabel && <p className="mb-3 text-[11px] text-gray-500">{auditedLabel}</p>}
                   <div className="grid grid-cols-[repeat(auto-fit,minmax(88px,1fr))] gap-2">
-                    <button onClick={() => setTab("Findings")} className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
-                      <div className="truncate text-[10px] uppercase tracking-wide text-gray-400">Findings</div>
-                      <div className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{findingCounts ? findingCounts.needsAttention : "—"}</div>
-                      <div className="mt-0.5 text-[11px] text-gray-500">Needs attention</div>
-                    </button>
-                    <button onClick={() => setTab("Findings")} className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
-                      <div className="truncate text-[10px] uppercase tracking-wide text-gray-400">Lighthouse</div>
-                      <div className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{auditData.lighthouseIssues ? auditData.lighthouseIssues.desktop.length + auditData.lighthouseIssues.mobile.length : 0}</div>
-                      <div className="mt-0.5 text-[11px] text-gray-500">Measured issues</div>
-                    </button>
-                    <button onClick={() => setTab("Findings")} className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
-                      <div className="truncate text-[10px] uppercase tracking-wide text-gray-400">Audit issues</div>
-                      <div className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{auditData.issues.length}</div>
-                      <div className="mt-0.5 text-[11px] text-gray-500">Detected on page</div>
-                    </button>
+                    {auditOverviewTiles({
+                      needsAttention: findingCounts ? findingCounts.needsAttention : null,
+                      lighthouse: auditData.lighthouseIssues ? auditData.lighthouseIssues.desktop.length + auditData.lighthouseIssues.mobile.length : 0,
+                      onPage: auditData.issues.length,
+                    }).map((tile) => (
+                      <button key={tile.key} onClick={() => chooseTab("Findings")} data-testid={`overview-tile-${tile.key}`} className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
+                        <div className="truncate text-[10px] uppercase tracking-wide text-gray-400">{tile.label}</div>
+                        <div className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{tile.value ?? "—"}</div>
+                        <div className="mt-0.5 text-[11px] text-gray-500">{tile.caption}</div>
+                      </button>
+                    ))}
                   </div>
                   {(findingCounts?.needsAttention ?? 0) > 0 && (
                     <button onClick={() => setTab("Findings")} className="mt-3 flex w-full items-center justify-between rounded-xl bg-[#111111] px-3 py-2.5 text-[12px] font-medium text-white hover:bg-black">

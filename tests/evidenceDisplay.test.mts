@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evidenceRowsForFinding, whyItMattersForFinding } from "../lib/domain/findings/evidenceDisplay.ts";
+import { evidenceRowsForFinding, splitEvidenceRows, whyItMattersForFinding } from "../lib/domain/findings/evidenceDisplay.ts";
 
 test("seo-audit findings render their own raw evidence, not analytics fields", () => {
   const finding = {
@@ -45,4 +45,24 @@ test("missing canonical on an analytics finding still shows explicitly, not sile
   const finding = { source: "search-console", evidence: { page: { meta: { canonical: null } } } };
   const rows = evidenceRowsForFinding(finding);
   assert.equal(rows.find((r) => r.key === "canonical")?.value, "Missing");
+});
+
+test("splitEvidenceRows moves the Lighthouse run details behind Details and drops nothing", () => {
+  const finding = {
+    source: "seo-audit",
+    evidence: { label: "Buttons need names", auditId: "button-name", device: "mobile", mode: "diagnostic", score: null, displayValue: "3 elements" },
+  };
+  const rows = evidenceRowsForFinding(finding);
+  const { main, details } = splitEvidenceRows(rows);
+  assert.deepEqual(details.map((r) => r.key).sort(), ["auditId", "device", "mode", "score"]);
+  assert.deepEqual(main.map((r) => r.key), ["displayValue"]);
+  assert.equal(main.length + details.length, rows.length);
+  assert.equal(details.find((r) => r.key === "score")?.value, "Not measured");
+});
+
+test("splitEvidenceRows leaves other findings untouched", () => {
+  const rows = evidenceRowsForFinding({ source: "seo-audit", evidence: { label: "Title long", current: "x", length: 80, mode: "x" } });
+  const { main, details } = splitEvidenceRows(rows);
+  assert.equal(details.length, 0);
+  assert.deepEqual(main, rows);
 });
