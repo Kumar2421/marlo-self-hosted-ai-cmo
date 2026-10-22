@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback } from "react";
 import type { LogLine } from "./mock-terminal";
+import { doneLineType } from "@/lib/domain/integrations/logLine";
 
 type Ctx = {
   lines: LogLine[];
@@ -27,7 +28,7 @@ export default function TerminalLogProvider({ children }: { children: React.Reac
   }, []);
 
   const logDone = useCallback((text: string) => {
-    setLines((prev) => [...prev, { type: "done", text }]);
+    setLines((prev) => [...prev, { type: doneLineType(text), text }]);
   }, []);
 
   return <TerminalLogCtx.Provider value={{ lines, log, logDone }}>{children}</TerminalLogCtx.Provider>;

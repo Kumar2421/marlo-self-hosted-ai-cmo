@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronUp,
   Check,
+  AlertTriangle,
   Plug,
   Settings,
   Globe,
@@ -26,6 +27,7 @@ import { useToast } from "./Toast";
 import NotificationBell from "./notifications/NotificationBell";
 import SocialNavMenu from "./social/SocialNavMenu";
 import { useClickOutside } from "./useClickOutside";
+import { BETA_UNLIMITED_LABEL } from "@/lib/credits-display";
 
 function useCredits() {
   const [balance, setBalance] = useState<number | null>(null);
@@ -65,7 +67,7 @@ function UserMenu() {
   // spend_credits()), just never blocks — so show that honestly instead of
   // a number that means nothing yet.
   const creditsLabel =
-    credits.balance === null ? null : credits.billingEnabled ? `${credits.balance} Credits` : "Unlimited (beta)";
+    credits.balance === null ? null : credits.billingEnabled ? `${credits.balance} Credits` : BETA_UNLIMITED_LABEL;
 
   async function handleLogout() {
     setOpen(false);
@@ -367,8 +369,9 @@ export default function TerminalLog() {
             </span>
             <span className="hidden shrink-0 text-gray-600 md:inline">|</span>
             {latest ? (
-              <span className={`min-w-0 flex-1 truncate ${latest.type === "done" ? "text-[#00ab92]" : "text-gray-300"}`}>
+              <span className={`min-w-0 flex-1 truncate ${latest.type === "done" ? "text-[#00ab92]" : latest.type === "error" ? "text-amber-400" : "text-gray-300"}`}>
                 {latest.type === "done" && <Check size={12} className="mr-1 inline shrink-0 align-[-1px]" />}
+                {latest.type === "error" && <AlertTriangle size={12} className="mr-1 inline shrink-0 align-[-1px]" />}
                 {latest.text}
               </span>
             ) : (
@@ -409,6 +412,14 @@ export default function TerminalLog() {
                   <span className="h-px w-6 bg-gray-700" />
                   {line.text}
                   <span className="h-px w-6 bg-gray-700" />
+                </div>
+              );
+            }
+            if (line.type === "error") {
+              return (
+                <div key={i} className="flex items-center gap-1.5 text-amber-400">
+                  <AlertTriangle size={13} className="shrink-0" />
+                  {line.text.replace(/^s*⚠s*/, "")}
                 </div>
               );
             }

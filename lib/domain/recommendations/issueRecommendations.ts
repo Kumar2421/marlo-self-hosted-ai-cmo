@@ -1,4 +1,5 @@
 import { classifyFinding } from "../codefix/fixCatalog.ts";
+import { LIGHTHOUSE_CATEGORY_LABEL, lighthouseAuditId, lighthouseCategoryOf, lighthouseGuide } from "../seo/lighthouseAudits.ts";
 import type { Recommendation, RecommendationPriority, RecommendationType } from "./recommendationTypes.ts";
 
 /**
@@ -195,18 +196,46 @@ function geoEntry(finding: CatalogFinding): StaticEntry | null {
   return null;
 }
 
+/** Plain text for a Lighthouse audit title: PageSpeed wraps code in backticks, which would show up raw. */
+function plainTitle(value: unknown): string {
+  return text(value).replace(/`/g, "");
+}
+
 function lighthouseEntry(finding: CatalogFinding): StaticEntry {
   const mode = text(finding.evidence.mode) || "diagnostic";
   const device = text(finding.evidence.device) || "selected";
   const displayValue = text(finding.evidence.displayValue);
+  const reported = plainTitle(finding.evidence.label);
   const score = typeof finding.evidence.score === "number" ? Math.round(finding.evidence.score * 100) : undefined;
+  const priority = score !== undefined && score < 50 ? "high" : "medium";
+  const category = lighthouseCategoryOf(finding);
+  const guide = lighthouseGuide(lighthouseAuditId(finding));
+
+  // A known audit: say what is wrong, how to fix it and how to check, using the finding's own evidence.
+  if (guide) {
+    const seen = [
+      reported ? `Lighthouse reported on the ${device} version of your page: "${reported}"` : `Lighthouse measured this on the ${device} version of your page`,
+      displayValue ? `(${displayValue})` : "",
+    ].filter(Boolean).join(" ");
+    return {
+      type: "lighthouse_issue",
+      title: guide.title,
+      summary: `${guide.what} ${seen}.`,
+      priority,
+      kind: "manual",
+      action: `${guide.fix} To check it: ${guide.verify}`,
+    };
+  }
+
+  // An audit Marlo has no steps for: honest, neutral wording that claims no category it cannot name.
+  const kindOfIssue = category ? `${LIGHTHOUSE_CATEGORY_LABEL[category]} ` : "performance, accessibility or best-practice ";
   return {
     type: "lighthouse_issue",
     title: mode === "opportunity" ? "Improve this speed opportunity" : "Address this Lighthouse check",
     summary: displayValue
       ? `${displayValue}. Lighthouse measured this on the ${device} version of your page.`
-      : `Lighthouse measured a performance, accessibility or best-practice issue on the ${device} version of your page.`,
-    priority: score !== undefined && score < 50 ? "high" : "medium",
+      : `Lighthouse measured a ${kindOfIssue}issue on the ${device} version of your page.`,
+    priority,
     kind: "manual",
     action: "Open the audit details, make the smallest change that addresses it, then re-run the SEO audit to confirm the score improves.",
   };

@@ -5,6 +5,8 @@
  * invoke this when a real key is present, and treat a thrown error as
  * "not available this run," never as a reason to invent placeholder scores. */
 
+import type { LighthouseCategory } from "./lighthouseAudits.ts";
+
 /** "Unknown": PSI did not return this audit, so it was not measured (never a fake Fail). */
 export type CwvStatus = "Pass" | "Warn" | "Fail" | "Unknown";
 export type CwvMetric = { value: string; status: CwvStatus };
@@ -25,6 +27,8 @@ export type LighthouseIssue = {
   score: number | null;
   displayValue?: string;
   mode: "opportunity" | "diagnostic";
+  /** The Lighthouse category this audit belongs to, when the response said so. Absent otherwise (never guessed). */
+  category?: LighthouseCategory;
 };
 export type PageSpeedResult = {
   pageSpeed: { desktop: PageSpeedScores; mobile: PageSpeedScores };
@@ -126,6 +130,15 @@ export function parseLighthouse(data: any) {
     details?: { type?: string };
   }>;
 
+  // Which category each audit belongs to, from the response's own auditRefs. An audit listed under several
+  // categories takes the first in this order, so a specific category wins over performance.
+  const categoryOfAudit = new Map<string, LighthouseCategory>();
+  for (const key of ["accessibility", "best-practices", "seo", "performance"] as const) {
+    const refs = (categories[key] as { auditRefs?: Array<{ id?: unknown }> } | undefined)?.auditRefs;
+    if (!Array.isArray(refs)) continue;
+    for (const ref of refs) if (typeof ref?.id === "string" && !categoryOfAudit.has(ref.id)) categoryOfAudit.set(ref.id, key);
+  }
+
   const lighthouseIssues: LighthouseIssue[] = Object.entries(audits)
     .map(([id, audit]) => {
       const score = typeof audit?.score === "number" ? audit.score : null;
@@ -136,6 +149,7 @@ export function parseLighthouse(data: any) {
         score,
         displayValue: typeof audit?.displayValue === "string" ? audit.displayValue : undefined,
         mode,
+        ...(categoryOfAudit.has(id) ? { category: categoryOfAudit.get(id) } : {}),
       } as LighthouseIssue;
     })
     .filter((audit) => audit.score !== null && audit.score < 0.9 && audit.id !== "largest-contentful-paint" && audit.id !== "first-contentful-paint" && audit.id !== "cumulative-layout-shift")

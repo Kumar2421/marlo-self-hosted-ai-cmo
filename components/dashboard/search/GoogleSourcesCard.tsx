@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown, Search } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Search } from "lucide-react";
 import { fetchJson } from "@/lib/query/fetchJson";
 import { qk } from "@/lib/query/keys";
 import { useProject } from "@/lib/project-store";
+import { useGoogleConnection } from "@/lib/query/useGoogleConnection";
+import GoogleReconnectLink from "@/components/settings/GoogleReconnectLink";
 
 type IntegrationType = "google-search-console" | "google-analytics";
 type Resource = { resourceId: string; resourceName: string; selected: boolean; usedBy?: string[] };
@@ -40,11 +42,14 @@ export function PropertyPicker({
   type,
   integration,
   busy,
+  healthy = true,
   onSelect,
 }: {
   type: IntegrationType;
   integration: Integration;
   busy: boolean;
+  /** False when Google no longer accepts the connection: the site is chosen but not working. */
+  healthy?: boolean;
   onSelect: (type: IntegrationType, resourceId: string) => void;
 }) {
   const copy = COPY[type];
@@ -86,7 +91,7 @@ export function PropertyPicker({
 
       {selected && !open && (
         <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] text-gray-900">
-          <Check size={14} className="shrink-0 text-emerald-600" />
+          {healthy ? <Check size={14} className="shrink-0 text-emerald-600" /> : <AlertTriangle size={14} className="shrink-0 text-amber-600" aria-label="Needs reconnect" />}
           <span className="min-w-0 truncate" title={selected.resourceName}>{selected.resourceName}</span>
         </div>
       )}
@@ -184,6 +189,7 @@ export default function GoogleSourcesCard({ onReadyChange }: { onReadyChange?: (
     enabled: Boolean(projectId),
   });
   const data = resources.data;
+  const health = useGoogleConnection(projectId);
 
   // A changed connection or property changes what Google data the project can see.
   const change = useMutation({
@@ -267,10 +273,17 @@ export default function GoogleSourcesCard({ onReadyChange }: { onReadyChange?: (
         <h4 className="text-[13px] font-semibold text-gray-900">Google data for {project?.name ?? "this project"}</h4>
         {account.email && <span className="truncate text-[11px] text-gray-500">{account.email}</span>}
       </div>
+      {health.showReconnect && (
+        <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+          <span className="min-w-0">{health.message}</span>
+          <GoogleReconnectLink returnTo="dashboard" />
+        </div>
+      )}
       <div className="space-y-4">
         {integrations.map((integration) => (
           <PropertyPicker
             key={integration.integrationType}
+            healthy={!health.showReconnect}
             type={integration.integrationType}
             integration={integration}
             busy={busy}

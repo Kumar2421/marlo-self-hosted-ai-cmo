@@ -11,6 +11,8 @@
  * This branches by source so each finding type shows its own real evidence.
  */
 
+import { lighthouseScoreLabel } from "../seo/lighthouseAudits.ts";
+
 export type EvidenceRow = { key: string; label: string; value: unknown };
 
 /** Evidence keys shown elsewhere (the title, the callout, the auto-verification line), not as raw rows. */
@@ -53,9 +55,15 @@ export function evidenceRowsForFinding(finding: { source: string; evidence: Reco
     // whyItMattersForFinding() surfaces `whyItMatters` separately, and
     // `label` duplicates the finding's own title shown elsewhere in the
     // panel -- both excluded here so this list is just the raw evidence.
+    const isLighthouse = typeof finding.evidence.auditId === "string" && typeof finding.evidence.device === "string";
     return Object.entries(finding.evidence)
       .filter(([key]) => !HIDDEN_AUDIT_EVIDENCE_KEYS.has(key))
-      .map(([key, value]) => ({ key, label: humanizeKey(key), value }));
+      .map(([key, value]) =>
+        // A Lighthouse score is 0 to 1; show it out of 100, and say so when Lighthouse gave none (never a bare 0).
+        isLighthouse && key === "score"
+          ? { key, label: "Lighthouse score", value: lighthouseScoreLabel(value) }
+          : { key, label: humanizeKey(key), value },
+      );
   }
 
   const opportunity = finding.evidence.opportunity as { type?: string; reasons?: string[] } | undefined;
