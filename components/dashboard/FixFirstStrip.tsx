@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import type { FixFirstView } from "@/lib/domain/overview/fixFirst";
 
 /**
@@ -12,6 +12,7 @@ export default function FixFirstStrip({
   view,
   onOpen,
   onRetry,
+  onShowAll,
   onRunAudit,
   auditRunning = false,
   retrying = false,
@@ -19,6 +20,7 @@ export default function FixFirstStrip({
   view: FixFirstView;
   onOpen: (findingId: string) => void;
   onRetry: () => void;
+  onShowAll: () => void;
   onRunAudit: () => void;
   auditRunning?: boolean;
   retrying?: boolean;
@@ -48,13 +50,17 @@ export default function FixFirstStrip({
           {view.items.map((item) => (
             <li key={item.findingId} className="flex items-center justify-between gap-3">
               <span className="min-w-0 text-[12px] leading-4 text-gray-800">{item.sentence}</span>
-              <button type="button" onClick={() => onOpen(item.findingId)} className={`${button} inline-flex items-center gap-1`}>
+              <button type="button" onClick={() => onOpen(item.findingId)} className={button}>
                 {item.button}
-                <ChevronRight size={12} />
               </button>
             </li>
           ))}
         </ul>
+        {view.moreCount > 0 && (
+          <button type="button" onClick={onShowAll} className="mt-1.5 text-[11px] text-gray-500 hover:text-gray-800 hover:underline">
+            {view.moreCount} more in Findings
+          </button>
+        )}
       </div>
     );
   }

@@ -544,6 +544,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
           setOpenFinding((prev) => ({ id, n: (prev?.n ?? 0) + 1 }));
         }}
         onRetry={() => void storedFindings.refetch()}
+        onShowAll={() => chooseTab("Findings")}
         retrying={storedFindings.isFetching}
         onRunAudit={handleRunAudit}
         auditRunning={loading || setupRunning}

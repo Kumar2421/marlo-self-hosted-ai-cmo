@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildFixFirstView, pickInitialTab, FIX_FIRST_ERROR } from "../lib/domain/overview/fixFirst.ts";
+import { buildFixFirstView, pickInitialTab, plainSentence, FIX_FIRST_ERROR } from "../lib/domain/overview/fixFirst.ts";
 import type { RankFinding } from "../lib/domain/overview/rankNextActions.ts";
 
 const NOW = "2026-10-21T12:00:00.000Z";
@@ -32,19 +32,50 @@ test("error with the plain message", () => {
   assert.deepEqual(buildFixFirstView({ ...base, findings: { status: "error" } }), { kind: "error", message: FIX_FIRST_ERROR });
 });
 
-test("top three ranked findings, most severe first, each opens its finding", () => {
+test("same issue across pages is one row with a count; most severe group first; button opens its top finding", () => {
   const view = buildFixFirstView({
     ...base,
     findings: {
       status: "ready",
-      data: [f("a", { severity: "info" }), f("b", { severity: "critical" }), f("c"), f("d", { severity: "info" })],
+      data: [
+        f("a", { severity: "info", url: "https://x.test/a" }),
+        f("b", { severity: "critical", url: "https://x.test/b" }),
+        f("c", { url: "https://x.test/c" }),
+        f("d", { severity: "info", url: "https://x.test/d" }),
+      ],
     },
   });
   assert.equal(view.kind, "actions");
   if (view.kind !== "actions") return;
-  assert.equal(view.items.length, 3);
+  assert.equal(view.items.length, 1);
+  assert.equal(view.moreCount, 0);
   assert.equal(view.items[0].findingId, "b");
-  assert.ok(view.items.every((i) => i.sentence.length > 0 && i.button.length > 0));
+  assert.equal(view.items[0].count, 4);
+  assert.equal(view.items[0].sentence, "Add one H1 heading (4 pages)");
+  assert.equal(view.items[0].button, "Open");
+});
+
+test("at most two rows; the rest become a more-in-Findings count", () => {
+  const kinds = ["heading-h1-missing", "meta-title-missing", "canonical-missing", "og-image-missing"];
+  const view = buildFixFirstView({
+    ...base,
+    findings: {
+      status: "ready",
+      data: kinds.map((k, i) => f(`f${i}`, { entityId: k, recommendation: `Fix thing number ${i}. More.`, severity: i === 0 ? "critical" : "warning" })),
+    },
+  });
+  assert.equal(view.kind, "actions");
+  if (view.kind !== "actions") return;
+  assert.equal(view.items.length, 2);
+  assert.equal(view.moreCount, 2);
+  assert.equal(view.items[0].findingId, "f0");
+  assert.ok(view.items.every((i) => !/^fix:/i.test(i.sentence) && i.count === 1 && !i.sentence.includes("(")));
+});
+
+test("plainSentence strips the ranking prefixes and the trailing period", () => {
+  assert.equal(plainSentence("Fix: Add a meta description."), "Add a meta description");
+  assert.equal(plainSentence("Let Marlo fix: add a title"), "Add a title");
+  assert.equal(plainSentence("Check that the fix worked: X"), "Check that the fix worked: X");
 });
 
 test("verified findings are not work: clear when the audit exists", () => {

@@ -16,7 +16,7 @@ const finding = (i: number, over: Record<string, unknown> = {}) => ({
   entityId: "meta-description-missing",
   url: `https://acme.example.test/page-${i}`,
   severity: i === 0 ? "critical" : "warning",
-  evidence: { label: `Page ${i} has no meta description` },
+  evidence: { label: "Meta description is missing" },
   recommendation: "Add a meta description between 120 and 160 characters.",
   status: "new",
   firstSeen: "2026-01-01T00:00:00Z",
@@ -37,13 +37,16 @@ test.describe("Fix first strip", () => {
     await mockDashboardApi(page);
   });
 
-  test("shows the top three actions, defaults to Findings, and a button opens the finding drawer", async ({ page }) => {
+  test("groups the same issue into one row with a count, defaults to Findings, and the button opens the drawer", async ({ page }) => {
     await page.route("**/api/agents/analytics/findings", (r) => r.fulfill(json({ findings: [0, 1, 2, 3, 4].map((i) => finding(i)) })));
     await page.goto("/dashboard");
     const panel = analytics(page);
     const strip = panel.getByTestId("fix-first");
     await expect(strip).toHaveAttribute("data-state", "actions");
-    await expect(strip.getByRole("listitem")).toHaveCount(3);
+    await expect(strip.getByRole("listitem")).toHaveCount(1);
+    await expect(strip).toContainText("(5 pages)");
+    await expect(strip).not.toContainText("Fix:");
+    await expect(strip.getByRole("button", { name: /^(Open|Fix this)$/ })).toBeVisible();
     await expect(panel.getByRole("tab", { name: "Findings", exact: true })).toHaveAttribute("aria-selected", "true");
 
     // The strip sits between the header and the tab strip, and the page still does not scroll.
@@ -54,10 +57,22 @@ test.describe("Fix first strip", () => {
     });
     expect(order).toEqual({ stripAboveTabs: true, noPageScroll: true });
 
-    await strip.getByRole("button").first().click();
+    await strip.getByRole("button", { name: /^(Open|Fix this)$/ }).click();
     const drawer = page.getByRole("dialog");
     await expect(drawer).toBeVisible();
-    await expect(drawer).toContainText("Page 0 has no meta description");
+    await expect(drawer).toContainText("Meta description is missing");
+  });
+
+  test("shows at most two rows and a quiet link for the rest", async ({ page }) => {
+    const kinds = ["meta-description-missing", "meta-title-missing", "canonical-missing"];
+    await page.route("**/api/agents/analytics/findings", (r) =>
+      r.fulfill(json({ findings: kinds.map((k, i) => finding(i, { entityId: k, recommendation: `Do thing ${i}. More.`, evidence: { label: `Thing ${i}` } })) })),
+    );
+    await page.goto("/dashboard");
+    const strip = analytics(page).getByTestId("fix-first");
+    await expect(strip.getByRole("listitem")).toHaveCount(2);
+    await strip.getByRole("button", { name: "1 more in Findings" }).click();
+    await expect(analytics(page).getByRole("tab", { name: "Findings", exact: true })).toHaveAttribute("aria-selected", "true");
   });
 
   test("with nothing open it says so and keeps SEO as the default tab", async ({ page }) => {
