@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FEATURES } from "@/lib/features";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
+import { selectDueLeadProjects } from "@/lib/domain/leads/dueLeadProjects";
 import { generateAutoLeads, type AutoLeadResult } from "@/lib/domain/leads/autoGenerateLeads";
 import { isAuthorizedCron, runWithBudget } from "@/lib/jobs/jobRunner";
 import { runClaimedLeadRefresh, supabaseLeadStampStore } from "@/lib/jobs/leadRefreshClaim";
@@ -48,18 +49,17 @@ export async function GET(req: NextRequest) {
   const stamps = supabaseLeadStampStore(db);
   const cutoff = new Date(Date.now() - REFRESH_INTERVAL_MS).toISOString();
 
-  const { data: dueProjects, error } = await db
-    .from("projects")
-    .select("id, owner_id, name, category, leads_auto_last_at")
-    .or(`leads_auto_last_at.is.null,leads_auto_last_at.lt.${cutoff}`);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // Paged, oldest stamp first (never-refreshed first), only projects with a confirmed lead profile.
+  const due = await selectDueLeadProjects(db, cutoff);
+  if ("error" in due) return NextResponse.json({ error: due.error }, { status: 500 });
+  const dueProjects = due.projects;
 
   let totalAdded = 0;
   let claimedElsewhere = 0;
   const results: { projectId: string; added: number; reason: string | null; message: string | null }[] = [];
 
   const summary = await runWithBudget(
-    dueProjects ?? [],
+    dueProjects,
     async (project) => {
       // Claim first: a project another run already stamped is skipped, so
       // overlapping invocations never generate twice for the same project.
