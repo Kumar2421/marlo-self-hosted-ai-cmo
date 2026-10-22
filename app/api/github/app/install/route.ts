@@ -12,6 +12,6 @@ export async function GET(req: NextRequest) {
     const body = (await ctx.json().catch(() => null)) as { error?: string } | null;
     return back(body?.error ?? "Couldn't start the GitHub connection.");
   }
-  const started = startInstall(ctx.cfg, { userId: ctx.userId, projectId: ctx.projectId, returnTo });
+  const started = startInstall(ctx.cfg, { userId: ctx.userId, projectId: ctx.projectId, returnTo, callbackUrl: `${req.nextUrl.origin}/api/github/app/callback` });
   return started.ok ? NextResponse.redirect(started.url) : back(started.error);
 }
