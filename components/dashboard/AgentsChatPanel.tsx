@@ -1,9 +1,13 @@
 "use client";
 
+import { plainError } from "@/lib/plainError";
 import { useState, useRef, useEffect } from "react";
 import { Send, Loader2, Plus, Zap, Users, Mail, FileText } from "lucide-react";
 import { useToast } from "./Toast";
 import { useProviders, findProviderForModel } from "@/lib/providers-store";
+
+type SendOutcome = { status: string };
+type LeadRef = { id: string; name?: string; company?: string; title?: string };
 
 type Message = {
   id: string;
@@ -257,10 +261,10 @@ export default function AgentsChatPanel() {
 
       const result = await res.json();
       const sent = result.results.filter(
-        (r: any) => r.status === "sent"
+        (r: SendOutcome) => r.status === "sent"
       ).length;
       const failed = result.results.filter(
-        (r: any) => r.status === "failed"
+        (r: SendOutcome) => r.status === "failed"
       ).length;
 
       const statusMsg: Message = {
@@ -273,7 +277,8 @@ export default function AgentsChatPanel() {
       setMessages((prev) => [...prev, statusMsg]);
       show(`Sent ${sent} emails`);
     } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to send emails");
+      console.error("Send emails failed", err);
+      show(plainError(err, "Failed to send emails"));
     } finally {
       setSending(false);
     }
@@ -325,7 +330,7 @@ export default function AgentsChatPanel() {
           result.leads.length > 0
             ? `Found ${result.leads.length} lead${result.leads.length !== 1 ? "s" : ""}:\n\n${result.leads
                 .slice(0, 5)
-                .map((l: any) => `• ${l.name} at ${l.company} (${l.title})`)
+                .map((l: LeadRef) => `• ${l.name} at ${l.company} (${l.title})`)
                 .join("\n")}${result.leads.length > 5 ? `\n\n... and ${result.leads.length - 5} more` : ""}`
             : "No leads found matching your criteria.";
 
@@ -346,7 +351,7 @@ export default function AgentsChatPanel() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              leadIds: leads.map((l: any) => l.id),
+              leadIds: leads.map((l: LeadRef) => l.id),
               context: input,
               tone: "professional",
               model: primaryModel,
@@ -388,7 +393,8 @@ export default function AgentsChatPanel() {
 
       setMessages((prev) => [...prev, agentMsg]);
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "Failed to reach agent";
+      console.error("Agent request failed", err);
+      const errorMsg = plainError(err, "Failed to reach agent");
       show(errorMsg);
 
       const errMsg: Message = {

@@ -10,6 +10,7 @@ import SidePanel from "@/components/shared/SidePanel";
 import { SkeletonCard, SkeletonStats } from "@/components/shared/Skeleton";
 import FindingDetail, { STATUS_LABEL, severityClass, statusClass } from "./findings/FindingDetail";
 import { useFindings } from "./findings/useFindings";
+import { recheckNote, type RecheckNote } from "@/lib/domain/findings/recheckNote";
 import { isVanished, vanishedNote } from "@/lib/domain/findings/vanishedFindings";
 
 const STATUS_ACTION: Partial<Record<FindingStatus, { next: FindingStatus; label: string }>> = {
@@ -54,6 +55,7 @@ export default function FindingsWorkspace({
   const { show } = useToast();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [verification, setVerification] = useState<"verified" | "failed" | null>(null);
+  const [note, setNote] = useState<RecheckNote | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -98,17 +100,22 @@ export default function FindingsWorkspace({
   const select = (id: string | null) => {
     setSelectedId(id);
     setVerification(null);
+    setNote(null);
     update.reset();
   };
 
   const run = (body: Record<string, string>) => {
     if (!selected) return;
     setVerification(null);
+    setNote(null);
     update.mutate(
       { id: selected.id, body },
       {
         onSuccess: (data) => {
-          if (body.action === "recheck") setVerification(data.verification?.status ?? null);
+          if (body.action !== "recheck") return;
+          setVerification(data.verification?.status ?? null);
+          const checked = (data.finding?.evidence?.lastCheck as { reason?: string } | undefined)?.reason;
+          setNote(recheckNote(data.verification ? { status: data.verification.status, reason: checked } : { status: "skipped", reason: data.reason }));
         },
       },
     );
@@ -244,7 +251,7 @@ export default function FindingsWorkspace({
           )
         }
         footer={
-          selected && (primary || CAN_RECHECK.has(selected.status) || isVanished(selected)) ? (
+          selected && (primary || note || CAN_RECHECK.has(selected.status) || isVanished(selected)) ? (
             <div className="flex flex-wrap gap-2">
               {primary && (
                 <button
@@ -267,6 +274,13 @@ export default function FindingsWorkspace({
                   {update.isPending && update.variables?.body.action === "recheck" ? "Checking…" : "Re-check"}
                 </button>
               )}
+              <p
+                aria-live="polite"
+                data-testid="recheck-note"
+                className={`basis-full text-[12px] empty:hidden ${note?.tone === "verified" ? "text-emerald-700" : note?.tone === "failed" ? "text-red-700" : "text-amber-700"}`}
+              >
+                {note?.text}
+              </p>
             </div>
           ) : undefined
         }

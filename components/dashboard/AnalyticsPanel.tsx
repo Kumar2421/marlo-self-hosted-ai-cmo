@@ -20,6 +20,7 @@ import type { SearchInsights } from "@/lib/domain/search/types";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, fetchJson } from "@/lib/query/fetchJson";
 import { SkeletonCard, SkeletonLines, SkeletonStats } from "@/components/shared/Skeleton";
+import { plainError } from "@/lib/plainError";
 import { qk } from "@/lib/query/keys";
 import { useFindings } from "@/components/dashboard/findings/useFindings";
 import { countFindings, findingCountSentence, stripInlineCode } from "@/lib/domain/findings/findingDisplay";
@@ -216,7 +217,8 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
         else log(`Traffic: ${view.message}`);
         return data;
       } catch (err) {
-        logDone(`⚠ ${err instanceof Error ? err.message : "Failed to load Traffic data."}`);
+        console.error("Traffic load failed", err);
+        logDone(`⚠ ${plainError(err, "Failed to load Traffic data.")}`);
         throw err;
       }
     },
