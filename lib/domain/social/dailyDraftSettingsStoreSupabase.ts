@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { SOCIAL_DAILY_SETTINGS_DOC, parseDailyDraftSettings, type DailyDraftSettings } from "./dailyDraftSettings.ts";
+import { SOCIAL_DAILY_SETTINGS_DOC, optedInProjectIds, parseDailyDraftSettings, type DailyDraftSettings } from "./dailyDraftSettings.ts";
 
 // Platform (Supabase) store; every query is scoped by user and project explicitly.
 
@@ -38,4 +38,11 @@ export async function saveDailyDraftSettings(db: SupabaseClient, userId: string,
     { onConflict: "project_id,doc_type" },
   );
   if (error) throw new Error(error.message);
+}
+
+/** Project ids that switched at least one network on (the only projects the daily job drafts for). */
+export async function optedInSocialProjects(db: SupabaseClient): Promise<Set<string>> {
+  const { data, error } = await db.from("project_documents").select("project_id, content").eq("doc_type", SOCIAL_DAILY_SETTINGS_DOC);
+  if (error) throw new Error(error.message);
+  return optedInProjectIds((data ?? []) as Array<{ project_id: string; content: string | null }>);
 }

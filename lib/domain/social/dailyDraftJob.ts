@@ -13,7 +13,7 @@ import {
   claimSocialDay, isSocialPlatformAttempted, loadSocialMarkers, markSocialPlatformAttempted, markSocialPlatformDone, pendingDraftCount,
   releaseSocialDay, socialProductInfoProjects,
 } from "./dailyDraftsStoreSupabase.ts";
-import { getDailyDraftSettings } from "./dailyDraftSettingsStoreSupabase.ts";
+import { getDailyDraftSettings, optedInSocialProjects } from "./dailyDraftSettingsStoreSupabase.ts";
 import { defaultSubredditFor, generateForPlatform, resolvePlatformModelAccess, type DraftScope } from "./draftPorts.ts";
 import { linkedInPrompt, redditPrompt } from "./platformPrompts.ts";
 import type { PlatformId } from "./platforms.ts";
@@ -84,7 +84,7 @@ export function platformDailyDraftPorts(db: SupabaseClient, userId: string, proj
 }
 
 export type SocialDailyJobSummary = {
-  /** Projects with a product info document that still had a network to run today. */
+  /** Opted-in projects with a product info document that still had a network to run today. */
   due: number;
   processed: number;
   /** Projects left for the next run because the budget ran out first. */
@@ -124,7 +124,9 @@ export async function runSocialDailyJob(
   const abortTimer = setTimeout(() => controller.abort(), budgetMs);
 
   try {
-    const [targets, markers] = await Promise.all([socialProductInfoProjects(db), loadSocialMarkers(db, now)]);
+    const [allTargets, markers, optedIn] = await Promise.all([socialProductInfoProjects(db), loadSocialMarkers(db, now), optedInSocialProjects(db)]);
+    // Drafts are opt-in: a project that never switched a network on is not touched, so it spends no credits.
+    const targets = allTargets.filter((t) => optedIn.has(t.projectId));
     // A project is pending while any network is still unattempted today.
     const pending: ProjectTarget[] = targets.filter((t) => (markers.attemptedToday.get(t.projectId)?.size ?? 0) < SOCIAL_PLATFORMS.length);
     const ordered = rotationOrder(pending, markers.lastAttempt);
