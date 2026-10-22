@@ -47,7 +47,7 @@ const BADGE_TONE: Record<Tone, string> = {
 };
 
 export const TONE_DOT: Record<Tone, string> = {
-  neutral: "bg-ui-subtle",
+  neutral: "bg-ui-faint",
   success: "bg-ui-success",
   warn: "bg-ui-warn",
   danger: "bg-ui-danger",
@@ -57,7 +57,7 @@ export const TONE_DOT: Record<Tone, string> = {
 export function badgeClass(opts: { tone?: Tone; className?: string } = {}): string {
   const { tone = "neutral", className } = opts;
   return cn(
-    "inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[11px] leading-4 font-medium whitespace-nowrap",
+    "inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-xs leading-4 font-medium whitespace-nowrap",
     BADGE_TONE[tone],
     className,
   );

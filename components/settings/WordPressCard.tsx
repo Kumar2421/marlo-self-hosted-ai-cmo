@@ -105,7 +105,7 @@ export default function WordPressCard() {
           <div className="flex items-center gap-2 truncate text-[13px] font-semibold text-gray-900">
             WordPress (Self-Hosted)
             {connected && (
-              <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">
+              <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">
                 <Check size={10} /> Connected
               </span>
             )}
@@ -116,7 +116,7 @@ export default function WordPressCard() {
           href="https://make.wordpress.org/core/2020/11/05/application-passwords-integration-guide/"
           target="_blank"
           rel="noreferrer"
-          className="flex shrink-0 items-center gap-1 text-[11px] text-gray-400 hover:text-gray-700"
+          className="flex shrink-0 items-center gap-1 text-xs text-ui-subtle hover:text-gray-700"
         >
           How to create one <ExternalLink size={11} />
         </a>

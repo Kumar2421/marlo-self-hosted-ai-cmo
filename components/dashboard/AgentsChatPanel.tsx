@@ -59,7 +59,7 @@ function AgentSelector({
 }) {
   return (
     <div className="space-y-2">
-      <div className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+      <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-ui-subtle">
         Agents
       </div>
       {AGENTS.map((agent) => (
@@ -74,7 +74,7 @@ function AgentSelector({
         >
           <div className="flex items-center gap-2 mb-1">
             <span
-              className={selected === agent.id ? "text-blue-600" : "text-gray-400"}
+              className={selected === agent.id ? "text-blue-600" : "text-ui-subtle"}
             >
               {agent.icon}
             </span>
@@ -175,7 +175,7 @@ function ChatMessages({
             )}
 
             {msg.action && msg.action !== "draft_email" && (
-              <div className="mt-2 text-[11px] opacity-75">
+              <div className="mt-2 text-xs opacity-75">
                 {msg.action.replace(/_/g, " ")}
               </div>
             )}

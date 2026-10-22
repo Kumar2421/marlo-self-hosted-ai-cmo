@@ -40,13 +40,13 @@ function Row({ n, onActivate }: { n: ClientNotification; onActivate: (n: ClientN
         className={`flex w-full gap-3 rounded-lg px-3 py-3 text-left transition-colors ${n.read ? "hover:bg-gray-50" : "bg-[#f3fbf9] hover:bg-[#e9f7f4]"}`}
         aria-label={`${n.title}. ${n.read ? "Read" : "Unread. Press to mark as read"}`}
       >
-        <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${n.read ? "bg-gray-100 text-gray-500" : "bg-white text-[#00846f] ring-1 ring-[#bfe8e0]"}`}>
+        <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${n.read ? "bg-gray-100 text-ui-muted" : "bg-white text-ui-accent-strong ring-1 ring-[#bfe8e0]"}`}>
           <Icon size={14} aria-hidden="true" />
         </span>
         <span className="min-w-0 flex-1">
           <span className={`block text-[13px] leading-snug text-gray-900 ${n.read ? "font-normal" : "font-semibold"}`}>{n.title}</span>
           {n.body && <span className="mt-0.5 block text-[12px] leading-relaxed text-gray-600">{n.body}</span>}
-          <span className="mt-1 block text-[11px] text-gray-400">{timeAgo(n.createdAt)}</span>
+          <span className="mt-1 block text-xs text-ui-subtle">{timeAgo(n.createdAt)}</span>
         </span>
         {!n.read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#00ab92]" aria-hidden="true" />}
       </button>
@@ -85,7 +85,7 @@ export default function NotificationBell() {
       >
         <Bell size={16} aria-hidden="true" />
         {unreadCount > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#00ab92] px-1 text-[10px] font-semibold leading-none text-white">
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#00ab92] px-1 text-xs font-semibold leading-none text-white">
             {badge}
           </span>
         )}

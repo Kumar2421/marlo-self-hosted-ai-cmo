@@ -14,7 +14,7 @@ export type SectionHeaderProps = {
 export function SectionHeader({ label, action, as: Tag = "h3", className }: SectionHeaderProps) {
   return (
     <div className={cn("flex min-h-6 items-center justify-between gap-2", className)}>
-      <Tag className="min-w-0 truncate text-[11px] leading-4 font-semibold tracking-wider text-ui-subtle uppercase">{label}</Tag>
+      <Tag className="min-w-0 truncate text-xs leading-4 font-semibold tracking-wider text-ui-subtle uppercase">{label}</Tag>
       {action ? <div className="flex shrink-0 items-center">{action}</div> : null}
     </div>
   );

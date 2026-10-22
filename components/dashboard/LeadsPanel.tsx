@@ -449,11 +449,11 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
     return (
       <div className="flex h-full min-h-0 flex-col border-r border-gray-200 bg-white">
         <div className="flex h-11 shrink-0 items-center justify-between border-b border-gray-200 px-4">
-          <div className="flex items-center gap-2 text-[13px] font-semibold text-gray-900">
+          <h2 className="flex items-center gap-2 text-[13px] font-semibold text-gray-900">
             <Users size={15} className="text-gray-500" />
             Leads
-          </div>
-          <button onClick={onToggle} title="Collapse" className="hidden text-gray-400 hover:text-gray-700 md:block">
+          </h2>
+          <button onClick={onToggle} title="Collapse" className="hidden text-ui-subtle hover:text-gray-700 md:block">
             <ChevronLeft size={15} />
           </button>
         </div>
@@ -467,14 +467,14 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
   return (
     <div className="flex h-full min-h-0 flex-col border-r border-gray-200 bg-white">
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-gray-200 px-4">
-        <div className="flex items-center gap-2 text-[13px] font-semibold text-gray-900">
+        <h2 className="flex items-center gap-2 text-[13px] font-semibold text-gray-900">
           <Users size={15} className="text-gray-500" />
           Leads
           {(mode === "business" ? businessLeads.length : personLeads.length) > 0 && (
-            <span className="text-[11px] font-normal text-gray-400">({mode === "business" ? businessLeads.length : personLeads.length})</span>
+            <span className="text-xs font-normal text-ui-subtle">({mode === "business" ? businessLeads.length : personLeads.length})</span>
           )}
-        </div>
-        <button onClick={onToggle} title="Collapse" className="hidden text-gray-400 hover:text-gray-700 md:block">
+        </h2>
+        <button onClick={onToggle} title="Collapse" className="hidden text-ui-subtle hover:text-gray-700 md:block">
           <ChevronLeft size={15} />
         </button>
       </div>
@@ -485,17 +485,17 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
         <div className="mb-1 flex rounded-lg bg-gray-100 p-0.5 text-[12px]">
           <button
             onClick={() => setMode("person")}
-            className={`min-w-0 flex-1 rounded-md py-1.5 font-medium ${mode === "person" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}
+            className={`min-w-0 flex-1 rounded-md py-1.5 font-medium ${mode === "person" ? "bg-white text-gray-900 shadow-sm" : "text-ui-muted"}`}
           >
             People
           </button>
           <button
             onClick={() => setMode("business")}
-            className={`flex-[1.6] whitespace-nowrap rounded-md py-1.5 font-medium ${mode === "business" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}
+            className={`flex-[1.6] whitespace-nowrap rounded-md py-1.5 font-medium ${mode === "business" ? "bg-white text-gray-900 shadow-sm" : "text-ui-muted"}`}
           >
             Local Business
             {FEATURES.PLATFORM_MODE && (
-              <span className="ml-1.5 whitespace-nowrap rounded-full bg-gray-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-gray-600">Coming soon</span>
+              <span className="ml-1.5 whitespace-nowrap rounded-full bg-gray-200 px-1.5 py-0.5 text-xs font-semibold uppercase text-gray-600">Coming soon</span>
             )}
           </button>
         </div>
@@ -505,7 +505,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
             {leadProfile.isLoading ? (
               <SkeletonCard rows={3} />
             ) : leadProfile.isError ? (
-              <p className="text-[11px] text-amber-600">⚠ Couldn&apos;t load your lead profile. Try again in a moment.</p>
+              <p className="text-xs text-amber-600">⚠ Couldn&apos;t load your lead profile. Try again in a moment.</p>
             ) : leadProfile.confirmed && leadProfile.profile ? (
               <>
                 <LeadProfileSearch
@@ -520,7 +520,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                   onToggle={() => setProfileOpen(!profileExpanded)}
                 />
                 {profileExpanded && <details className="group rounded-lg border border-gray-100 px-2.5 py-1.5">
-                  <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-800">Custom search</summary>
+                  <summary className="cursor-pointer text-xs text-gray-500 hover:text-gray-800">Custom search</summary>
                   <div className="mt-2 space-y-2">
                 <input
                   value={role}
@@ -576,7 +576,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
           <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-3 text-[12px] leading-5 text-gray-600" data-testid="local-business-coming-soon">
             <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-semibold text-gray-800">
               <Building2 size={13} /> Local business leads
-              <span className="rounded-full bg-gray-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-gray-600">Coming soon</span>
+              <span className="rounded-full bg-gray-200 px-1.5 py-0.5 text-xs font-semibold uppercase text-gray-600">Coming soon</span>
             </div>
             We are setting up the Google Places connection for local business search. People search works today.
           </div>
@@ -621,8 +621,8 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
             onClick={() => setComposeOpen(true)}
             disabled={!gmail.canSend}
             title={gmail.canSend ? "Compose an outreach email" : "Connect Gmail above first"}
-            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium ${
-              gmail.canSend ? "border-gray-200 text-gray-700 hover:bg-gray-100" : "border-gray-200 text-gray-400"
+            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium ${
+              gmail.canSend ? "border-gray-200 text-gray-700 hover:bg-gray-100" : "border-gray-200 text-ui-subtle"
             }`}
           >
             <Mail size={11} /> Email Selected
@@ -772,7 +772,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                         />
                         <div className="flex min-w-0 flex-1 items-baseline gap-2">
                           <span className="max-w-[55%] shrink-0 truncate text-[13px] font-semibold text-gray-900">{lead.name}</span>
-                          <span className="min-w-0 truncate text-[11px] text-gray-500">{meta}</span>
+                          <span className="min-w-0 truncate text-xs text-gray-500">{meta}</span>
                         </div>
                         <div className="flex shrink-0 items-center gap-1.5">
                           {lead.last_reply_snippet && (
@@ -781,7 +781,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                             </span>
                           )}
                           {lead.email_status === "sent" && (
-                            <span title="Email sent" className="text-[#00846f]">
+                            <span title="Email sent" className="text-ui-accent-strong">
                               <Mail size={13} aria-label="Email sent" />
                             </span>
                           )}
@@ -791,14 +791,14 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                             </span>
                           )}
                           {lead.phone && (
-                            <span title={lead.phone} className="text-gray-400">
+                            <span title={lead.phone} className="text-ui-subtle">
                               <Phone size={12} aria-label={`Phone ${lead.phone}`} />
                             </span>
                           )}
                           {lead.email ? (
                             <span
                               title={`${lead.email}${lead.email_verified ? " (guessed; the mail server accepted it, which is not a guarantee it exists)" : " (found in real search results)"}`}
-                              className="text-[#00846f]"
+                              className="text-ui-accent-strong"
                             >
                               <MailCheck size={14} aria-label={`Email found: ${lead.email}`} />
                             </span>
@@ -814,7 +814,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                               rel="noreferrer"
                               title="Open source"
                               aria-label={`Open source for ${lead.name}`}
-                              className="flex h-9 w-6 items-center justify-center text-gray-400 hover:text-gray-700"
+                              className="flex h-9 w-6 items-center justify-center text-ui-subtle hover:text-gray-700"
                             >
                               <ExternalLink size={12} />
                             </a>
@@ -823,7 +823,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                             onClick={() => handleRemove(lead.id)}
                             title="Remove"
                             aria-label={`Remove ${lead.name}`}
-                            className="flex h-9 w-7 shrink-0 items-center justify-center text-gray-400 hover:text-gray-700 md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100"
+                            className="flex h-9 w-7 shrink-0 items-center justify-center text-ui-subtle hover:text-gray-700 md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100"
                           >
                             <X size={13} />
                           </button>
@@ -831,11 +831,11 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                       </div>
                       {lead.last_reply_snippet && (
                         <div className="flex items-center justify-between gap-2 pb-1.5 pl-9 pr-3">
-                          <p className="truncate text-[11px] text-blue-700">&ldquo;{lead.last_reply_snippet}&rdquo;</p>
+                          <p className="truncate text-xs text-blue-700">&ldquo;{lead.last_reply_snippet}&rdquo;</p>
                           <button
                             onClick={() => handleDraftFollowUp(lead)}
                             disabled={draftingFollowUp === lead.id}
-                            className="flex shrink-0 items-center gap-1 rounded-full border border-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                            className="flex shrink-0 items-center gap-1 rounded-full border border-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
                           >
                             {draftingFollowUp === lead.id ? <Loader2 size={9} className="animate-spin" /> : <Reply size={9} />}
                             Draft follow-up
@@ -852,7 +852,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
       </div>
       </div>
 
-      <div className="flex shrink-0 items-center justify-between border-t border-gray-200 px-4 py-2.5 text-[11px] text-gray-400">
+      <div className="flex shrink-0 items-center justify-between border-t border-gray-200 px-4 py-2.5 text-xs text-ui-subtle">
         <span>Guessed emails are unverified guesses, not confirmed addresses.</span>
         <div className="flex items-center gap-3">
           {gmail.canRead && (

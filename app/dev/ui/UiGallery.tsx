@@ -54,7 +54,7 @@ function AtWidths({ children }: { children: (width: number) => ReactNode }) {
     <div className="flex flex-wrap items-start gap-4">
       {WIDTHS.map((w) => (
         <div key={w} data-testid={`w-${w}`} style={{ width: w, maxWidth: "100%" }} className="rounded-ui-md border border-dashed border-ui-border p-2">
-          <div className="mb-2 text-[11px] leading-4 text-ui-subtle tabular-nums">{w}px</div>
+          <div className="mb-2 text-xs leading-4 text-ui-subtle tabular-nums">{w}px</div>
           {children(w)}
         </div>
       ))}
@@ -88,7 +88,7 @@ export default function UiGallery() {
           )}
         </AtWidths>
         <div style={{ width: 360, maxWidth: "100%" }}>
-          <div className="mb-2 text-[11px] text-ui-subtle">Controlled, with a disabled tab, 3 items</div>
+          <div className="mb-2 text-xs text-ui-subtle">Controlled, with a disabled tab, 3 items</div>
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList
               aria-label="Controlled"

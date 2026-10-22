@@ -26,7 +26,7 @@ function MethodBadge({ method }: { method: AnswerMethod }) {
   return (
     <span
       title={simulated ? "Not a real AI assistant. Web search results plus an answer written by a free model." : "A real Gemini answer that used Google Search."}
-      className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${simulated ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}
+      className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-semibold ${simulated ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}
     >
       {METHOD_LABEL[method]}
     </span>
@@ -38,8 +38,8 @@ const pct = (n: number) => `${Math.round(n * 100)}%`;
 function TrendIcon({ trend }: { trend: PromptRow["methods"][number]["trend"] }) {
   if (trend === "up") return <span title="Mentioned more than last time" className="text-[#00ab92]"><ArrowUp size={12} /></span>;
   if (trend === "down") return <span title="Mentioned less than last time" className="text-red-500"><ArrowDown size={12} /></span>;
-  if (trend === "flat") return <span title="About the same as last time" className="text-gray-400"><ArrowRight size={12} /></span>;
-  return <span title="Not enough history yet" className="text-[10px] text-gray-400">new</span>;
+  if (trend === "flat") return <span title="About the same as last time" className="text-ui-subtle"><ArrowRight size={12} /></span>;
+  return <span title="Not enough history yet" className="text-xs text-ui-subtle">new</span>;
 }
 
 function Block({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
@@ -88,13 +88,13 @@ function Readiness({ pid }: { pid: string | undefined }) {
                   {c.status === "pass" ? <Check size={12} className="text-[#00ab92]" /> : c.status === "fail" ? <AlertTriangle size={12} className="text-amber-600" /> : <span className="text-gray-300">?</span>}
                   {c.label}
                 </div>
-                <div className="mt-0.5 text-[11px] text-gray-500">{c.status === "fail" ? c.fix : c.detail}</div>
+                <div className="mt-0.5 text-xs text-gray-500">{c.status === "fail" ? c.fix : c.detail}</div>
               </div>
               {c.status === "fail" && (
                 <button
                   onClick={() => track.mutate(c.id)}
                   disabled={track.isPending}
-                  className="shrink-0 rounded-md border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                  className="shrink-0 rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
                 >
                   Track as a fix
                 </button>
@@ -169,7 +169,7 @@ function PromptHistory({ pid, prompt, onClose }: { pid: string | undefined; prom
             <div key={i} className="rounded-lg border border-gray-200 p-3 text-[12px]">
               <div className="mb-1 flex items-center justify-between gap-2">
                 <MethodBadge method={r.method} />
-                <span className="text-gray-400">{new Date(r.runAt).toLocaleString()}</span>
+                <span className="text-ui-subtle">{new Date(r.runAt).toLocaleString()}</span>
               </div>
               <div className="text-gray-800">
                 {r.mentioned ? "You were mentioned" : "You were not mentioned"}
@@ -226,7 +226,7 @@ function Prompts({ pid, overview }: { pid: string | undefined; overview: GeoOver
           <div key={p.prompt} className={`border-t border-gray-100 px-3 py-2.5 first:border-t-0 ${p.active ? "" : "opacity-50"}`}>
             <div className="flex items-start justify-between gap-2">
               <button onClick={() => setOpenPrompt(p.prompt)} className="min-w-0 text-left text-[13px] text-gray-800 hover:underline">{p.prompt}</button>
-              <div className="flex shrink-0 items-center gap-2 text-[11px]">
+              <div className="flex shrink-0 items-center gap-2 text-xs">
                 <label className="flex items-center gap-1 text-gray-500">
                   <input
                     type="checkbox"
@@ -247,11 +247,11 @@ function Prompts({ pid, overview }: { pid: string | undefined; overview: GeoOver
                     Track as a fix
                   </button>
                 ) : null}
-                <button aria-label="Remove question" onClick={() => save.mutate(asPrompts(overview.prompts).filter((x) => x.prompt !== p.prompt))} className="text-gray-400 hover:text-red-500"><Trash2 size={12} /></button>
+                <button aria-label="Remove question" onClick={() => save.mutate(asPrompts(overview.prompts).filter((x) => x.prompt !== p.prompt))} className="text-ui-subtle hover:text-red-500"><Trash2 size={12} /></button>
               </div>
             </div>
             {p.methods.length === 0 ? (
-              <div className="mt-1 text-[11px] text-gray-400">Not run yet.</div>
+              <div className="mt-1 text-xs text-ui-subtle">Not run yet.</div>
             ) : (
               <div className="mt-1.5 space-y-1">
                 {p.methods.map((m) => (
@@ -320,7 +320,7 @@ function SkippedPrompts({ summary }: { summary: RunSummary }) {
   const reduced = (Object.entries(summary.runsPerPrompt) as Array<["gemini-grounded" | "simulated", number]>).filter(([, n]) => n < 3);
   if (summary.skipped.length === 0 && reduced.length === 0) return null;
   return (
-    <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+    <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
       {reduced.map(([m, n]) => (
         <p key={m}>
           {METHOD_NAME[m]}: the daily limit allows only {n} run{n === 1 ? "" : "s"} per prompt today instead of 3.
@@ -391,7 +391,7 @@ export default function GeoVisibility() {
               {run.isPending ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
               {run.isPending ? "Running..." : "Run now"}
             </button>
-            <span className="text-[11px] text-gray-500">
+            <span className="text-xs text-gray-500">
               {overview.data.lastRunAt ? `Last run ${new Date(overview.data.lastRunAt).toLocaleDateString()}. ` : "Not run yet. "}
               Runs automatically once a week.
               {cap?.geminiAvailable && cap.geminiDailyCap !== null ? ` Gemini checks today: ${cap.geminiUsedToday} of ${cap.geminiDailyCap}.` : ""}

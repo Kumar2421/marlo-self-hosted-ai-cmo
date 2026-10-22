@@ -118,7 +118,7 @@ function DeltaBadge({ change, lowerIsBetter = false }: { change: number | null; 
   if (change === null) return null;
   const improved = lowerIsBetter ? change < 0 : change > 0;
   return (
-    <span className={`inline-flex items-center gap-0.5 text-[11px] font-medium ${improved ? "text-[#00ab92]" : "text-red-500"}`}>
+    <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${improved ? "text-[#00ab92]" : "text-red-500"}`}>
       {change > 0 ? "↑" : change < 0 ? "↓" : "•"} {Math.abs(change).toFixed(1)}%
     </span>
   );
@@ -507,10 +507,10 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
   return (
     <div className="flex h-full min-h-0 flex-col border-r border-gray-200 bg-white">
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-gray-200 px-4">
-        <div className="flex items-center gap-2 text-[13px] font-semibold text-gray-900">
+        <h2 className="flex items-center gap-2 text-[13px] font-semibold text-gray-900">
           <BarChart2 size={15} className="text-gray-500" /> Analytics
-        </div>
-        <div className="flex items-center gap-3 text-gray-400">
+        </h2>
+        <div className="flex items-center gap-3 text-ui-subtle">
           <button onClick={onToggle} title="Collapse" className="hidden hover:text-gray-700 md:block">
             <ChevronLeft size={15} />
           </button>
@@ -569,14 +569,14 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
             aria-controls="analytics-tabpanel"
             tabIndex={tab === t ? 0 : -1}
             onClick={() => chooseTab(t)}
-            className={`min-w-fit flex-1 truncate rounded-lg px-1 py-1.5 text-center text-[11px] font-medium @[20rem]:px-1.5 @[20rem]:text-[12px] transition-colors ${tab === t ? "bg-gray-100 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}
+            className={`min-w-fit flex-1 truncate rounded-lg px-1 py-1.5 text-center text-xs font-medium @[20rem]:px-1.5 @[20rem]:text-[12px] transition-colors ${tab === t ? "bg-gray-100 text-gray-900" : "text-ui-subtle hover:text-gray-600"}`}
           >
             {t}
           </button>
         ))}
       </div>
 
-      <div id="analytics-tabpanel" role="tabpanel" aria-labelledby={`analytics-tab-${tab}`} className="okara-scroll flex-1 overflow-y-auto p-4">
+      <div id="analytics-tabpanel" role="tabpanel" tabIndex={0} aria-labelledby={`analytics-tab-${tab}`} className="okara-scroll flex-1 overflow-y-auto p-4">
         {tab === "Findings" ? (
           <FindingsWorkspace onRunAudit={handleRunAudit} auditRunning={loading || setupRunning} openRequest={openFinding} />
         ) : tab === "Traffic" ? (
@@ -654,7 +654,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                         );
                       })}
                     </div>
-                    <div className="flex justify-between text-[11px] text-gray-400">
+                    <div className="flex justify-between text-xs text-ui-subtle">
                       <span>{trafficResult.byDate[0]?.date}</span>
                       <span>{trafficResult.byDate[trafficResult.byDate.length - 1]?.date}</span>
                     </div>
@@ -667,7 +667,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                   <div className="mb-5 grid grid-cols-3 gap-3">
                     {trafficView.cards.filter((c) => c.key !== "impressions").map((c) => (
                       <div key={c.key} className="rounded-lg border border-gray-200 bg-white p-3">
-                        <div className="mb-1 text-[11px] uppercase text-gray-500">{c.label}</div>
+                        <div className="mb-1 text-xs uppercase text-gray-500">{c.label}</div>
                         <div className="text-lg font-semibold text-gray-900">{c.value}</div>
                       </div>
                     ))}
@@ -677,21 +677,21 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                 {trafficResult.ga4 && (
                   <div className="mb-5 grid grid-cols-3 gap-3">
                     <div className="rounded-lg border border-gray-200 bg-white p-3">
-                      <div className="mb-1 text-[11px] uppercase text-gray-500">Sessions (GA4)</div>
+                      <div className="mb-1 text-xs uppercase text-gray-500">Sessions (GA4)</div>
                       <div className="text-lg font-semibold text-gray-900">{trafficResult.ga4.sessions.toLocaleString()}</div>
                     </div>
                     <div className="rounded-lg border border-gray-200 bg-white p-3">
-                      <div className="mb-1 text-[11px] uppercase text-gray-500">Users</div>
+                      <div className="mb-1 text-xs uppercase text-gray-500">Users</div>
                       <div className="text-lg font-semibold text-gray-900">{trafficResult.ga4.activeUsers.toLocaleString()}</div>
                     </div>
                     <div className="rounded-lg border border-gray-200 bg-white p-3">
-                      <div className="mb-1 text-[11px] uppercase text-gray-500">Pageviews</div>
+                      <div className="mb-1 text-xs uppercase text-gray-500">Pageviews</div>
                       <div className="text-lg font-semibold text-gray-900">{trafficResult.ga4.screenPageViews.toLocaleString()}</div>
                     </div>
                   </div>
                 )}
                 {trafficResult.ga4Error && (
-                  <div className="mb-5 text-[11px] text-amber-600">⚠ Google Analytics: {trafficResult.ga4Error}</div>
+                  <div className="mb-5 text-xs text-amber-600">⚠ Google Analytics: {trafficResult.ga4Error}</div>
                 )}
 
                 {project && <SearchOverviewPanel projectId={project.id} />}
@@ -701,7 +701,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                 <h4 className="mb-2 text-[12px] font-semibold text-gray-700">Top Queries</h4>
                 <div className="mt-6">
                   <h4 className="mb-0.5 text-[12px] font-semibold text-gray-700">Search Opportunities</h4>
-                  <p className="mb-2 text-[11px] text-gray-500">
+                  <p className="mb-2 text-xs text-gray-500">
                     Queries ranking 4–15 with at least 100 impressions. Score is a prioritization heuristic, not a click forecast.
                   </p>
                   {trafficResult.opportunities.length === 0 ? (
@@ -710,7 +710,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                     </div>
                   ) : (
                     <div className="overflow-hidden rounded-xl border border-gray-200">
-                      <div className="grid grid-cols-[1fr_48px_64px_52px_68px] gap-2 border-b border-gray-100 bg-gray-50 px-3 py-2 text-[11px] font-semibold uppercase text-gray-500">
+                      <div className="grid grid-cols-[1fr_48px_64px_52px_68px] gap-2 border-b border-gray-100 bg-gray-50 px-3 py-2 text-xs font-semibold uppercase text-gray-500">
                         <span>Query</span><span className="text-right">Pos.</span><span className="text-right">Impr.</span><span className="text-right">CTR</span><span className="text-right">Score</span>
                       </div>
                       {trafficResult.opportunities.map((q, i) => {
@@ -729,7 +729,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                                     href={rankingPage.url}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="mt-0.5 flex min-w-0 items-center gap-1 truncate text-[11px] text-gray-400 hover:text-gray-600 hover:underline"
+                                    className="mt-0.5 flex min-w-0 items-center gap-1 truncate text-xs text-ui-subtle hover:text-gray-600 hover:underline"
                                     title={rankingPage.url}
                                   >
                                     <ExternalLink size={9} className="shrink-0" />
@@ -737,7 +737,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                                     {q.rankingPages.length > 1 && <span className="shrink-0">+{q.rankingPages.length - 1}</span>}
                                   </a>
                                 ) : (
-                                  <span className="mt-0.5 block text-[11px] text-gray-400">No ranking page data</span>
+                                  <span className="mt-0.5 block text-xs text-ui-subtle">No ranking page data</span>
                                 )}
                               </div>
                               <span className="text-right text-gray-500">{q.position.toFixed(1)}</span>
@@ -751,60 +751,60 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                                 <button
                                   onClick={() => handleInspectRankingPage(rankingPage.url)}
                                   disabled={!!evidenceData || (!!evidence && !evidenceError)}
-                                  className="rounded-md border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+                                  className="rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-60"
                                 >
                                   {evidence && !evidenceData && !evidenceError ? (
                                     <Loader2 size={11} className="inline animate-spin" />
                                   ) : evidenceData ? "Inspected" : "Inspect page"}
                                 </button>
-                                {evidenceError && <span className="truncate text-[11px] text-amber-600">{evidenceError}</span>}
+                                {evidenceError && <span className="truncate text-xs text-amber-600">{evidenceError}</span>}
                               </div>
                             )}
 
                             {evidenceData && (
-                              <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 p-2.5 text-[11px] text-gray-600">
+                              <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 p-2.5 text-xs text-gray-600">
                                 <div>
-                                  <span className="text-gray-400">Title</span>
+                                  <span className="text-ui-subtle">Title</span>
                                   <div className="truncate font-medium text-gray-800" title={evidenceData.meta.title}>
                                     {evidenceData.meta.title || "Missing"}
                                   </div>
                                 </div>
                                 <div>
-                                  <span className="text-gray-400">H1</span>
+                                  <span className="text-ui-subtle">H1</span>
                                   <div className="font-medium text-gray-800">{evidenceData.headings.h1}</div>
                                 </div>
                                 <div>
-                                  <span className="text-gray-400">Canonical</span>
+                                  <span className="text-ui-subtle">Canonical</span>
                                   <div className="truncate font-medium text-gray-800" title={evidenceData.meta.canonical}>
                                     {evidenceData.meta.canonical || "Missing"}
                                   </div>
                                 </div>
                                 <div>
-                                  <span className="text-gray-400">Indexability</span>
+                                  <span className="text-ui-subtle">Indexability</span>
                                   <div className="font-medium text-gray-800">
                                     {evidenceData.meta.indexable ? "Indexable" : "Noindex"}
                                   </div>
                                 </div>
                                 <div>
-                                  <span className="text-gray-400">Content relevance</span>
+                                  <span className="text-ui-subtle">Content relevance</span>
                                   <div className="font-medium text-gray-800">{evidenceData.contentRelevance.keywordRelevance}%</div>
                                 </div>
                                 <div>
-                                  <span className="text-gray-400">Internal links</span>
+                                  <span className="text-ui-subtle">Internal links</span>
                                   <div className="font-medium text-gray-800">{evidenceData.links.internal}</div>
                                 </div>
                                 <div>
-                                  <span className="text-gray-400">TTFB</span>
+                                  <span className="text-ui-subtle">TTFB</span>
                                   <div className="font-medium text-gray-800">
                                     {typeof evidenceData.serverTiming.ttfbMs === "number" ? `${Math.round(evidenceData.serverTiming.ttfbMs)} ms` : "Unavailable"}
                                   </div>
                                 </div>
                                 <div>
-                                  <span className="text-gray-400">HTTP</span>
+                                  <span className="text-ui-subtle">HTTP</span>
                                   <div className="font-medium text-gray-800">{evidenceData.technical.status}</div>
                                 </div>
                                 <div>
-                                  <span className="text-gray-400">PageSpeed</span>
+                                  <span className="text-ui-subtle">PageSpeed</span>
                                   <div className="font-medium text-gray-800">
                                     {evidenceData.pageSpeed ? `${evidenceData.pageSpeed.desktop.performance} desktop` : "Not connected"}
                                   </div>
@@ -822,7 +822,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                   <div className="rounded-xl border border-gray-200 p-3 text-sm text-gray-500">No query data for this range yet.</div>
                 ) : (
                   <div className="overflow-hidden rounded-xl border border-gray-200">
-                    <div className="grid grid-cols-[1fr_60px_60px_50px] gap-2 border-b border-gray-100 bg-gray-50 px-3 py-2 text-[11px] font-semibold uppercase text-gray-500">
+                    <div className="grid grid-cols-[1fr_60px_60px_50px] gap-2 border-b border-gray-100 bg-gray-50 px-3 py-2 text-xs font-semibold uppercase text-gray-500">
                       <span>Query</span>
                       <span className="text-right">Clicks</span>
                       <span className="text-right">CTR</span>
@@ -871,7 +871,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
             </div>
           ) : (
           <div className={`flex flex-col items-center justify-center text-center text-gray-500 ${tab === "SEO" ? "py-10" : "h-full"}`}>
-             {loading || setupRunning ? <Loader2 className="animate-spin text-gray-400 mb-2" size={24} /> : <Search className="text-gray-300 mb-2" size={24} />}
+             {loading || setupRunning ? <Loader2 className="animate-spin text-ui-faint mb-2" size={24} /> : <Search className="text-gray-300 mb-2" size={24} />}
              <p className="text-sm">
                {loading || setupRunning
                  ? "Auditing your website..."
@@ -931,11 +931,11 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                     </p>
                   )}
                   {findingCounts && findingCounts.awaitingVerification > 0 && (
-                    <p className="mb-1 text-[11px] text-gray-500">
+                    <p className="mb-1 text-xs text-gray-500">
                       {findingCounts.awaitingVerification} fixed and waiting for Marlo to re-check.
                     </p>
                   )}
-                  {auditedLabel && <p className="mb-3 text-[11px] text-gray-500">{auditedLabel}</p>}
+                  {auditedLabel && <p className="mb-3 text-xs text-gray-500">{auditedLabel}</p>}
                   <div className="grid grid-cols-[repeat(auto-fit,minmax(88px,1fr))] gap-2">
                     {auditOverviewTiles({
                       needsAttention: findingCounts ? findingCounts.needsAttention : null,
@@ -943,9 +943,9 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                       onPage: auditData.issues.length,
                     }).map((tile) => (
                       <button key={tile.key} onClick={() => chooseTab("Findings")} data-testid={`overview-tile-${tile.key}`} className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
-                        <div className="truncate text-[10px] uppercase tracking-wide text-gray-400">{tile.label}</div>
+                        <div className="truncate text-xs uppercase tracking-wide text-ui-subtle">{tile.label}</div>
                         <div className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{tile.value ?? "—"}</div>
-                        <div className="mt-0.5 text-[11px] text-gray-500">{tile.caption}</div>
+                        <div className="mt-0.5 text-xs text-gray-500">{tile.caption}</div>
                       </button>
                     ))}
                   </div>
@@ -960,14 +960,14 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                 <Section title="PageSpeed Scores">
                   {auditData.pageSpeed ? (
                     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                      <div className="mb-2 text-[11px] font-semibold tracking-wide text-gray-500">DESKTOP</div>
+                      <div className="mb-2 text-xs font-semibold tracking-wide text-gray-500">DESKTOP</div>
                       <div className="grid grid-cols-4 gap-2 mb-4">
                         <ScoreCircle value={auditData.pageSpeed.desktop.performance} label="Performance" />
                         <ScoreCircle value={auditData.pageSpeed.desktop.accessibility} label="Accessibility" />
                         <ScoreCircle value={auditData.pageSpeed.desktop.bestPractices} label="Best Practices" />
                         <ScoreCircle value={auditData.pageSpeed.desktop.seo} label="SEO" />
                       </div>
-                      <div className="mb-2 text-[11px] font-semibold tracking-wide text-gray-500">MOBILE</div>
+                      <div className="mb-2 text-xs font-semibold tracking-wide text-gray-500">MOBILE</div>
                       <div className="grid grid-cols-4 gap-2">
                         <ScoreCircle value={auditData.pageSpeed.mobile.performance} label="Performance" />
                         <ScoreCircle value={auditData.pageSpeed.mobile.accessibility} label="Accessibility" />
@@ -985,11 +985,11 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="rounded-lg border border-gray-200 bg-white p-3">
-                          <div className="mb-1 text-[11px] uppercase text-gray-500">Page Size</div>
+                          <div className="mb-1 text-xs uppercase text-gray-500">Page Size</div>
                           <div className="text-lg font-semibold text-gray-900">{(auditData.technical.pageSizeBytes / 1024).toFixed(1)} KB</div>
                         </div>
                         <div className="rounded-lg border border-gray-200 bg-white p-3">
-                          <div className="mb-1 text-[11px] uppercase text-gray-500">DOM Size</div>
+                          <div className="mb-1 text-xs uppercase text-gray-500">DOM Size</div>
                           <div className="text-lg font-semibold text-gray-900">{auditData.technical.domSize} elements</div>
                         </div>
                       </div>
@@ -1022,11 +1022,11 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                             <div key={issue.id} className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white p-2.5">
                               <div className="min-w-0">
                                 <div className="text-[12px] font-medium text-gray-800">{stripInlineCode(issue.title)}</div>
-                                <div className="mt-0.5 text-[10px] uppercase tracking-wide text-gray-400">{issue.mode}</div>
+                                <div className="mt-0.5 text-xs uppercase tracking-wide text-ui-subtle">{issue.mode}</div>
                               </div>
                               <div className="shrink-0 text-right">
                                 <div className="text-[12px] font-semibold text-gray-900">{lighthouseScoreLabel(issue.score)}</div>
-                                {issue.displayValue && <div className="text-[10px] text-gray-500">{issue.displayValue}</div>}
+                                {issue.displayValue && <div className="text-xs text-gray-500">{issue.displayValue}</div>}
                               </div>
                             </div>
                           ))}
@@ -1056,7 +1056,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                       <div className="grid grid-cols-2 gap-3">
                         {Object.entries(auditData.coreWebVitals[device]).map(([key, v]) => (
                           <div key={key} className="rounded-lg border border-gray-200 bg-white p-3">
-                            <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase text-gray-500">
+                            <div className="mb-1 flex items-center gap-1.5 text-xs uppercase text-gray-500">
                               <StatusDot status={v.status} /> {key}
                             </div>
                             <div className={`text-lg font-semibold ${v.status === "Pass" ? "text-[#00ab92]" : v.status === "Warn" ? "text-amber-600" : "text-red-600"}`}>
@@ -1080,7 +1080,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                           ["TLS Handshake", auditData.serverTiming.tlsHandshakeMs],
                         ].map(([label, ms]) => (
                           <div key={label as string} className="rounded-lg border border-gray-200 bg-white p-3">
-                            <div className="mb-1 text-[11px] uppercase text-gray-500">{label}</div>
+                            <div className="mb-1 text-xs uppercase text-gray-500">{label}</div>
                             <div className="text-lg font-semibold text-gray-900">
                               {typeof ms === "number" ? `${Math.round(ms)}ms` : "N/A"}
                             </div>
@@ -1137,17 +1137,17 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                           <div key={i} className="flex items-center justify-between gap-2 border-t border-gray-100 px-3 py-2.5 text-[13px] first:border-t-0">
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5">
-                                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${link.internal ? "bg-gray-100 text-gray-600" : "bg-blue-50 text-blue-600"}`}>
+                                <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${link.internal ? "bg-gray-100 text-gray-600" : "bg-blue-50 text-blue-600"}`}>
                                   {link.internal ? "Internal" : "External"}
                                 </span>
                                 <a href={link.href} target="_blank" rel="noreferrer" className="truncate text-gray-800 hover:underline">
                                   {link.text || link.href}
                                 </a>
                               </div>
-                              <div className="truncate text-[11px] text-gray-400">{link.href}</div>
+                              <div className="truncate text-xs text-ui-subtle">{link.href}</div>
                             </div>
                             {checked && (
-                              <span className={`shrink-0 flex items-center gap-1 text-[11px] font-medium ${checked.reachable ? "text-[#00ab92]" : "text-red-600"}`}>
+                              <span className={`shrink-0 flex items-center gap-1 text-xs font-medium ${checked.reachable ? "text-[#00ab92]" : "text-red-600"}`}>
                                 {checked.reachable ? <Check size={11} /> : "⚠"}
                                 {checked.status ?? (checked.reachable ? "OK" : "Failed")}
                               </span>
@@ -1205,19 +1205,19 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                               {page.title || page.url}
                             </a>
                             {page.source === "jina-fallback" && (
-                              <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                              <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700">
                                 JS-rendered
                               </span>
                             )}
                             {page.duplicateOfUrl && (
-                              <span className="shrink-0 rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700">
+                              <span className="shrink-0 rounded-full bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-700">
                                 Duplicate content
                               </span>
                             )}
                           </div>
-                          <div className="truncate text-[11px] text-gray-400">{page.url}</div>
+                          <div className="truncate text-xs text-ui-subtle">{page.url}</div>
                           {page.duplicateOfUrl && (
-                            <div className="truncate text-[11px] text-red-600">
+                            <div className="truncate text-xs text-red-600">
                               Near-duplicate of{" "}
                               <a href={page.duplicateOfUrl} target="_blank" rel="noreferrer" className="hover:underline">
                                 {page.duplicateOfUrl}
@@ -1226,7 +1226,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                           )}
                           <p className="mt-1 line-clamp-2 text-[12px] text-gray-500">{page.content.slice(0, 200)}</p>
                           {page.pageSpeed && (
-                            <div className="mt-2 flex flex-wrap gap-3 text-[11px]">
+                            <div className="mt-2 flex flex-wrap gap-3 text-xs">
                               {(["performance", "accessibility", "bestPractices", "seo"] as const).map((k) => (
                                 <span key={k} className="text-gray-600">
                                   <span className="font-semibold text-gray-900">{page.pageSpeed!.desktop[k]}</span>{" "}
@@ -1236,7 +1236,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                             </div>
                           )}
                           {page.pageSpeedError && (
-                            <div className="mt-1 text-[11px] text-amber-600">⚠ PageSpeed: {page.pageSpeedError}</div>
+                            <div className="mt-1 text-xs text-amber-600">⚠ PageSpeed: {page.pageSpeedError}</div>
                           )}
                         </div>
                       ))}
@@ -1249,7 +1249,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
             {tab === "Technical" && (
               <>
                 <Section title="On-Page Overview" subtitle="Server configuration and page characteristics">
-                  {auditedLabel && <p className="-mt-2 mb-3 text-[11px] text-gray-500">{auditedLabel}</p>}
+                  {auditedLabel && <p className="-mt-2 mb-3 text-xs text-gray-500">{auditedLabel}</p>}
                   <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                     <div className="mb-4 flex items-center gap-4">
                       <ScoreCircle value={auditData.technical.onPageScore} label="On-Page" size={64} />
@@ -1294,7 +1294,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                       ["Download", auditData.serverTiming.downloadMs],
                     ].map(([label, ms]) => (
                       <div key={label as string} className="rounded-lg border border-gray-200 bg-white p-3">
-                        <div className="mb-1 text-[11px] uppercase text-gray-500">{label}</div>
+                        <div className="mb-1 text-xs uppercase text-gray-500">{label}</div>
                         <div className="text-lg font-semibold text-gray-900">
                           {typeof ms === "number" ? `${Math.round(ms)}ms` : "N/A"}
                         </div>
@@ -1306,11 +1306,11 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                 <Section title="Render Blocking" subtitle="Scripts and stylesheets blocking page render">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-lg border border-gray-200 bg-white p-3">
-                      <div className="mb-1 text-[11px] uppercase text-gray-500">Blocking Scripts</div>
+                      <div className="mb-1 text-xs uppercase text-gray-500">Blocking Scripts</div>
                       <div className="text-lg font-semibold text-gray-900">{auditData.renderBlocking.blockingScripts}</div>
                     </div>
                     <div className="rounded-lg border border-gray-200 bg-white p-3">
-                      <div className="mb-1 text-[11px] uppercase text-gray-500">Blocking Stylesheets</div>
+                      <div className="mb-1 text-xs uppercase text-gray-500">Blocking Stylesheets</div>
                       <div className="text-lg font-semibold text-gray-900">{auditData.renderBlocking.blockingStylesheets}</div>
                     </div>
                   </div>
@@ -1434,7 +1434,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                         <div className="min-w-0">
                           <div className="text-gray-700">&ldquo;{row.query}&rdquo;</div>
                           {!row.found && (
-                            <div className="mt-0.5 text-[11px] text-gray-400">
+                            <div className="mt-0.5 text-xs text-ui-subtle">
                               Not showing up for this search — consider writing a page that targets it.
                             </div>
                           )}

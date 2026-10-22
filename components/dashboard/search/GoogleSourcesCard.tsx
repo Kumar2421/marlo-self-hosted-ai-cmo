@@ -82,9 +82,9 @@ export function PropertyPicker({
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">{copy.title}</span>
+        <span className="text-xs font-medium uppercase tracking-wide text-gray-500">{copy.title}</span>
         {selected && !open && (
-          <button type="button" onClick={() => setOpen(true)} className="text-[11px] text-gray-500 hover:text-gray-800 hover:underline">
+          <button type="button" onClick={() => setOpen(true)} className="text-xs text-gray-500 hover:text-gray-800 hover:underline">
             Change
           </button>
         )}
@@ -122,7 +122,7 @@ export function PropertyPicker({
         <div className="rounded-lg border border-gray-200 bg-white">
           {integration.resources.length > 6 && (
             <label className="flex items-center gap-2 border-b border-gray-100 px-3 py-2">
-              <Search size={13} className="text-gray-400" />
+              <Search size={13} className="text-ui-faint" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -145,12 +145,12 @@ export function PropertyPicker({
                   <span className="min-w-0">
                     <span className="block break-all text-gray-900">{r.resourceName}</span>
                     {r.usedBy && r.usedBy.length > 0 && (
-                      <span className="block text-[11px] text-gray-500">Also used by {r.usedBy.join(", ")}</span>
+                      <span className="block text-xs text-gray-500">Also used by {r.usedBy.join(", ")}</span>
                     )}
                   </span>
                   <span className="flex shrink-0 items-center gap-1.5">
                     {r.resourceId === integration.suggestedResourceId && (
-                      <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">Suggested</span>
+                      <span className="rounded bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700">Suggested</span>
                     )}
                     {r.selected && <Check size={13} className="text-emerald-600" />}
                   </span>
@@ -260,7 +260,7 @@ export default function GoogleSourcesCard({ onReadyChange }: { onReadyChange?: (
               >
                 {busy ? "Connecting…" : `Use ${account.email ?? "your connected Google account"}`}
               </button>
-              <a href="/api/auth/google-analytics/connect?return=dashboard" className="text-[11px] text-gray-500 hover:text-gray-800 hover:underline">
+              <a href="/api/auth/google-analytics/connect?return=dashboard" className="text-xs text-gray-500 hover:text-gray-800 hover:underline">
                 Different account
               </a>
             </span>
@@ -298,7 +298,7 @@ export default function GoogleSourcesCard({ onReadyChange }: { onReadyChange?: (
             aria-expanded={false}
             aria-controls="google-data-card"
             onClick={() => setExpanded(true)}
-            className="inline-flex shrink-0 items-center gap-1 text-[11px] text-gray-500 hover:text-gray-800 hover:underline"
+            className="inline-flex shrink-0 items-center gap-1 text-xs text-gray-500 hover:text-gray-800 hover:underline"
           >
             Google data <ChevronDown size={12} />
           </button>
@@ -318,14 +318,14 @@ export default function GoogleSourcesCard({ onReadyChange }: { onReadyChange?: (
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <h4 className="text-[13px] font-semibold text-gray-900">Google data for {project?.name ?? "this project"}</h4>
         <span className="flex min-w-0 items-baseline gap-3">
-          {account.email && <span className="truncate text-[11px] text-gray-500">{account.email}</span>}
+          {account.email && <span className="truncate text-xs text-gray-500">{account.email}</span>}
           {summary.mode === "summary" && (
             <button
               type="button"
               aria-expanded={true}
               aria-controls="google-data-card"
               onClick={() => setExpanded(false)}
-              className="shrink-0 text-[11px] text-gray-500 hover:text-gray-800 hover:underline"
+              className="shrink-0 text-xs text-gray-500 hover:text-gray-800 hover:underline"
             >
               Hide
             </button>
@@ -351,7 +351,7 @@ export default function GoogleSourcesCard({ onReadyChange }: { onReadyChange?: (
         ))}
       </div>
       {error && <p className="mt-3 text-[12px] text-red-600">{error}</p>}
-      <p className="mt-3 flex items-center gap-1 text-[11px] text-gray-400">
+      <p className="mt-3 flex items-center gap-1 text-xs text-ui-subtle">
         <ChevronDown size={11} className="rotate-[-90deg]" /> Each project can use a different site and property from the same Google account.
       </p>
     </div>
