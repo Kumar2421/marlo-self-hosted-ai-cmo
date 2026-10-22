@@ -1,12 +1,61 @@
 import type { Finding } from "./findingTypes.ts";
 import { isAutoVerifiable } from "./verifyFinding.ts";
 
+/**
+ * Plain text for a title that arrives with inline-code markdown (Lighthouse writes
+ * "`[user-scalable="no"]` is used in the `<meta name="viewport">` tag"). The backticks are
+ * dropped for display; the stored text is not changed.
+ */
+export function stripInlineCode(text: string): string {
+  return text.replace(/`/g, "");
+}
+
 /** A short, human title for a finding: the audit's own label when it has one, else the first sentence of the advice. */
 export function findingTitle(finding: Pick<Finding, "evidence" | "recommendation">): string {
   const label = finding.evidence?.label;
-  if (typeof label === "string" && label.trim()) return label.trim();
+  if (typeof label === "string" && label.trim()) return stripInlineCode(label.trim());
   const firstSentence = finding.recommendation.split(/(?<=[.!?])\s/)[0]?.trim();
-  return firstSentence || "Untitled finding";
+  return firstSentence ? stripInlineCode(firstSentence) : "Untitled finding";
+}
+
+const SEVERITY_RANK: Record<Finding["severity"], number> = { critical: 0, warning: 1, info: 2 };
+
+/**
+ * The on-page "heading order skips a level" check and Lighthouse's "heading-order" audit are the same
+ * problem found two ways, and they can disagree on severity. They collapse to one finding per page.
+ * Returns null for a finding that has no twin.
+ */
+function duplicateGroup(f: Pick<Finding, "source" | "entityId" | "url">): string | null {
+  if (f.source !== "seo-audit") return null;
+  if (f.entityId === "heading-order-skip" || /^lighthouse-(mobile|desktop)-heading-order$/.test(f.entityId)) {
+    return `heading-order|${f.url ?? ""}`;
+  }
+  return null;
+}
+
+/**
+ * One finding per real problem. For a duplicate group the most severe finding is kept, so the user
+ * sees a single severity; on a tie the on-page check wins over the Lighthouse copy. Order is preserved.
+ */
+export function collapseDuplicateFindings<T extends Pick<Finding, "source" | "entityId" | "url" | "severity">>(findings: T[]): T[] {
+  const best = new Map<string, T>();
+  for (const f of findings) {
+    const group = duplicateGroup(f);
+    if (!group) continue;
+    const current = best.get(group);
+    if (!current) {
+      best.set(group, f);
+      continue;
+    }
+    const better =
+      SEVERITY_RANK[f.severity] < SEVERITY_RANK[current.severity] ||
+      (SEVERITY_RANK[f.severity] === SEVERITY_RANK[current.severity] && !f.entityId.startsWith("lighthouse-") && current.entityId.startsWith("lighthouse-"));
+    if (better) best.set(group, f);
+  }
+  return findings.filter((f) => {
+    const group = duplicateGroup(f);
+    return !group || best.get(group) === f;
+  });
 }
 
 /** "https://example.com/blog/post?x=1" → "/blog/post"; the home page shows as "/". Falls back to the raw text. */
@@ -43,6 +92,29 @@ export function countFindings(findings: Array<Pick<Finding, "severity" | "status
     warning: unresolved.filter((f) => f.severity === "warning").length,
     verified: findings.filter((f) => f.status === "verified").length,
   };
+}
+
+export type FindingCountStat = { key: "needsAttention" | "critical" | "warning" | "verified"; label: string; value: number; tone?: "bad" | "good" };
+
+/** The headline tiles on the Findings tab. The words here are the only ones the SEO overview uses too. */
+export function findingCountStats(counts: FindingCounts): FindingCountStat[] {
+  return [
+    { key: "needsAttention", label: "Needs attention", value: counts.needsAttention },
+    { key: "critical", label: "Critical", value: counts.critical, tone: "bad" },
+    { key: "warning", label: "Warnings", value: counts.warning },
+    { key: "verified", label: "Verified", value: counts.verified, tone: "good" },
+  ];
+}
+
+/** The one-line summary for the SEO overview, from the same counts as the Findings tab: "6 findings need attention: 5 critical, 1 warning". */
+export function findingCountSentence(counts: FindingCounts): string {
+  if (counts.needsAttention === 0) return "No findings need attention";
+  const head = `${counts.needsAttention} ${counts.needsAttention === 1 ? "finding needs" : "findings need"} attention`;
+  const parts = [
+    counts.critical > 0 && `${counts.critical} critical`,
+    counts.warning > 0 && `${counts.warning} ${counts.warning === 1 ? "warning" : "warnings"}`,
+  ].filter(Boolean);
+  return parts.length > 0 ? `${head}: ${parts.join(", ")}` : head;
 }
 
 const SEVERITY_WORD: Record<Finding["severity"], string> = { critical: "Critical", warning: "Warning", info: "Info" };
