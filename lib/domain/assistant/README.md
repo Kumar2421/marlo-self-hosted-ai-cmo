@@ -21,6 +21,8 @@ Model policy: the SERVER chooses. Plan = user's preferred model (BYOK + saved pr
 Persistence PR: add a `threadStore` port to `AssistantPorts` and call it in `runAssistantTurn`.
 `TurnObserver` events carry metadata only (model, tools, duration, error kind), never message content or secrets.
 
+Observability and eval: `turnLog.ts` (one metadata-only log line per turn + per-instance counters, wired in both chat routes via `wrapPorts`; see `docs/assistant-observability.md`), `replyGrounding.ts` (log-only check for figures no tool returned), `healthEndpoint.ts` (GET /api/admin/assistant-health). Eval cases and runners: `docs/assistant-evaluation.md`.
+
 ## Chat history (threads)
 
 `threadStore.ts` is the `ThreadStore` port (memory, SQLite) and `threadStoreSupabase.ts` the hosted twin. Tables: `chat_threads`, `chat_messages`

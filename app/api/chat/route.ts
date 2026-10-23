@@ -4,10 +4,12 @@ import { AssistantError, type TurnContext } from "@/lib/domain/assistant/assista
 import { runAssistantTurn } from "@/lib/domain/assistant/assistantService";
 import { createPlatformPorts } from "@/lib/domain/assistant/platformAdapters";
 import { createSelfHostPorts } from "@/lib/domain/assistant/selfHostAdapters";
+import { getAssistantTelemetry, SILENT_TURN_OPTIONS } from "@/lib/domain/assistant/turnLog"; // observability wiring
 import { chatLimiter, guardChatRate } from "@/lib/domain/assistant/chatRateLimit";
 
 // Per-user request limit (12/min, shared with /api/chat/stream). In-process, so each server instance counts separately.
 const limiter = chatLimiter;
+
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
 // platform max for this route (Hobby plan caps at 60s; Pro allows more).
@@ -30,12 +32,15 @@ export async function POST(req: NextRequest) {
     if (!guard.ok) {
       return NextResponse.json({ error: guard.error }, { status: 429, headers: { "Retry-After": String(guard.retryAfterSec) } });
     }
-    const out = await runAssistantTurn(guard.ports, ctx, {
+    // observability: exactly one metadata-only log line per turn (docs/assistant-observability.md). The legacy text line is silenced.
+    const telemetry = getAssistantTelemetry();
+    const out = await telemetry.run(() => runAssistantTurn(telemetry.wrapPorts(guard.ports), ctx, {
       message: body.message,
       history: body.history,
       projectId: body.projectId,
       threadId: body.threadId,
-    });
+    }, SILENT_TURN_OPTIONS));
+
     return NextResponse.json(out);
   } catch (err) {
     if (err instanceof AssistantError) {

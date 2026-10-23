@@ -23,6 +23,8 @@ export type StreamOptions = {
   /** Pause between typed-out chunks (ms). Tests pass 0. */
   chunkDelayMs?: number;
   sleep?: (ms: number) => Promise<void>;
+  /** Forwarded to runAssistantTurn's legacy text log line (the routes silence it; turnLog.ts logs the structured line). */
+  log?: (line: string) => void;
 };
 
 /** Splits finished text into small word-aligned pieces (whitespace is kept, so joining restores the text exactly). */
@@ -69,7 +71,7 @@ export async function runAssistantTurnStream(
 
   send({ type: "status", phase: "thinking", label: THINKING_LABEL });
   try {
-    const out = await runAssistantTurn(ports, ctx, input, {}, {
+    const out = await runAssistantTurn(ports, ctx, input, opts.log ? { log: opts.log } : {}, {
       signal,
       onToolStart: (tool) => send({ type: "status", phase: "tool", tool, label: toolStatusLabel(tool) }),
       onDelta: (text) => { streamed = true; send({ type: "delta", text }); },

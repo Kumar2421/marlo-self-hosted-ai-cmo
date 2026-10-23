@@ -6,6 +6,7 @@ import { runAssistantTurnStream } from "@/lib/domain/assistant/assistantStream";
 import { createPlatformPorts } from "@/lib/domain/assistant/platformAdapters";
 import { createSelfHostPorts } from "@/lib/domain/assistant/selfHostAdapters";
 import { encodeSseEvent, SSE_KEEPALIVE } from "@/lib/domain/assistant/sse";
+import { getAssistantTelemetry, SILENT_TURN_OPTIONS } from "@/lib/domain/assistant/turnLog"; // observability wiring
 
 // Same ceiling as POST /api/chat (Hobby caps at 60s).
 export const maxDuration = 60;
@@ -39,6 +40,7 @@ export async function POST(req: NextRequest) {
   if (req.signal.aborted) work.abort();
   else req.signal.addEventListener("abort", onReqAbort, { once: true });
 
+  const telemetry = getAssistantTelemetry();
   const encoder = new TextEncoder();
   let keepalive: ReturnType<typeof setInterval> | undefined;
 
@@ -47,12 +49,13 @@ export async function POST(req: NextRequest) {
       const write = (text: string) => controller.enqueue(encoder.encode(text));
       keepalive = setInterval(() => { try { write(SSE_KEEPALIVE); } catch { work.abort(); } }, KEEPALIVE_MS);
       try {
-        await runAssistantTurnStream(
-          guard.ports, ctx,
+        // One structured log line per turn: runAssistantTurn fires the observer once, so the stream adds no second count.
+        await telemetry.run(() => runAssistantTurnStream(
+          telemetry.wrapPorts(guard.ports), ctx,
           { message: body.message, history: body.history, projectId: body.projectId, threadId: body.threadId },
           (ev) => write(encodeSseEvent(ev)),
-          { signal: work.signal },
-        );
+          { signal: work.signal, ...SILENT_TURN_OPTIONS },
+        ));
       } finally {
         clearInterval(keepalive);
         req.signal.removeEventListener("abort", onReqAbort);
