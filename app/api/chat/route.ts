@@ -4,6 +4,7 @@ import { AssistantError, type TurnContext } from "@/lib/domain/assistant/assista
 import { runAssistantTurn } from "@/lib/domain/assistant/assistantService";
 import { createPlatformPorts } from "@/lib/domain/assistant/platformAdapters";
 import { createSelfHostPorts } from "@/lib/domain/assistant/selfHostAdapters";
+import { getAssistantTelemetry } from "@/lib/domain/assistant/turnLog"; // observability wiring
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
 // platform max for this route (Hobby plan caps at 60s; Pro allows more).
@@ -22,13 +23,16 @@ export async function POST(req: NextRequest) {
   const ctx: TurnContext = { mode: platform ? "platform" : "selfhost", userId: null, activeProjectId: null };
 
   try {
-    const out = await runAssistantTurn(platform ? createPlatformPorts() : createSelfHostPorts(), ctx, {
+    // observability: one metadata-only log line per turn (see docs/assistant-observability.md)
+    const telemetry = getAssistantTelemetry();
+    const basePorts = platform ? createPlatformPorts() : createSelfHostPorts();
+    const out = await telemetry.run(() => runAssistantTurn(telemetry.wrapPorts(basePorts), ctx, {
       message: body.message,
       history: body.history,
       projectId: body.projectId,
       requestedProvider: providerId,
       requestedModel: model,
-    });
+    }));
     return NextResponse.json(out);
   } catch (err) {
     if (err instanceof AssistantError) {
