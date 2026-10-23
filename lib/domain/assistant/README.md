@@ -55,3 +55,6 @@ What the model can do: call the nine named read-only tools with validated argume
 Every table the chat reads has an owner policy, so none needs the service-role fallback. Not read by the chat path any more with the service client: all of the above.
 
 Service-role use outside chat data: `platformEntitlementPort(getServiceDb)` (the plan lookup and the `usage_events` count for the chat allowance, also used by `GET /api/chat/allowance`) keeps the service client on purpose. It is billing metadata for the signed-in user, not data the model can read: tools, gateway and prompt context never touch it.
+
+## Streaming
+`POST /api/chat/stream` (SSE) wraps the SAME `runAssistantTurn` via `runAssistantTurnStream` (`assistantStream.ts`) using optional `TurnHooks` (`onToolStart`, `onDelta`, `signal`, `hasStreamed`); `POST /api/chat` stays as the JSON fallback. Wire format and decoder: `sse.ts`. Real token streaming happens only on a driver's no-tools path (no project data, or Anthropic/Google context path); the tool path (OpenAI-compatible drivers) shows live tool status and then types the finished answer out in chunks. Once text has streamed, `hasStreamed()` blocks model fallback (it would duplicate text). Credit timing is whatever `attemptWithCandidate` does; the stream layer adds none.

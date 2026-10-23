@@ -4,11 +4,10 @@ import { AssistantError, type TurnContext } from "@/lib/domain/assistant/assista
 import { runAssistantTurn } from "@/lib/domain/assistant/assistantService";
 import { createPlatformPorts } from "@/lib/domain/assistant/platformAdapters";
 import { createSelfHostPorts } from "@/lib/domain/assistant/selfHostAdapters";
-import { guardChatRate } from "@/lib/domain/assistant/chatRateLimit";
-import { memoryRateLimiter } from "@/lib/domain/net/rateLimit";
+import { chatLimiter, guardChatRate } from "@/lib/domain/assistant/chatRateLimit";
 
-// Per-user request limit (12/min). In-process, so each server instance counts separately.
-const limiter = memoryRateLimiter();
+// Per-user request limit (12/min, shared with /api/chat/stream). In-process, so each server instance counts separately.
+const limiter = chatLimiter;
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
 // platform max for this route (Hobby plan caps at 60s; Pro allows more).

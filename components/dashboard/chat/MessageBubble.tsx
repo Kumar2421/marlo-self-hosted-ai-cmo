@@ -9,12 +9,15 @@ export default function MessageBubble({
   msg,
   isLast,
   actions,
+  onRetry,
 }: {
   msg: ChatMsg;
   /** The newest message gets the copy button. */
   isLast: boolean;
   /** Slot for future action cards under an assistant reply. Renders nothing today. */
   actions?: ReactNode;
+  /** "Try again" on a failed turn (newest error bubble only). */
+  onRetry?: () => void;
 }) {
   if (msg.role === "user") {
     return (
@@ -28,6 +31,13 @@ export default function MessageBubble({
 
   return (
     <div className="space-y-3 text-[13px] leading-relaxed text-gray-700">
+      {msg.streaming && (
+        // One calm line while the assistant works; announced politely, never the streamed text itself.
+        <p role="status" aria-live="polite" className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs text-ui-subtle">
+          <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400 motion-reduce:animate-none" />
+          {msg.status ?? "Thinking..."}
+        </p>
+      )}
       {parseChatText(msg.text).map((b, k) =>
         b.kind === "p" ? (
           <p key={k} className="break-words">{b.text}</p>
@@ -65,7 +75,16 @@ export default function MessageBubble({
       )}
       {msg.footer && <p>{msg.footer}</p>}
       {actions}
-      {isLast && (
+      {msg.error && isLast && onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="rounded-md border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-400"
+        >
+          Try again
+        </button>
+      )}
+      {isLast && !msg.streaming && (
         <div className="flex items-center gap-3 pt-1 text-ui-subtle">
           <Copy
             size={13}

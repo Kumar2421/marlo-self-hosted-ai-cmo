@@ -7,10 +7,10 @@ import {
   chatSessionReducer,
   initialChatSessionState,
   historyForRequest,
-  lastFailedUserText,
+  retryRequest,
   describeChatFailure,
 } from "@/lib/domain/chat/chatSessionState";
-import { sendChatMessage } from "@/lib/query/chatTransport";
+import { streamChatMessage } from "@/lib/query/chatTransport";
 import { unlockTrigger } from "@/lib/ui/unlockTrigger";
 import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/query/keys";
@@ -55,11 +55,12 @@ export function useChatSession() {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  async function sendText(raw: string, clearInput: boolean) {
+  /** retryPlan: set when resending a failed turn (the user message is already in the list). */
+  async function sendText(raw: string, clearInput: boolean, retryPlan?: { history: { role: "user" | "assistant"; content: string }[] }) {
     const text = raw.trim();
     if (!text || pending) return;
 
-    const history = historyForRequest(messages);
+    const history = retryPlan ? retryPlan.history : historyForRequest(messages);
 
     const reqId = requestIdRef.current + 1;
     requestIdRef.current = reqId;
@@ -68,33 +69,33 @@ export function useChatSession() {
     abortRef.current = ctrl;
     const isCurrent = () => requestIdRef.current === reqId;
 
-    dispatch({ type: "send", text });
+    dispatch(retryPlan ? { type: "retry" } : { type: "send", text });
+    dispatch({ type: "stream_start" });
     if (clearInput) {
       setInputState("");
       if (projectId) draftsRef.current[projectId] = "";
     }
 
     try {
-      const { ok, data } = await sendChatMessage(
+      await streamChatMessage(
         { message: text, history, projectId },
+        (ev) => {
+          if (!isCurrent()) return;
+          if (ev.type === "status") dispatch({ type: "status", label: ev.label });
+          else if (ev.type === "delta") dispatch({ type: "delta", text: ev.text });
+          else if (ev.type === "done") {
+            dispatch({ type: "done", lookedAt: ev.lookedAt.length > 0 ? ev.lookedAt : undefined });
+            queryClient.invalidateQueries({ queryKey: qk.chatAllowance() });
+          } else {
+            // Same path as the JSON endpoint: a chat_limit denial opens the unlock panel.
+            const failure = describeChatFailure({ error: ev.message, code: ev.code, limit: ev.limit });
+            dispatch({ type: "fail", message: failure.message });
+            if (failure.limitReached) unlockTrigger.fire();
+            queryClient.invalidateQueries({ queryKey: qk.chatAllowance() });
+          }
+        },
         ctrl.signal,
       );
-      if (!isCurrent()) return;
-
-      if (!ok) {
-        const failure = describeChatFailure(data);
-        dispatch({ type: "fail", message: failure.message });
-        if (failure.limitReached) unlockTrigger.fire();
-        queryClient.invalidateQueries({ queryKey: qk.chatAllowance() });
-        return;
-      }
-      queryClient.invalidateQueries({ queryKey: qk.chatAllowance() });
-
-      dispatch({
-        type: "reply",
-        text: data.reply as string,
-        lookedAt: Array.isArray(data.lookedAt) ? (data.lookedAt as string[]) : undefined,
-      });
     } catch {
       if (!isCurrent()) return;
       dispatch({ type: "fail", message: "⚠ Couldn't reach the server. Check your connection and try again." });
@@ -104,10 +105,10 @@ export function useChatSession() {
   /** Sends the composer text. */
   const send = () => sendText(input, true);
 
-  /** Re-sends the user message that the trailing error bubble belongs to. Not wired to any UI yet. */
+  /** Re-sends the user message that the trailing error bubble belongs to ("Try again"). One tap, one request. */
   const retry = () => {
-    const text = lastFailedUserText(messages);
-    return text ? sendText(text, false) : Promise.resolve();
+    const plan = retryRequest(messages);
+    return plan && !pending ? sendText(plan.text, false, { history: plan.history }) : Promise.resolve();
   };
 
   return { messages, pending, input, setInput, send, retry, resetChat, projectName: project?.name ?? null, primaryModel };

@@ -16,7 +16,7 @@ export default function ChatPanel({
   open: boolean;
   onToggle: () => void;
 }) {
-  const { messages, pending, input, setInput, send, resetChat, projectName, primaryModel } = useChatSession();
+  const { messages, pending, input, setInput, send, retry, resetChat, projectName, primaryModel } = useChatSession();
   const inputRef = useRef<HTMLInputElement>(null);
   const dataNotice = limitedDataNotice(primaryModel ? findProviderForModel(primaryModel) : null);
 
@@ -25,6 +25,7 @@ export default function ChatPanel({
       <MessageList
         messages={messages}
         pending={pending}
+        onRetry={retry}
         empty={
           <EmptyState
             onPick={(p) => {

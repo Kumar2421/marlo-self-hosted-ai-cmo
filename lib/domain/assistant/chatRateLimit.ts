@@ -1,10 +1,13 @@
-import type { RateLimiter } from "../net/rateLimit.ts";
+import { memoryRateLimiter, type RateLimiter } from "../net/rateLimit.ts";
 import type { AssistantPorts } from "./assistantService.ts";
 import type { TurnContext } from "./assistantTypes.ts";
 
 /** Per-user request limit on the chat endpoint. Monthly/plan limits are a separate concern. */
 export const CHAT_RATE_LIMIT = 12;
 export const CHAT_RATE_WINDOW_SEC = 60;
+
+/** One in-process limiter shared by /api/chat and /api/chat/stream, so the 12/min budget is per user, not per route. */
+export const chatLimiter: RateLimiter = memoryRateLimiter();
 
 export const CHAT_RATE_MESSAGE = "You are sending messages very quickly. Please wait a moment and try again.";
 
