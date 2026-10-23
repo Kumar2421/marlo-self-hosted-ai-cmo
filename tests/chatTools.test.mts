@@ -1,13 +1,15 @@
 import { test } from "node:test";
 import * as assert from "node:assert";
 import { runTool, CHAT_TOOLS, MAX_RESULT_CHARS, sanitize, type ChatPorts, type LeadSummary } from "../lib/domain/chat/tools.ts";
-import { summarizeLeads, geoFromRow, supabaseLeadSummary, auditFromRow } from "../lib/domain/chat/chatQueries.ts";
+import { summarizeLeads, geoFromRow, auditFromRow } from "../lib/domain/chat/chatQueries.ts";
 import {
   runChatTurn, buildToolDefs, buildAutoSummary, MAX_TOOL_CALLS, MAX_TOTAL_RESULT_CHARS, isToolUnsupportedError, type DriverLike,
 } from "../lib/domain/chat/toolLoop.ts";
+import { wrapUntrusted as w } from "../lib/domain/chat/untrusted.ts";
 import type { Finding } from "../lib/domain/findings/findingTypes.ts";
 import type { SearchSnapshotPayload, SnapshotQuery } from "../lib/domain/search/searchSnapshot.ts";
 
+const F1 = "11111111-1111-4111-8111-111111111111";
 const q = (query: string, clicks: number, impressions: number, position: number): SnapshotQuery => ({
   query, clicks, impressions, ctr: impressions ? clicks / impressions : 0, position,
 });
@@ -31,8 +33,8 @@ function fakePorts(over: Partial<ChatPorts> = {}): ChatPorts {
   const leads: LeadSummary = { total: 0, withEmail: 0, emailVerified: 0, emailed: 0, replied: 0, recent: [] };
   return {
     getSearchSnapshot: async () => ({ snapshotDate: "2026-10-01", payload }),
-    listFindings: async () => [finding("f1"), finding("f2", "fixed")],
-    getFinding: async (id) => (id === "f1" ? finding("f1", "new", { page: { url: "u" }, apiToken: "SECRET", contactEmail: "a@b.com" }) : null),
+    listFindings: async () => [finding(F1), finding("f2", "fixed")],
+    getFinding: async (id) => (id === F1 ? finding(F1, "new", { page: { url: "u" }, apiToken: "SECRET", contactEmail: "a@b.com" }) : null),
     recommendationsFor: () => [{ title: "Add canonical", summary: "do it", priority: "high" }],
     listActionsWithOutcomes: async () => [],
     getLeadSummary: async () => leads,
@@ -46,7 +48,7 @@ function fakePorts(over: Partial<ChatPorts> = {}): ChatPorts {
 
 test("every tool in the registry is runnable and read-only named", async () => {
   for (const t of CHAT_TOOLS) {
-    const r = await runTool(fakePorts(), t.name, t.name === "get_finding" ? { id: "f1" } : {});
+    const r = await runTool(fakePorts(), t.name, t.name === "get_finding" ? { id: F1 } : {});
     assert.ok(r.content.length > 0, t.name);
   }
   assert.equal((await runTool(fakePorts(), "drop_table")).ok, false);
@@ -58,7 +60,7 @@ test("search summary: totals, top queries, data date", async () => {
   assert.equal(d.dataDate, "2026-10-01");
   assert.equal(d.totals.clicks, 15);
   assert.equal(d.totals.views, 1500);
-  assert.equal(d.topQueries[0].query, "alpha");
+  assert.equal(d.topQueries[0].query, w("alpha"));
   assert.equal(d.previous28Days.clicks, 20);
 });
 
@@ -91,11 +93,11 @@ test("list_findings caps rows", async () => {
 });
 
 test("get_finding: scoped lookup, recommendations, secrets stripped", async () => {
-  const r = await runTool(fakePorts(), "get_finding", { id: "f1" });
+  const r = await runTool(fakePorts(), "get_finding", { id: F1 });
   assert.ok(!r.content.includes("SECRET"));
   assert.ok(!r.content.includes("a@b.com"));
   const d = JSON.parse(r.content);
-  assert.equal(d.recommendations[0].title, "Add canonical");
+  assert.equal(d.recommendations[0].title, w("Add canonical"));
   const miss = await runTool(fakePorts(), "get_finding", { id: "other-project-finding" });
   assert.equal(miss.ok, false);
   assert.equal((await runTool(fakePorts(), "get_finding", {})).ok, false);
@@ -103,20 +105,20 @@ test("get_finding: scoped lookup, recommendations, secrets stripped", async () =
 
 test("get_finding passes the finding id to the actions port", async () => {
   let seen: string | undefined;
-  await runTool(fakePorts({ listActionsWithOutcomes: async (id) => { seen = id; return []; } }), "get_finding", { id: "f1" });
-  assert.equal(seen, "f1");
+  await runTool(fakePorts({ listActionsWithOutcomes: async (id) => { seen = id; return []; } }), "get_finding", { id: F1 });
+  assert.equal(seen, F1);
 });
 
 test("actions and outcomes: empty, then verdict counts", async () => {
   assert.equal(JSON.parse((await runTool(fakePorts(), "list_actions_and_outcomes")).content).available, false);
   const action = {
-    id: "a1", projectId: "p1", findingId: "f1", type: "rewrite_snippet", status: "completed", title: "Rewrite title", target: {}, parameters: {},
+    id: "a1", projectId: "p1", findingId: F1, type: "rewrite_snippet", status: "completed", title: "Rewrite title", target: {}, parameters: {},
     result: { implementation: { secretish: "x" } }, createdAt: "2026-09-01", startedAt: null, completedAt: "2026-09-02",
     outcome: { status: "improved", daysSince: 20, daysUntilReady: 0, confidence: "solid", headline: "Clicks up", pageNote: null, baseline: null, current: null, via: "manual" },
   } as never;
   const d = JSON.parse((await runTool(fakePorts({ listActionsWithOutcomes: async () => [action] }), "list_actions_and_outcomes")).content);
   assert.deepEqual(d.counts, { improved: 1 });
-  assert.equal(d.actions[0].outcome.headline, "Clicks up");
+  assert.equal(d.actions[0].outcome.headline, w("Clicks up"));
   assert.ok(!JSON.stringify(d).includes("secretish"), "raw action result is not exposed");
 });
 
@@ -135,18 +137,6 @@ test("leads: counts and recent, no raw emails", async () => {
   assert.equal(JSON.parse((await runTool(fakePorts(), "list_leads")).content).available, false);
 });
 
-test("supabase lead query is scoped by user and project", async () => {
-  const eqs: Array<[string, unknown]> = [];
-  const chain: Record<string, unknown> = {};
-  chain.select = () => chain;
-  chain.eq = (c: string, v: unknown) => { eqs.push([c, v]); return chain; };
-  chain.order = () => chain;
-  chain.limit = async () => ({ data: [] });
-  const db = { from: () => chain } as never;
-  await supabaseLeadSummary(db, "u1", "p1", 5);
-  assert.deepEqual(eqs, [["user_id", "u1"], ["project_id", "p1"]]);
-});
-
 test("geo: parse string or parsed payloads; empty and bad data", async () => {
   assert.equal(geoFromRow(null), null);
   assert.equal(geoFromRow({ payload: "not json", checked_at: "x" }), null);
@@ -158,8 +148,8 @@ test("geo: parse string or parsed payloads; empty and bad data", async () => {
 });
 
 test("results are capped in size", async () => {
-  const big = finding("f1", "new", { page: "x".repeat(100000), list: Array.from({ length: 100 }, () => "y".repeat(190)) });
-  const r = await runTool(fakePorts({ getFinding: async () => big }), "get_finding", { id: "f1" });
+  const big = finding(F1, "new", { page: "x".repeat(100000), list: Array.from({ length: 100 }, () => "y".repeat(190)) });
+  const r = await runTool(fakePorts({ getFinding: async () => big }), "get_finding", { id: F1 });
   assert.ok(r.content.length <= MAX_RESULT_CHARS);
 });
 
@@ -187,7 +177,7 @@ test("tool defs enforce call count and total char budget, and record usage", asy
   assert.ok(budgetHit);
   assert.deepEqual(used, ["get_search_summary"]);
 
-  const big = finding("f1", "new", { list: Array.from({ length: 5 }, () => "z".repeat(190)) });
+  const big = finding(F1, "new", { list: Array.from({ length: 5 }, () => "z".repeat(190)) });
   const lots = Array.from({ length: 40 }, (_, i) => ({ ...big, id: `x${i}` }));
   const defs2 = buildToolDefs(fakePorts({ listFindings: async () => lots }), []);
   const list = defs2.find((d) => d.name === "list_findings")!;
@@ -248,8 +238,8 @@ test("model that rejects tool calling falls back to context; other errors propag
 });
 
 test("secrets in stored data never reach the model via the summary or tools", async () => {
-  const leak = fakePorts({ getFinding: async () => finding("f1", "new", { refresh_token: "RT-123", note: "ok" }) });
-  const r = await runTool(leak, "get_finding", { id: "f1" });
+  const leak = fakePorts({ getFinding: async () => finding(F1, "new", { refresh_token: "RT-123", note: "ok" }) });
+  const r = await runTool(leak, "get_finding", { id: F1 });
   assert.ok(!r.content.includes("RT-123"));
   assert.ok(r.content.includes("ok"));
 });
@@ -291,10 +281,6 @@ test("lead summary flags truncation and DB errors throw", async () => {
   assert.equal(summarizeLeads(rows.slice(0, 3), 1).truncated, false);
   const r = await runTool(fakePorts({ getLeadSummary: async () => ({ ...summarizeLeads(rows, 1) }) }), "list_leads");
   assert.match(r.content, /2000\+/);
-  const chain: Record<string, unknown> = {};
-  chain.select = () => chain; chain.eq = () => chain; chain.order = () => chain;
-  chain.limit = async () => ({ data: null, error: { message: "boom" } });
-  await assert.rejects(supabaseLeadSummary({ from: () => chain } as never, "u", "p", 5), /boom/);
 });
 
 test("total result cap holds under parallel calls", async () => {
@@ -339,7 +325,7 @@ test("get_audit_summary: never audited vs audited (errors first, scores, checked
   assert.equal(d.errors, 1);
   assert.equal(d.warnings, 1);
   assert.equal(d.indexable, false);
-  assert.equal(d.topIssues[0].label, "No H1 tag found");
+  assert.equal(d.topIssues[0].label, w("No H1 tag found"));
   assert.equal(d.scores.seo, 95);
 });
 
@@ -356,7 +342,7 @@ test("list_competitors: none is noData, some are listed", async () => {
   assert.equal(none.available, false);
   const some = JSON.parse((await runTool(fakePorts({ listCompetitors: async () => ["https://a.com", "https://b.com"] }), "list_competitors")).content);
   assert.equal(some.total, 2);
-  assert.deepEqual(some.competitors, ["https://a.com", "https://b.com"]);
+  assert.deepEqual(some.competitors, [w("https://a.com"), w("https://b.com")]);
 });
 
 test("counts-only overview says the site was never audited", async () => {

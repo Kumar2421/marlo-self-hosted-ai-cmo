@@ -11,10 +11,11 @@ const DAY_MS = 86_400_000;
  * Whether the "Unlock the full AI CMO" panel above the chat should show.
  * - Only for the hosted app's free plan: self-host has no plans, and paid plans have nothing to unlock.
  * - Never while the plan is still unknown (loading or failed), so it cannot flash for paying users.
- * - Hidden for UNLOCK_DISMISS_DAYS after the user closes it.
+ * - Hidden for UNLOCK_DISMISS_DAYS after the user closes it, unless `forced` (the chat just hit its free cap).
  */
-export function shouldShowUnlockPanel(args: { plan: PlanInfoPlan | undefined; dismissedAt: number | null; now: number }): boolean {
+export function shouldShowUnlockPanel(args: { plan: PlanInfoPlan | undefined; dismissedAt: number | null; now: number; forced?: boolean }): boolean {
   if (args.plan !== "free") return false;
+  if (args.forced) return true;
   if (args.dismissedAt !== null && Number.isFinite(args.dismissedAt) && args.now - args.dismissedAt < UNLOCK_DISMISS_DAYS * DAY_MS) return false;
   return true;
 }

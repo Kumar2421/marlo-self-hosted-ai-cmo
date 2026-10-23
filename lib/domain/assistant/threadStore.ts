@@ -213,13 +213,13 @@ const RECENT_SQL = `SELECT * FROM (
     SELECT rowid AS rid, * FROM chat_messages WHERE thread_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?
   ) ORDER BY created_at ASC, rid ASC`;
 
-/** SQLite store. `getDb` is lazy so importing this never opens the database. */
-export function sqliteThreadStore(getDb: () => Database.Database, opts: { now?: () => Date } = {}): ThreadStore {
+/** SQLite store. `openDb` is lazy so importing this never opens the database. */
+export function sqliteThreadStore(openDb: () => Database.Database, opts: { now?: () => Date } = {}): ThreadStore {
   const now = opts.now ?? (() => new Date());
   /** Maps "no such table" to the unavailable signal. */
   function run<T>(fn: (db: Database.Database) => T): T {
     try {
-      return fn(getDb());
+      return fn(openDb());
     } catch (err) {
       if (err instanceof Error && /no such table/i.test(err.message)) throw new ThreadsUnavailableError();
       throw err;

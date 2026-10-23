@@ -1,5 +1,13 @@
 /** Shared vocabulary of the assistant service. Pure types plus AssistantError. */
 
+import type { ChatRunHooks } from "../chat/toolLoop.ts";
+
+/** Optional streaming observers plus a cancel signal. Omitted by the JSON endpoint. */
+export type TurnHooks = ChatRunHooks & {
+  /** True once visible text went to the client: the turn can no longer fall back to another model. */
+  hasStreamed?: () => boolean;
+};
+
 export type ChatTurnMessage = { role: "user" | "assistant"; content: string };
 
 /**
@@ -32,11 +40,14 @@ export class AssistantError extends Error {
   readonly userMessage: string;
   /** Underlying provider/system error, if any. Never sent to the client. */
   readonly cause?: unknown;
-  constructor(status: number, userMessage: string, cause?: unknown) {
+  /** Extra JSON fields sent beside `error` (e.g. code/used/limit for the chat cap). Never secrets. */
+  readonly body?: Record<string, unknown>;
+  constructor(status: number, userMessage: string, cause?: unknown, body?: Record<string, unknown>) {
     super(userMessage);
     this.name = "AssistantError";
     this.status = status;
     this.userMessage = userMessage;
     this.cause = cause;
+    this.body = body;
   }
 }
