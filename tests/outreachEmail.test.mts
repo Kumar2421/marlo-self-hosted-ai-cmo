@@ -42,10 +42,10 @@ test("paragraph and escape helpers", () => {
   assert.equal(escapeHtml(`<a href="x">'&'</a>`), "&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;");
 });
 
+const messageOnly = (text: string) => text.split("\n--\n")[0];
+
 test("plain template has no signature block; clean and card add one", () => {
-  assert.ok(!renderOutreachEmail({ ...base, templateId: "plain" }).text.split("
---
-")[0].includes("Ana Sender"));
-  assert.match(renderOutreachEmail({ ...base, templateId: "clean" }).text, /Ana Sender\nAcme/);
+  assert.ok(!messageOnly(renderOutreachEmail({ ...base, templateId: "plain" }).text).includes("Ana Sender"));
+  assert.match(messageOnly(renderOutreachEmail({ ...base, templateId: "clean" }).text), /Ana Sender\nAcme/);
   assert.match(renderOutreachEmail({ ...base, templateId: "card" }).html, /Ana Sender/);
 });
