@@ -22,16 +22,16 @@ export const STATUS_LABEL: Record<FindingStatus, string> = {
 const STATUS_ORDER: FindingStatus[] = ["new", "acknowledged", "fixing", "fixed", "verified"];
 
 export function severityClass(severity: Finding["severity"]) {
-  if (severity === "critical") return "border-red-200 bg-red-50 text-red-700";
-  if (severity === "warning") return "border-amber-200 bg-amber-50 text-amber-700";
-  return "border-gray-200 bg-gray-50 text-gray-600";
+  if (severity === "critical") return "border-tint-danger-border bg-tint-danger-bg text-tint-danger-fg";
+  if (severity === "warning") return "border-tint-warning-border bg-tint-warning-bg text-tint-warning-fg";
+  return "border-ui-border bg-ui-surface-sunken text-ui-muted";
 }
 
 export function statusClass(status: FindingStatus) {
-  if (status === "verified") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (status === "failed") return "border-red-200 bg-red-50 text-red-700";
-  if (status === "fixing") return "border-blue-200 bg-blue-50 text-blue-700";
-  return "border-gray-200 bg-gray-50 text-gray-600";
+  if (status === "verified") return "border-tint-success-border bg-tint-success-bg text-tint-success-fg";
+  if (status === "failed") return "border-tint-danger-border bg-tint-danger-bg text-tint-danger-fg";
+  if (status === "fixing") return "border-tint-info-border bg-tint-info-bg text-tint-info-fg";
+  return "border-ui-border bg-ui-surface-sunken text-ui-muted";
 }
 
 function SectionTitle({ children, hint }: { children: React.ReactNode; hint?: string }) {
