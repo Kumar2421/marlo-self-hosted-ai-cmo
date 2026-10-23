@@ -3,7 +3,7 @@ import { getDb } from "@/lib/db";
 import { getDriver, providerSupportsTools } from "@/lib/llm";
 import { CompetitorDiscoveryAgent } from "@/lib/domain/documents/CompetitorDiscoveryAgent";
 import { fetchCompetitorSnippet } from "@/lib/domain/documents/CompetitorAnalysisGenerator";
-import { isRelevantToProduct } from "@/lib/domain/documents/competitorCandidates";
+import { NO_CONFIDENT_COMPETITORS_NOTE, selectConfidentCompetitors } from "@/lib/domain/documents/competitorCandidates";
 import type { SEOAuditPayload } from "@/lib/domain/seo/SEOAgent";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import { FEATURES } from "@/lib/features";
@@ -123,13 +123,21 @@ export async function POST(req: NextRequest) {
       });
 
       if (candidates.length === 0) {
-        return NextResponse.json({ added: [], usedWebSearch, note: "No confident competitor candidates found." });
+        return NextResponse.json({ added: [], usedWebSearch, note: NO_CONFIDENT_COMPETITORS_NOTE });
       }
 
       const verified = await Promise.all(
         candidates.map(async (c) => ({ ...c, snippet: await fetchCompetitorSnippet(`https://${c.domain}`) }))
       );
-      const reachable = verified.filter((v) => v.snippet.title !== "(couldn't fetch)" && isRelevantToProduct(productText, `${v.snippet.title} ${v.snippet.description}`));
+      const reachable = selectConfidentCompetitors(
+      productText,
+      verified
+        .filter((v) => v.snippet.title !== "(couldn't fetch)")
+        .map((v) => ({ domain: v.domain, reason: v.reason, title: v.snippet.title, description: v.snippet.description })),
+    );
+    if (reachable.length === 0) {
+      return NextResponse.json({ added: [], usedWebSearch, proposed: candidates.length, verified: 0, note: NO_CONFIDENT_COMPETITORS_NOTE });
+    }
 
       const { data: existingRows } = await db
         .from("project_competitors")
@@ -228,7 +236,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (candidates.length === 0) {
-      return NextResponse.json({ added: [], usedWebSearch, note: "No confident competitor candidates found." });
+      return NextResponse.json({ added: [], usedWebSearch, note: NO_CONFIDENT_COMPETITORS_NOTE });
     }
 
     // Real verification, same crawl used by Competitor Analysis — a
@@ -236,7 +244,15 @@ export async function POST(req: NextRequest) {
     const verified = await Promise.all(
       candidates.map(async (c) => ({ ...c, snippet: await fetchCompetitorSnippet(`https://${c.domain}`) }))
     );
-    const reachable = verified.filter((v) => v.snippet.title !== "(couldn't fetch)" && isRelevantToProduct(productText, `${v.snippet.title} ${v.snippet.description}`));
+    const reachable = selectConfidentCompetitors(
+      productText,
+      verified
+        .filter((v) => v.snippet.title !== "(couldn't fetch)")
+        .map((v) => ({ domain: v.domain, reason: v.reason, title: v.snippet.title, description: v.snippet.description })),
+    );
+    if (reachable.length === 0) {
+      return NextResponse.json({ added: [], usedWebSearch, proposed: candidates.length, verified: 0, note: NO_CONFIDENT_COMPETITORS_NOTE });
+    }
 
     const existingRows = db
       .prepare("SELECT url FROM project_competitors WHERE project_id = ?")

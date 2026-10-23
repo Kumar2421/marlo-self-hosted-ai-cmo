@@ -110,8 +110,8 @@ import { buildDiscoveryQueries as bq, filterDeniedCandidates, isDeniedDomain, is
 test("generic project name: queries come from the description, not the bare name", () => {
   const q = bq("Home", "Home", "MLForge Studio builds enterprise AI and machine learning software for businesses.");
   assert.ok(q.length > 0);
-  assert.ok(q.every((s) => !/\bHome\b/.test(s)), q.join(" | "));
-  assert.ok(q.some((s) => /enterprise AI/i.test(s)));
+  assert.ok(q.every((s) => !/Home/.test(s)), q.join(" | "));
+  assert.ok(q.some((s) => /AI automation agency/i.test(s)));
 });
 
 test("real brand name keeps its brand queries and adds the category query first", () => {
@@ -140,8 +140,96 @@ test("relevance: unrelated business is dropped, same category is kept", () => {
   assert.equal(isRelevantToProduct(product, "Fractal - enterprise machine learning and AI consulting"), true);
 });
 
-test("relevance: too little text on either side keeps the candidate", () => {
+test("relevance: no candidate text means no evidence (fail closed); no product text means nothing to judge", () => {
   assert.equal(isRelevantToProduct("", "Anything at all here about stuff"), true);
-  assert.equal(isRelevantToProduct(product2(), "(no title found) (no meta description found)"), true);
+  assert.equal(isRelevantToProduct("Invoicing software for freelancers and agencies", "(no title found) (no meta description found)"), false);
 });
-function product2() { return "Invoicing software for freelancers and agencies"; }
+
+// ---- Live bug: project "Home" (MLForge Studio) ----
+import { MAX_COMPETITORS, relevanceScore, selectConfidentCompetitors, NO_CONFIDENT_COMPETITORS_NOTE } from "../lib/domain/documents/competitorCandidates.ts";
+
+const MLFORGE =
+  "MLForge Studio designs, builds, and deploys high-performance custom software, CRM systems, and AI platforms for businesses, integrating AI into business systems.";
+
+const cand = (domain: string, title: string, description: string) => ({ domain, reason: "r", title, description });
+
+const JUNK = [
+  cand("qualitystructuresmi.com", "Quality Structures - Pole barns and construction in Michigan", "Custom pole barns, garages and contractor services."),
+  cand("redfin.com", "Redfin: Real Estate, Homes for Sale, MLS Listings, Agents", "Search homes for sale and real estate listings."),
+  cand("zillow.com", "Zillow: Real Estate, Apartments, Mortgages & Home Values", "Find real estate, homes for sale, apartments and mortgage rates."),
+  cand("cbinsights.com", "CB Insights - Tech market intelligence platform", "Market intelligence on companies, startups and data."),
+  cand("ellii.com", "Ellii - English language learning for schools", "Writing and grammar practice for students and teachers."),
+  cand("grammarly.com", "Grammarly: Free AI Writing Assistant", "Grammar checker, spelling and proofreading with AI."),
+  cand("millersamuel.com", "Miller Samuel Real Estate Appraisers & Consultants", "Real estate appraisal and market reports."),
+  cand("nestment.com", "Nestment - Real estate investing for homebuyers", "Invest in rental property and real estate."),
+  cand("followupboss.com", "Follow Up Boss - Real estate CRM", "CRM software for real estate agents and teams."),
+];
+
+const GOOD = [
+  cand("thoughtbot.com", "thoughtbot - Custom software design and development agency", "We design, build and deploy custom software and AI products for businesses."),
+  cand("n8n.io", "n8n - Workflow automation with AI", "Integrate AI into your business systems and automate workflows."),
+  cand("stellarsoft.dev", "Stellar - AI automation agency", "We build custom AI platforms, CRM systems and integrate AI into business systems."),
+  cand("codeacme.io", "CodeAcme - Custom software development company", "High-performance custom software, web apps and CRM systems built for businesses."),
+];
+
+test("MLForge: every junk domain from the live bug is rejected", () => {
+  for (const j of JUNK) {
+    assert.deepEqual(selectConfidentCompetitors(MLFORGE, [j]), [], j.domain);
+  }
+});
+
+test("MLForge: realistic dev-agency and automation-vendor candidates are kept", () => {
+  for (const g of GOOD) {
+    assert.equal(selectConfidentCompetitors(MLFORGE, [g]).length, 1, `${g.domain} score ${relevanceScore(MLFORGE, `${g.title} ${g.description}`)}`);
+  }
+});
+
+test("MLForge: mixed list keeps only the good ones, fewer than the cap, no padding", () => {
+  const out = selectConfidentCompetitors(MLFORGE, [...JUNK, ...GOOD]);
+  assert.deepEqual(out.map((c) => c.domain).sort(), GOOD.map((c) => c.domain).sort());
+  assert.ok(out.length < MAX_COMPETITORS);
+});
+
+test("all-junk input returns zero results (route then reports the honest note)", () => {
+  assert.deepEqual(selectConfidentCompetitors(MLFORGE, JUNK), []);
+  assert.match(NO_CONFIDENT_COMPETITORS_NOTE, /could not find confident competitors/i);
+});
+
+test("results are capped at 8, best score first, deterministically", () => {
+  const many = Array.from({ length: 15 }, (_, i) =>
+    cand(`agency${String(i).padStart(2, "0")}.io`, "Custom software development agency", `We build custom software, AI platforms and CRM systems${i % 2 ? " and deploy them" : ""}.`),
+  );
+  const out = selectConfidentCompetitors(MLFORGE, many);
+  assert.equal(out.length, MAX_COMPETITORS);
+  assert.deepEqual(selectConfidentCompetitors(MLFORGE, [...many].reverse()).map((c) => c.domain), out.map((c) => c.domain));
+});
+
+test("a broad overlap alone (CRM) is not enough", () => {
+  assert.equal(isRelevantToProduct(MLFORGE, "SalesNest CRM for sales teams pipeline tracking and contact management"), false);
+});
+
+test("marketplaces, directories and consumer portals are denied by name and by hostname pattern", () => {
+  for (const d of ["clutch.co", "upwork.com", "grammarly.com", "cbinsights.com", "bestrealestatelistings.net", "somecompany-reviews.com", "devdirectory.io"]) {
+    assert.ok(isDeniedDomain(d), d);
+  }
+  assert.ok(!isDeniedDomain("thoughtbot.com"));
+});
+
+test("MLForge queries target the specific offer, not the verb sentence or bare 'CRM'", () => {
+  const q = bq("Home", "Home", MLFORGE);
+  assert.ok(q.includes("custom software development company alternatives"), q.join(" | "));
+  assert.ok(q.some((s) => /AI automation agency for business systems/.test(s)));
+  assert.ok(q.every((s) => !/Home/.test(s) && !/designs, builds/i.test(s)), q.join(" | "));
+});
+
+test("search hits about unrelated industries do not become candidates when the product text is known", () => {
+  const out = extractCompetitorCandidates(
+    [
+      [hit("https://zillowish-homes.com/a", "Real estate CRM for agents", "Homes for sale and real estate CRM"), hit("https://thoughtbot.com/a", "Custom software development agency", "We build custom software and AI platforms")],
+      [hit("https://zillowish-homes.com/b", "Real estate CRM for agents", "Homes for sale and real estate CRM"), hit("https://thoughtbot.com/b", "Custom software development agency", "We build custom software and AI platforms")],
+    ],
+    "home.mlforge.in",
+    MLFORGE,
+  );
+  assert.deepEqual(domains(out), ["thoughtbot.com"]);
+});

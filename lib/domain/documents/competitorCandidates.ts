@@ -19,12 +19,19 @@ const NOT_COMPETITORS = new Set([
   "redfin.com", "zillow.com", "realtor.com", "trulia.com", "yelp.com", "tripadvisor.com", "booking.com",
   "airbnb.com", "ebay.com", "etsy.com", "walmart.com", "indeed.com", "glassdoor.com", "bing.com", "yahoo.com",
   "microsoft.com", "nytimes.com", "bbc.com", "cnn.com", "bloomberg.com", "reuters.com", "quora.com",
+  "grammarly.com", "cbinsights.com", "pitchbook.com", "owler.com", "zoominfo.com", "dnb.com", "apollo.io",
+  "upwork.com", "fiverr.com", "freelancer.com", "toptal.com", "goodfirms.co", "designrush.com", "sortlist.com",
+  "themanifest.com", "topdevelopers.co", "softwaresuggest.com", "alternativeto.com", "stackshare.io",
   "hubspot.com", "shopify.com", "dev.to", "hashnode.com", "angel.co", "wellfound.com", "clutch.co", "g2crowd.com",
 ]);
+
+/** Hostnames that name a listing/directory/review/consumer-portal business rather than a vendor. */
+const MARKETPLACE_HOST = /(realty|realestate|real-estate|mortgage|apartment|listings?|directory|reviews?\b|coupon|grammar|marketplace)/i;
 
 /** Single source of truth for "this domain lists/hosts competitors but is not one". */
 export function isDeniedDomain(host: string): boolean {
   const h = normalizeHost(host);
+  if (MARKETPLACE_HOST.test(h)) return true;
   for (const blocked of NOT_COMPETITORS) {
     if (h === blocked || h.endsWith(`.${blocked}`)) return true;
   }
@@ -66,27 +73,73 @@ const STOPWORDS = new Set((
   "customer people everything one single simple easy fast better smarter way ways home welcome official page pages free"
 ).split(" "));
 
+function stem(w: string): string {
+  let t = w;
+  if (t.length > 4) t = t.replace(/(ing|ion|ers|er|ed|es|s)$/, "");
+  if (t.length > 4) t = t.replace(/e$/, "");
+  return t;
+}
+
 function terms(text: string): Set<string> {
   const out = new Set<string>();
   for (const w of text.toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
-    if (w.length < 3 || STOPWORDS.has(w)) continue;
-    out.add(w.length > 4 ? w.replace(/(ing|ers|er|es|s)$/, "") : w);
+    if ((w.length < 3 && w !== "ai" && w !== "ml") || STOPWORDS.has(w)) continue;
+    out.add(stem(w));
   }
   return out;
 }
 
+/** Terms that appear across many industries: they count for half. */
+const BROAD = new Set(["crm", "system", "custom", "high", "performance", "tool", "data", "management", "marketing", "sales", "cloud", "smart", "web", "mobile", "design", "deploy"].map(stem));
+
+/** Consumer / vertical-industry words: a candidate using one that the product never mentions sells to a different market. */
+const VERTICAL = new Set((
+  "real estate realtor realty mortgage mortgages apartment apartments homebuyer homebuyers rental rentals property properties " +
+  "grammar spelling proofreading writing hotel hotels flights travel restaurant restaurants recipe recipes dating fitness " +
+  "insurance loans lending casino betting coupons coupon fashion apparel jewelry furniture construction contractor roofing " +
+  "plumbing dental clinic hospital pharmacy wedding"
+).split(" ").map(stem));
+
+/** Minimum score for a candidate to be shown. */
+export const MIN_RELEVANCE = 2;
+/** Hard cap on competitors added per discovery run. */
+export const MAX_COMPETITORS = 8;
+
 /**
- * Whether a candidate's own title/description plausibly describes the same kind of business as the product.
- * Conservative: with too little text on either side there is no signal, so the candidate is kept.
- * Pure keyword overlap, no model call.
+ * Deterministic relevance of a candidate's title + snippet + domain to the product text: the number of distinct
+ * informative product terms it shares (broad terms like "crm" count half). A candidate that talks about an
+ * industry the product never mentions (real estate, grammar...) scores 0. With no candidate text there is no
+ * evidence, so the score is 0. With no product text there is nothing to judge against, so the score is neutral.
  */
-export function isRelevantToProduct(productText: string, candidateText: string): boolean {
+export function relevanceScore(productText: string, candidateText: string): number {
   const product = terms(productText);
+  if (product.size < 3) return MIN_RELEVANCE;
   const candidate = terms(candidateText.replace(/\([^)]*\)/g, " ")); // drop "(no title found)" placeholders
-  if (product.size < 3 || candidate.size < 3) return true;
-  for (const t of candidate) if (product.has(t)) return true;
-  return false;
+  if (candidate.size < 3) return 0;
+  for (const t of candidate) if (VERTICAL.has(t) && !product.has(t)) return 0;
+  let score = 0;
+  for (const t of candidate) if (product.has(t)) score += BROAD.has(t) ? 0.5 : 1;
+  return score;
 }
+
+export function isRelevantToProduct(productText: string, candidateText: string): boolean {
+  return relevanceScore(productText, candidateText) >= MIN_RELEVANCE;
+}
+
+export type VerifiedCandidate = { domain: string; reason: string; title: string; description: string };
+
+/** Keep only confidently relevant candidates, best first, at most MAX_COMPETITORS. Returns fewer (or none) rather than padding. */
+export function selectConfidentCompetitors<T extends VerifiedCandidate>(productText: string, candidates: T[]): T[] {
+  return candidates
+    .filter((c) => !isDeniedDomain(c.domain))
+    .map((c) => ({ c, score: relevanceScore(productText, `${c.title} ${c.description} ${c.domain.replace(/[.-]/g, " ")}`) }))
+    .filter((x) => x.score >= MIN_RELEVANCE)
+    .sort((a, b) => b.score - a.score || a.c.domain.localeCompare(b.c.domain))
+    .slice(0, MAX_COMPETITORS)
+    .map((x) => x.c);
+}
+
+export const NO_CONFIDENT_COMPETITORS_NOTE = "We could not find confident competitors for this product. Add yours.";
 
 /** The product's category in a few words: the title minus the brand, else the first sentence of the description. */
 export function productCategory(projectName: string, metaTitle: string, description = ""): string {
@@ -109,14 +162,31 @@ export function productCategory(projectName: string, metaTitle: string, descript
 export function buildDiscoveryQueries(projectName: string, metaTitle: string, description = ""): string[] {
   const name = projectName.trim();
   const category = productCategory(name, metaTitle, description);
+  const offers = offerPhrases(`${metaTitle} ${description}`);
+  // A sentence taken from a description that starts with a verb ("designs, builds, deploys...") is not a category.
+  const titleCategory = productCategory(name, metaTitle, "");
+  const useCategory = offers.length === 0 || titleCategory ? category : "";
   const queries: string[] = [];
-  if (category) queries.push(`best ${category} alternatives`);
+  for (const o of offers) queries.push(`${o} alternatives`, `best ${o}`);
+  if (useCategory) queries.push(`best ${useCategory} alternatives`);
   if (name && !isGenericLabel(name)) {
     queries.push(`${name} alternatives`, `${name} competitors`, `${name} vs`, `alternatives to ${name}`);
-  } else if (category) {
-    queries.push(`${category} competitors`, `top ${category} companies`);
+  } else if (useCategory) {
+    queries.push(`${useCategory} competitors`, `top ${useCategory} companies`);
   }
-  return queries.filter((q) => q.length > 0);
+  return [...new Set(queries.filter((q) => q.length > 0))].slice(0, 8);
+}
+
+/** Specific category + offer phrases found in the product text (what it sells, not generic words like "CRM"). */
+function offerPhrases(text: string): string[] {
+  const t = text.toLowerCase();
+  const out: string[] = [];
+  const customSoftware = /custom software|software development|bespoke|web development|app development|software studio/.test(t);
+  const ai = /\bai\b|artificial intelligence|machine learning|\bllm\b|automation/.test(t);
+  if (customSoftware) out.push("custom software development company");
+  if (ai && /business|system|integrat|workflow|automation|enterprise/.test(t)) out.push("AI automation agency for business systems");
+  if (customSoftware && /\bcrm\b/.test(t)) out.push("custom CRM development agency");
+  return out;
 }
 
 type Signal = { score: number; queries: Set<number>; mentionedIn: Set<number>; comparisonPage: boolean };
@@ -133,7 +203,7 @@ type Signal = { score: number; queries: Set<number>; mentionedIn: Set<number>; c
  * result is not enough. Every candidate is still fetched and verified by the
  * caller before it is saved.
  */
-export function extractCompetitorCandidates(resultSets: SearchHit[][], ownDomain: string): CompetitorCandidate[] {
+export function extractCompetitorCandidates(resultSets: SearchHit[][], ownDomain: string, productText = ""): CompetitorCandidate[] {
   const own = normalizeHost(ownDomain);
   const signals = new Map<string, Signal>();
   const bump = (host: string): Signal => {
@@ -151,7 +221,8 @@ export function extractCompetitorCandidates(resultSets: SearchHit[][], ownDomain
       hitId += 1;
       const host = normalizeHost(hit.url);
 
-      if (!isExcluded(host, own)) {
+      const onTopic = !productText || relevanceScore(productText, `${hit.title} ${hit.content} ${host.replace(/[.-]/g, " ")}`) >= 1;
+      if (!isExcluded(host, own) && onTopic) {
         const s = bump(host);
         if (!s.queries.has(queryIndex)) {
           s.queries.add(queryIndex);
