@@ -9,6 +9,7 @@ import {
   listInstallationRepos,
   mintInstallationToken,
   normalizePrivateKey,
+  describePrivateKeyShape,
   readGithubAppConfig,
   safeReturnPath,
   verifyInstallState,
@@ -361,4 +362,13 @@ test("code exchange failure returns to returnTo with a plain error", async () =>
   assert.equal(out.kind === "error" ? out.returnTo : "", "/dashboard?finding=f1");
   assert.ok(out.kind === "error" && !/bad_verification_code|shh/.test(out.error));
   assert.equal(data.size, 0);
+});
+
+test("describePrivateKeyShape reports shape without key material", () => {
+  const shape = describePrivateKeyShape(privatePem.replace(/\n/g, " "));
+  assert.equal(shape.hasPemHeaderFooter, true);
+  assert.equal(shape.base64Valid, true);
+  assert.ok(!JSON.stringify(shape).includes(privatePem.split("\n")[1]));
+  assert.deepEqual(describePrivateKeyShape(undefined), { present: false });
+  assert.equal(describePrivateKeyShape("not a key").hasPemHeaderFooter, false);
 });

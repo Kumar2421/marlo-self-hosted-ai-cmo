@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { FEATURES } from "@/lib/features";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
-import { readGithubAppConfig } from "@/lib/domain/github/githubApp";
+import { describePrivateKeyShape, readGithubAppConfig } from "@/lib/domain/github/githubApp";
 import { listSelectableRepos } from "@/lib/domain/github/githubAppService";
 import { hostedContext, isHostedContext } from "@/lib/githubAppServer";
 
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     if (!listed.ok) return NextResponse.json({ ...base, connected: false, needsRepo: false, repoFullName: null, error: "access_removed" } satisfies GithubStatus);
     return NextResponse.json({ ...base, repos: listed.repos.map((r) => ({ fullName: r.fullName, private: r.private })) });
   } catch (err) {
-    console.error("[github] repository list failed:", err instanceof Error ? err.message : "unknown error");
+    console.error("[github] repository list failed:", err instanceof Error ? err.message : "unknown error", JSON.stringify(describePrivateKeyShape(process.env.GITHUB_APP_PRIVATE_KEY)));
     return NextResponse.json({ ...base, repos: [], error: "repos_unavailable" } satisfies GithubStatus);
   }
 }
