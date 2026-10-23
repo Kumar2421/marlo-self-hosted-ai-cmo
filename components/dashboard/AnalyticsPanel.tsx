@@ -22,6 +22,7 @@ import { ApiError, fetchJson } from "@/lib/query/fetchJson";
 import { SkeletonCard, SkeletonLines, SkeletonStats } from "@/components/shared/Skeleton";
 import { plainError } from "@/lib/plainError";
 import { qk } from "@/lib/query/keys";
+import { useGoogleServices } from "@/lib/query/useGoogleConnection";
 import { useFindings } from "@/components/dashboard/findings/useFindings";
 import { countFindings, findingCountSentence, stripInlineCode } from "@/lib/domain/findings/findingDisplay";
 import { auditOverviewTiles, encodingLabel, lastAuditedLabel, onPageIssues } from "@/lib/domain/seo/auditDisplay";
@@ -205,10 +206,13 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
   const setGeoResult = (value: GeoResult | null) => queryClient.setQueryData(geoKey, value);
   const setSiteCrawlResult = (value: CrawlResult | null) => queryClient.setQueryData(crawlKey, value);
 
-  // Real Search Console + Analytics numbers: on the Traffic tab, and on SEO once a site is chosen.
+  const googleServices = useGoogleServices(pid);
+  const searchConsoleConnected = googleServices.rows.some((r) => r.service === "search-console" && r.state === "connected");
+
+  // Real Search Console + Analytics numbers: on the Traffic tab, and whenever Search Console is connected (the top bar shows the click total on every tab).
   const trafficQuery = useQuery({
     queryKey: qk.traffic(pid),
-    enabled: open && Boolean(project) && (tab === "Traffic" || (tab === "SEO" && googleReady)),
+    enabled: open && Boolean(project) && (tab === "Traffic" || googleReady || searchConsoleConnected),
     staleTime: 5 * 60_000,
     queryFn: async () => {
       log("Fetching real Search Console + Analytics data...");
