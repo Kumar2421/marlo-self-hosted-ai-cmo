@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { X, Loader2, PenTool, CheckCircle, MessageSquare } from "lucide-react";
+import { Loader2, PenTool, CheckCircle, MessageSquare } from "lucide-react";
 import { useToast } from "@/components/dashboard/Toast";
 import { useProviders, findProviderForModel } from "@/lib/providers-store";
+import { CloseButton } from "@/components/shared/CloseButton";
+import { useModal } from "@/components/shared/useModal";
 
 export default function XAgentModal({ onClose }: { onClose: () => void }) {
   const [topic, setTopic] = useState("");
@@ -90,9 +92,10 @@ export default function XAgentModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const { backdropProps, panelProps } = useModal(onClose, "X (Twitter) Agent");
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="flex h-[80vh] w-[90vw] max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+    <div {...backdropProps} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div {...panelProps} className="flex h-[80vh] w-[90vw] max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-gray-100 p-4">
           <div className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#111111] text-white">
@@ -103,9 +106,7 @@ export default function XAgentModal({ onClose }: { onClose: () => void }) {
               <p className="text-[12px] text-gray-500">Draft engaging threads and tweets</p>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 hover:bg-gray-100 text-ui-muted">
-            <X size={18} />
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         <div className="flex flex-1 overflow-hidden bg-gray-50/50">

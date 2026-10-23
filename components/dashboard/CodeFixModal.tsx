@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Loader2, Code2, ExternalLink, Check } from "lucide-react";
+import { Loader2, Code2, ExternalLink, Check } from "lucide-react";
 import { useToast } from "@/components/dashboard/Toast";
 import { useProviders, findProviderForModel } from "@/lib/providers-store";
 import { useTerminalLog } from "@/lib/terminal-log-store";
 import type { Finding } from "@/lib/domain/seo/SEOAgent";
 import type { ProposedFix } from "@/lib/domain/codefix/types";
+import { CloseButton } from "@/components/shared/CloseButton";
+import { useModal } from "@/components/shared/useModal";
 
 const MISSING_MODEL = "Select a model first — connect a provider in Settings → LLM Providers.";
 
@@ -88,16 +90,15 @@ export default function CodeFixModal({
     }
   }
 
+  const { backdropProps, panelProps } = useModal(onClose, "Fix in code", { closeOnBackdrop: false });
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="flex max-h-[85vh] w-full max-w-xl flex-col rounded-xl bg-white shadow-2xl">
+    <div {...backdropProps} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div {...panelProps} className="flex max-h-[85vh] w-full max-w-xl flex-col rounded-xl bg-white shadow-2xl">
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-200 px-4">
           <div className="flex items-center gap-2 text-[14px] font-semibold text-gray-900">
             <Code2 size={15} className="text-gray-500" /> Fix in code — {finding.label}
           </div>
-          <button onClick={onClose} className="text-ui-subtle hover:text-gray-700">
-            <X size={18} />
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         <div className="okara-scroll flex-1 space-y-3 overflow-y-auto p-4">

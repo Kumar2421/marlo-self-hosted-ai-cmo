@@ -1,7 +1,7 @@
 "use client";
 
 import { plainError } from "@/lib/plainError";
-import { X, ChevronsLeft, RefreshCw, Loader2, Settings } from "lucide-react";
+import { ChevronsLeft, RefreshCw, Loader2, Settings } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useProviders, findProviderForModel } from "@/lib/providers-store";
@@ -9,6 +9,7 @@ import { useToast } from "@/components/dashboard/Toast";
 import { useTerminalLog } from "@/lib/terminal-log-store";
 import { WebsiteIcon } from "@/components/shared/WebsiteIcon";
 import { useDialog } from "@/components/shared/useDialog";
+import { CloseButton } from "@/components/shared/CloseButton";
 
 type Competitor = {
   id: string;
@@ -199,9 +200,7 @@ export default function CompetitorComparisonPanel({ onClose }: { onClose: () => 
             <button onClick={onClose} title="Collapse" className="hover:text-gray-700">
               <ChevronsLeft size={16} />
             </button>
-            <button onClick={onClose} title="Close" className="hover:text-gray-700">
-              <X size={16} />
-            </button>
+            <CloseButton onClick={onClose} />
           </div>
         </div>
 

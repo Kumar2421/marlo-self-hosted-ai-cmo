@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { X, Loader2, Send } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
+import { CloseButton } from "@/components/shared/CloseButton";
+import { useModal } from "@/components/shared/useModal";
 
 type Lead = { id: string; name: string; company: string; title: string; email: string | null };
 
@@ -61,9 +63,10 @@ export default function ComposeEmailModal({
     }
   }
 
+  const { backdropProps, panelProps } = useModal(onClose, "Compose email", { closeOnBackdrop: false });
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-2xl">
+    <div {...backdropProps} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div {...panelProps} className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-2xl">
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-200 px-4">
           <div className="text-[14px] font-semibold text-gray-900">
             Compose — {withEmail.length} recipient{withEmail.length === 1 ? "" : "s"}
@@ -71,9 +74,7 @@ export default function ComposeEmailModal({
               <span className="ml-1 font-normal text-amber-600">({leads.length - withEmail.length} skipped, no email)</span>
             )}
           </div>
-          <button onClick={onClose} className="text-ui-subtle hover:text-gray-700">
-            <X size={18} />
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         <div className="okara-scroll flex-1 space-y-3 overflow-y-auto p-4">

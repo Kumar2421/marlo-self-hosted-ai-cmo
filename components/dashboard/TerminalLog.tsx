@@ -15,7 +15,6 @@ import {
   FileText,
   LogOut,
   Loader2,
-  X,
   ScrollText,
 } from "lucide-react";
 import { user as mockUser } from "@/lib/mock-data";
@@ -29,6 +28,8 @@ import NotificationBell from "./notifications/NotificationBell";
 import SocialNavMenu from "./social/SocialNavMenu";
 import { useClickOutside } from "./useClickOutside";
 import { BETA_UNLIMITED_LABEL } from "@/lib/credits-display";
+import { CloseButton } from "@/components/shared/CloseButton";
+import { useModal } from "@/components/shared/useModal";
 
 function useCredits() {
   const [balance, setBalance] = useState<number | null>(null);
@@ -196,14 +197,13 @@ export function NewProjectModal({ onClose }: { onClose: () => void }) {
     }
   }
 
+  const { backdropProps, panelProps } = useModal(onClose, "New project", { closeOnBackdrop: false });
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl">
+    <div {...backdropProps} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div {...panelProps} className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-[15px] font-semibold text-gray-900">New Project</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">
-            <X size={18} />
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         <label className="mb-1.5 block text-[12px] font-medium text-gray-700">Project name</label>
