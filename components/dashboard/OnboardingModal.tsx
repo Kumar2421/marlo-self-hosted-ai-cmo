@@ -145,7 +145,7 @@ export default function OnboardingModal({ onDone }: { onDone: () => void }) {
           </button>
         </div>
 
-        <p className="mt-3 text-[11px] leading-4 text-gray-400">
+        <p className="mt-3 text-xs leading-4 text-ui-subtle">
           We&apos;ll crawl your site for real SEO, content, and competitor data. You can rename or add more sites
           later in Settings → Websites.
         </p>
@@ -153,7 +153,7 @@ export default function OnboardingModal({ onDone }: { onDone: () => void }) {
         <button
           type="button"
           onClick={handleSignOut}
-          className="mt-2 text-[11px] font-medium text-gray-500 hover:text-gray-900 hover:underline"
+          className="mt-2 text-xs font-medium text-gray-500 hover:text-gray-900 hover:underline"
         >
           Sign out
         </button>

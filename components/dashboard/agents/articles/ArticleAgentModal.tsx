@@ -36,17 +36,17 @@ function ArticlePreview({ raw }: { raw: string }) {
     <div className="space-y-4">
       {(title || description) && (
         <div className="overflow-hidden rounded-xl border border-gray-200">
-          <div className="bg-gray-50 px-3 py-2 text-[11px] font-medium text-gray-400">SEO META</div>
+          <div className="bg-gray-50 px-3 py-2 text-xs font-medium text-ui-subtle">SEO META</div>
           {title && (
             <div className="border-t border-gray-100 px-3 py-2.5">
-              <div className="text-[11px] text-gray-400">Meta Title</div>
+              <div className="text-xs text-ui-subtle">Meta Title</div>
               <div className="text-[13px] text-gray-800">{title}</div>
             </div>
           )}
           {title && <MetaRow label="Title length" value={title} max={60} />}
           {description && (
             <div className="border-t border-gray-100 px-3 py-2.5">
-              <div className="text-[11px] text-gray-400">Meta Description</div>
+              <div className="text-xs text-ui-subtle">Meta Description</div>
               <div className="text-[13px] text-gray-800">{description}</div>
             </div>
           )}
@@ -266,7 +266,7 @@ export default function ArticleAgentModal({
               <div className="flex h-full items-center justify-center text-center text-sm text-gray-500">
                 {isGenerating ? (
                   <div className="flex flex-col items-center gap-3">
-                    <Loader2 size={24} className="animate-spin text-gray-400" />
+                    <Loader2 size={24} className="animate-spin text-ui-faint" />
                     <p>Drafting your article based on the latest SEO best practices...</p>
                   </div>
                 ) : (

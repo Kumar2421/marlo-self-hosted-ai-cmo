@@ -192,7 +192,7 @@ export default function HNAgentModal({
               <div className="flex h-full items-center justify-center text-center text-sm text-gray-500">
                 {isGenerating ? (
                   <div className="flex flex-col items-center gap-3">
-                    <Loader2 size={24} className="animate-spin text-gray-400" />
+                    <Loader2 size={24} className="animate-spin text-ui-faint" />
                     <p>Channeling Paul Graham and drafting your Show HN...</p>
                   </div>
                 ) : (

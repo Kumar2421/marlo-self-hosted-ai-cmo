@@ -247,7 +247,7 @@ export default function AuditPage() {
                     <span className={`text-xs font-semibold uppercase tracking-wider ${finding.severity === "Error" ? "text-red-600" : "text-amber-600"}`}>
                       {finding.severity === "Error" ? "Important" : "Warning"}
                     </span>
-                    <span className="text-[11px] text-black/35">{finding.category}</span>
+                    <span className="text-xs text-black/35">{finding.category}</span>
                   </div>
                   <h3 className="mt-4 text-base font-medium">{finding.label}</h3>
                   {evidenceText(finding.evidence) && (

@@ -22,7 +22,7 @@ export default function IntegrationsPage() {
       <p className="mb-4 text-[13px] text-gray-500">Publish articles directly to your CMS or blog platform</p>
 
       <div className="mb-5 flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-[13px] text-gray-600">
-        <Info size={14} className="shrink-0 text-gray-400" />
+        <Info size={14} className="shrink-0 text-ui-faint" />
         You can connect one publishing destination at a time.
       </div>
 

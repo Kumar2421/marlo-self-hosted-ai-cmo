@@ -127,7 +127,7 @@ export default function GitHubAgentModal({ onClose }: { onClose: () => void }) {
                 className="w-full rounded-lg border border-gray-200 p-2 text-[13px] outline-none focus:border-black"
                 placeholder="yourname/yourrepo"
               />
-              <p className="mt-1.5 text-[11px] text-gray-400">
+              <p className="mt-1.5 text-xs text-ui-subtle">
                 Uses the most recent SEO audit for your linked website. Run an audit in
                 Analytics → SEO first if you haven&apos;t yet.
               </p>
