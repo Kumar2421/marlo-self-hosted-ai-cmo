@@ -53,6 +53,10 @@ export const PSI_FIRST_ATTEMPT_SHARE = 0.6;
  * is slower than this it is skipped so onboarding is not blocked. */
 export const PSI_ONBOARDING_TIMEOUT_MS = 10_000;
 
+/** PSI budget for the dedicated one-strategy measurement route (app/api/agents/seo/pagespeed, maxDuration 60s):
+ * auth + project lookup before it and the audit-row write after it fit in the ~8s left. */
+export const PSI_DEDICATED_TIMEOUT_MS = 52_000;
+
 /** Raised when PSI did not answer inside its time budget. Callers treat it as
  * "not measured this run" (no scores, no fake 0), not as a failure to alert on. */
 export class PageSpeedTimeoutError extends Error {
@@ -229,4 +233,17 @@ export async function fetchPageSpeed(url: string, apiKey: string, options: PageS
     coreWebVitals: { desktop: desktopData.cwv, mobile: mobileData.cwv },
     lighthouseIssues: { desktop: desktopData.lighthouseIssues, mobile: mobileData.lighthouseIssues },
   };
+}
+
+export type PageSpeedStrategy = "mobile" | "desktop";
+
+/** One strategy, one deadline, no timeout retry (a retry after a timeout would only get a sliver of the budget).
+ * A non-timeout failure (PSI sometimes 500s) still gets one repeat inside the same deadline. */
+export async function fetchPageSpeedStrategy(
+  url: string,
+  apiKey: string,
+  strategy: PageSpeedStrategy,
+  options: { timeoutMs?: number; fetchImpl?: typeof fetch } = {},
+) {
+  return fetchLighthouseWithRetry(url, apiKey, strategy, options.timeoutMs ?? PSI_DEDICATED_TIMEOUT_MS, options.fetchImpl ?? fetch, false);
 }
