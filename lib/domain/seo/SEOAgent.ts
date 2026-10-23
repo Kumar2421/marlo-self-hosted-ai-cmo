@@ -264,7 +264,6 @@ export class SEOAgent {
     const robots = $("meta[name='robots']").attr("content")?.trim() || undefined;
     const indexable = !robots?.split(",").some((directive) => directive.trim().toLowerCase() === "noindex");
 
-    if (!canonical) issues.push({ label: "Missing canonical URL", level: "Warning" });
     if (!indexable) issues.push({ label: "Page is marked noindex", level: "Warning" });
 
     if (!title) {

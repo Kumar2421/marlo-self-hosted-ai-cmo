@@ -24,7 +24,7 @@ import { plainError } from "@/lib/plainError";
 import { qk } from "@/lib/query/keys";
 import { useFindings } from "@/components/dashboard/findings/useFindings";
 import { countFindings, findingCountSentence, stripInlineCode } from "@/lib/domain/findings/findingDisplay";
-import { auditOverviewTiles, encodingLabel, lastAuditedLabel } from "@/lib/domain/seo/auditDisplay";
+import { auditOverviewTiles, encodingLabel, lastAuditedLabel, onPageIssues } from "@/lib/domain/seo/auditDisplay";
 import { lighthouseScoreLabel } from "@/lib/domain/seo/lighthouseAudits";
 import { describeAge } from "@/lib/domain/seo/pageSpeedFallback";
 import GoogleSourcesCard from "@/components/dashboard/search/GoogleSourcesCard";
@@ -946,7 +946,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                     {auditOverviewTiles({
                       needsAttention: findingCounts ? findingCounts.needsAttention : null,
                       lighthouse: auditData.lighthouseIssues ? auditData.lighthouseIssues.desktop.length + auditData.lighthouseIssues.mobile.length : 0,
-                      onPage: auditData.issues.length,
+                      onPage: onPageIssues(auditData.issues).length,
                     }).map((tile) => (
                       <button key={tile.key} onClick={() => chooseTab("Findings")} data-testid={`overview-tile-${tile.key}`} className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
                         <div className="truncate text-xs uppercase tracking-wide text-ui-subtle">{tile.label}</div>
@@ -963,7 +963,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                   )}
                 </Section>
 
-                <Section title="PageSpeed Scores">
+                <Section title={auditData.pageSpeed || lastGoodPageSpeed ? "PageSpeed Scores" : "On-page score (our own crawl)"}>
                   {auditData.pageSpeed || lastGoodPageSpeed ? (
                     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                       {lastGoodPageSpeed && (
@@ -1107,10 +1107,10 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                   subtitle="Every issue below is based on data collected during this audit. Open Findings for the explanation and recommended next steps."
                 >
                   <div className="overflow-hidden rounded-xl border border-gray-200">
-                    {auditData.issues.length === 0 ? (
+                    {onPageIssues(auditData.issues).length === 0 ? (
                       <div className="p-3 text-sm text-emerald-700">No on-page issues detected.</div>
                     ) : (
-                      auditData.issues.map((issue, i) => (
+                      onPageIssues(auditData.issues).map((issue, i) => (
                         <div key={i} className="flex items-center gap-2 border-t border-gray-100 px-3 py-2.5 text-[13px] first:border-t-0">
                           <span className={issue.level === "Error" ? "text-red-500" : "text-amber-500"}>⚠</span>
                           <span className="text-gray-700">{issue.label}</span>

@@ -20,7 +20,8 @@ import { resolveGeminiDailyCap, resolveSimulatedDailyCap } from "./dailyCap";
 import { createGeminiGroundedPort, createSimulatedPort, DEFAULT_GEMINI_MODEL, type AnswerPort } from "./engines";
 import * as sqliteStore from "./geoStore";
 import * as supabaseStore from "./geoStoreSupabase";
-import { activePrompts, mergePrompts, suggestPrompts } from "./promptSet";
+import { activePrompts, mergePrompts, normalizePrompt, suggestPrompts } from "./promptSet";
+import { buildStarterPrompts } from "./starterPrompts";
 import { evaluateReadiness, type Fetched, type ReadinessResult } from "./readiness";
 import { fetchPublic, type FetchOutcome } from "./safeFetch";
 import { emptySummary, runGeoPrompts, type RunStore, type RunSummary } from "./runner";
@@ -147,8 +148,11 @@ async function listRuns(ctx: GeoContext, now = new Date()): Promise<GeoRunRow[]>
 /** Top Search Console queries from the latest snapshot, turned into buyer questions. Empty if GSC has no snapshot yet. */
 export async function suggestFromSearchConsole(ctx: GeoContext, project: ProjectInfo): Promise<string[]> {
   const latest = ctx.mode === "platform" ? await getLatestSnapshotSupabase(ctx.db, ctx.userId, ctx.projectId) : getLatestSnapshot(getDb(), ctx.projectId);
-  if (!latest) return [];
-  return suggestPrompts(latest.payload.windows.d28.queries, brandTermsFrom(project.name, project.url));
+  const fromSearch = latest ? suggestPrompts(latest.payload.windows.d28.queries, brandTermsFrom(project.name, project.url)) : [];
+  // Real searches first; offer-based starters (category, competitors) only fill what is left.
+  const starters = buildStarterPrompts({ brand: project.name, category: project.category, competitors: await loadCompetitorDomains(ctx) });
+  const seen = new Set(fromSearch.map(normalizePrompt));
+  return [...fromSearch, ...starters.filter((s) => !seen.has(normalizePrompt(s)))].slice(0, MAX_TRACKED_PROMPTS);
 }
 
 /** Seed prompts from Search Console the first time only, so user edits are never overwritten. */

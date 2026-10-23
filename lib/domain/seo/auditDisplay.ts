@@ -14,6 +14,26 @@ export function encodingLabel(encoding: string | null | undefined): string {
   return value ? value : "Not measured";
 }
 
+type OnPageIssue = { label: string; level: "Warning" | "Error" };
+
+/**
+ * The on-page issues worth counting and listing. The raw `issues` list also carries notices that are
+ * not page problems (PageSpeed did not answer) and, in older stored audits, the missing canonical twice
+ * under two names. The Findings tab never had either, which made the counts disagree (for example 5 vs 4).
+ */
+export function onPageIssues(issues: OnPageIssue[]): OnPageIssue[] {
+  const seen = new Set<string>();
+  const out: OnPageIssue[] = [];
+  for (const issue of issues) {
+    if (/^(PageSpeed Insights\b|Failed to fetch PageSpeed)/i.test(issue.label)) continue;
+    const key = /^Missing canonical (URL|tag)$/i.test(issue.label) ? "missing-canonical" : issue.label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(issue);
+  }
+  return out;
+}
+
 export type OverviewTile = { key: string; label: string; value: number | null; caption: string };
 
 /**
@@ -25,7 +45,7 @@ export function auditOverviewTiles(counts: { needsAttention: number | null; ligh
   const tiles: OverviewTile[] = [
     { key: "findings", label: "Findings", value: counts.needsAttention, caption: "Needs attention" },
     { key: "lighthouse", label: "Lighthouse", value: counts.lighthouse, caption: "Measured issues" },
-    { key: "onpage", label: "Audit issues", value: counts.onPage, caption: "Detected on page" },
+    { key: "onpage", label: "On-page checks", value: counts.onPage, caption: "Failed in this crawl" },
   ];
   const known = tiles.filter((t) => t.value !== null);
   if (known.length === tiles.length && known.every((t) => t.value === known[0].value)) {
