@@ -6,6 +6,7 @@ import { createClient } from "@/utils/supabase/client";
 import { useToast } from "@/components/dashboard/Toast";
 import { Loader2 } from "lucide-react";
 import AppearanceSetting from "@/components/settings/AppearanceSetting";
+import { BTN_GHOST, BTN_PRIMARY, BTN_SECONDARY, CARD, INPUT, SettingsPageHeader } from "@/components/settings/ui";
 
 export default function AccountPage() {
   const { show } = useToast();
@@ -60,36 +61,35 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="min-w-0 max-w-2xl">
-      <h1 className="text-[15px] font-semibold text-gray-900">Account & Security</h1>
-      <p className="mb-4 text-[13px] text-gray-500">Manage your login and account protection.</p>
+    <div className="min-w-0 max-w-3xl">
+      <SettingsPageHeader title="Account & Security" caption="Manage your login and account protection." />
 
       <AppearanceSetting />
 
-      <div className="mb-4 rounded-xl border border-gray-200 bg-white px-4 py-3">
-        <div className="mb-1 text-[13px] font-semibold text-gray-900">Email</div>
-        <div className="text-[13px] text-gray-600">
+      <div className={`${CARD} mb-4 px-5 py-4`}>
+        <div className="mb-1 text-[14px] font-semibold text-ui-text">Email</div>
+        <div className="text-[13px] text-ui-muted">
           {loading ? <Loader2 size={13} className="animate-spin" /> : user?.email || "Not signed in"}
         </div>
       </div>
 
-      <div className="mb-4 rounded-xl border border-gray-200 bg-white px-4 py-3">
-        <div className="mb-1 text-[13px] font-semibold text-gray-900">Plan</div>
-        <div className="text-[13px] text-gray-600">
+      <div className={`${CARD} mb-4 px-5 py-4`}>
+        <div className="mb-1 text-[14px] font-semibold text-ui-text">Plan</div>
+        <div className="text-[13px] text-ui-muted">
           {planLoading ? <Loader2 size={13} className="animate-spin" /> : plan || "Free"}
         </div>
       </div>
 
-      <div className="mb-4 rounded-xl border border-gray-200 bg-white px-4 py-3">
+      <div className={`${CARD} mb-4 px-5 py-4`}>
         <div className="mb-2 flex items-center justify-between gap-3">
           <div>
-            <div className="text-[13px] font-semibold text-gray-900">Password</div>
-            <div className="text-[12px] text-gray-500">Set a new password for your account.</div>
+            <div className="text-[14px] font-semibold text-ui-text">Password</div>
+            <div className="text-[13px] text-ui-muted">Set a new password for your account.</div>
           </div>
           {!changingPassword && (
             <button
               onClick={() => setChangingPassword(true)}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] font-medium text-gray-600 hover:bg-gray-50"
+              className={BTN_SECONDARY}
             >
               Change
             </button>
@@ -102,7 +102,8 @@ export default function AccountPage() {
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder="New password"
-              className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-black"
+              aria-label="New password"
+              className={INPUT}
             />
             <input
               type="password"
@@ -110,7 +111,8 @@ export default function AccountPage() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleChangePassword()}
               placeholder="Confirm new password"
-              className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-black"
+              aria-label="Confirm new password"
+              className={INPUT}
             />
             <div className="flex justify-end gap-2">
               <button
@@ -119,14 +121,14 @@ export default function AccountPage() {
                   setNewPassword("");
                   setConfirmPassword("");
                 }}
-                className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-gray-500 hover:bg-gray-50"
+                className={BTN_GHOST}
               >
                 Cancel
               </button>
               <button
                 onClick={handleChangePassword}
                 disabled={saving}
-                className="flex items-center gap-1.5 rounded-lg bg-[#111111] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50"
+                className={BTN_PRIMARY}
               >
                 {saving && <Loader2 size={12} className="animate-spin" />}
                 {saving ? "Saving..." : "Update password"}

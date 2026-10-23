@@ -123,20 +123,20 @@ export default function GmailCard() {
   const clientCredsActive = envActive.GMAIL_CLIENT_ID && envActive.GMAIL_CLIENT_SECRET;
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className="rounded-xl border border-ui-border bg-ui-surface p-5 shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <BrandIcon id="gmail" color="#ea4335" fallback="G" />
           <div>
-            <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
+            <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-ui-text">
               Gmail
               {connectedEmail && (
-                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">
+                <span className="flex items-center gap-1 rounded-full bg-ui-success-soft px-2 py-0.5 text-xs font-medium text-ui-success-text">
                   <Check size={10} /> Connected
                 </span>
               )}
             </div>
-            <div className="text-[12px] text-gray-500">
+            <div className="text-[12px] text-ui-muted">
               Real send capability for Leads outreach. Hosted users connect through Google sign-in; self-hosters configure their own OAuth client.
             </div>
           </div>
@@ -146,7 +146,7 @@ export default function GmailCard() {
             href="https://console.cloud.google.com/apis/credentials"
             target="_blank"
             rel="noreferrer"
-            className="flex shrink-0 items-center gap-1 text-xs text-ui-subtle hover:text-gray-700"
+            className="flex shrink-0 items-center gap-1 text-xs text-ui-subtle hover:text-ui-text"
           >
             Create OAuth client <ExternalLink size={11} />
           </a>
@@ -155,21 +155,21 @@ export default function GmailCard() {
 
       {!loaded ? null : FEATURES.PLATFORM_MODE ? (
         connectedEmail ? (
-          <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
+          <div className="flex items-center justify-between rounded-lg bg-ui-surface-muted px-3 py-2 text-[12px] text-ui-muted">
             <span>{connectedEmail}</span>
-            <button onClick={handleDisconnect} disabled={busy} className="font-medium text-red-600 hover:underline disabled:opacity-50">
+            <button onClick={handleDisconnect} disabled={busy} className="font-medium text-ui-danger-text hover:underline disabled:opacity-50">
               Disconnect
             </button>
           </div>
         ) : (
           <div className="space-y-2">
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-ui-muted">
               Connect Gmail through your Google sign-in. No Client ID, Client Secret, or .env configuration is required for hosted users.
             </p>
             <button
               onClick={handlePlatformConnect}
               disabled={busy || connecting}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#111111] px-3 py-2 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-ui-primary min-h-11 px-3.5 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 focus-visible:ring-offset-1 focus-visible:ring-offset-ui-surface font-medium text-ui-inverse hover:bg-ui-primary-hover disabled:opacity-50"
             >
               {busy || connecting ? "Connecting..." : "Connect with Google"}
             </button>
@@ -178,36 +178,36 @@ export default function GmailCard() {
       ) : (
         <>
           {!clientCredsActive ? (
-            <div className="rounded-lg bg-gray-50 p-3">
+            <div className="rounded-lg bg-ui-surface-muted p-3">
               {savedButNotActive && (
-                <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
+                <div className="mb-2 flex items-start gap-2 rounded-lg border border-ui-warn/30 bg-ui-warn-soft px-2.5 py-2 text-xs text-ui-warn-text">
                   <AlertTriangle size={12} className="mt-0.5 shrink-0" />
                   Saved to .env.local, but not active yet — restart the server, then reload this page.
                 </div>
               )}
-              <p className="mb-2 text-xs text-gray-500">
+              <p className="mb-2 text-xs text-ui-muted">
                 Redirect URI to register on the OAuth client:{" "}
-                <code className="rounded bg-gray-100 px-1 py-0.5">
+                <code className="rounded bg-ui-surface-sunken px-1 py-0.5">
                   {typeof window !== "undefined" ? window.location.origin : ""}/api/auth/gmail/callback
                 </code>
               </p>
               <div className="mb-2 space-y-2">
-                <input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="Client ID" className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400" />
-                <input value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder="Client Secret" type="password" className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400" />
+                <input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="Client ID" className="min-w-0 w-full min-h-11 rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 text-ui-text placeholder:text-ui-faint" />
+                <input value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder="Client Secret" type="password" className="min-w-0 w-full min-h-11 rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 text-ui-text placeholder:text-ui-faint" />
               </div>
-              <button onClick={handleSaveClientCreds} disabled={busy} className="rounded-lg bg-[#111111] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50">
+              <button onClick={handleSaveClientCreds} disabled={busy} className="rounded-lg bg-ui-primary min-h-11 px-3.5 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 focus-visible:ring-offset-1 focus-visible:ring-offset-ui-surface font-medium text-ui-inverse hover:bg-ui-primary-hover disabled:opacity-50">
                 {busy ? "Saving..." : "Save to .env.local"}
               </button>
             </div>
           ) : connectedEmail ? (
-            <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
+            <div className="flex items-center justify-between rounded-lg bg-ui-surface-muted px-3 py-2 text-[12px] text-ui-muted">
               <span>{connectedEmail}</span>
-              <button onClick={handleDisconnect} disabled={busy} className="font-medium text-red-600 hover:underline disabled:opacity-50">
+              <button onClick={handleDisconnect} disabled={busy} className="font-medium text-ui-danger-text hover:underline disabled:opacity-50">
                 Disconnect
               </button>
             </div>
           ) : (
-            <a href="/api/auth/gmail/connect" className="inline-flex items-center gap-1.5 rounded-lg bg-[#111111] px-3 py-2 text-[13px] font-medium text-white hover:bg-black">
+            <a href="/api/auth/gmail/connect" className="inline-flex items-center gap-1.5 rounded-lg bg-ui-primary min-h-11 px-3.5 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 focus-visible:ring-offset-1 focus-visible:ring-offset-ui-surface font-medium text-ui-inverse hover:bg-ui-primary-hover">
               Connect Gmail
             </a>
           )}

@@ -46,23 +46,27 @@ export default function CompetitorDiscoveryToggle() {
   }
 
   return (
-    <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white p-4">
+    <div className="flex items-center justify-between gap-4 rounded-xl border border-ui-border bg-ui-surface p-5 shadow-sm">
       <div>
-        <div className="text-[13px] font-semibold text-gray-900">Auto-discover competitors</div>
-        <div className="text-[12px] text-gray-500">
+        <div className="text-[13px] font-semibold text-ui-text">Auto-discover competitors</div>
+        <div className="text-[12px] text-ui-muted">
           When a new project is created, automatically find and add real competitors — web-search-grounded
           if Tavily is connected above, otherwise based on the crawled site and existing documents alone.
         </div>
       </div>
       <button
+        type="button"
+        role="switch"
+        aria-checked={enabled}
+        aria-label="Auto-discover competitors"
         onClick={toggle}
         disabled={!loaded || busy}
-        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
-          enabled ? "bg-[#111111]" : "bg-gray-200"
+        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors after:absolute after:-inset-y-2.5 after:inset-x-0 after:content-[''] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 focus-visible:ring-offset-1 focus-visible:ring-offset-ui-surface ${
+          enabled ? "bg-ui-primary" : "bg-ui-border-strong"
         }`}
       >
         <span
-          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+          className={`absolute left-0 top-0.5 h-5 w-5 rounded-full bg-ui-surface shadow transition-transform ${
             enabled ? "translate-x-5" : "translate-x-0.5"
           }`}
         />

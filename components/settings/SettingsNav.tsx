@@ -15,6 +15,7 @@ import {
   Bell,
 } from "lucide-react";
 import { FEATURES } from "@/lib/features";
+import { FOCUS_RING } from "@/components/settings/ui";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ size?: number }>; dot?: boolean };
 
@@ -53,7 +54,7 @@ function NavGroup({
   return (
     <div className="mb-5">
       {title && (
-        <div className="mb-1 px-3 text-xs font-semibold tracking-wide text-ui-subtle">{title}</div>
+        <div className="mb-1.5 px-3 text-xs font-semibold uppercase tracking-wider text-ui-subtle">{title}</div>
       )}
       {items.map((item) => {
         const Icon = item.icon;
@@ -63,13 +64,17 @@ function NavGroup({
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={`flex min-h-10 items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#111111]/40 ${
-              active ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-50"
+            className={`group mb-0.5 flex min-h-10 items-center gap-2.5 rounded-lg border px-3 py-2 text-[13px] font-medium transition-colors ${FOCUS_RING} ${
+              active
+                ? "border-ui-border bg-ui-surface text-ui-text shadow-sm"
+                : "border-transparent text-ui-muted hover:bg-ui-surface-sunken hover:text-ui-text"
             }`}
           >
-            <Icon size={15} />
+            <span className={active ? "text-ui-text" : "text-ui-faint group-hover:text-ui-muted"}>
+              <Icon size={15} />
+            </span>
             {item.label}
-            {item.dot && <span className="h-1.5 w-1.5 rounded-full bg-[#00ab92]" />}
+            {item.dot && <span aria-hidden="true" className="ml-auto h-1.5 w-1.5 rounded-full bg-ui-accent" />}
           </Link>
         );
       })}
@@ -85,10 +90,10 @@ export default function SettingsNav() {
 
   return (
     <>
-      <nav aria-label="Settings" data-testid="settings-sidebar" className="hidden w-64 shrink-0 border-r border-gray-100 px-3 py-6 md:block">
+      <nav aria-label="Settings" data-testid="settings-sidebar" className="hidden w-64 shrink-0 border-r border-ui-border px-3 py-7 md:block">
         <button
           onClick={() => router.push("/dashboard")}
-          className="mb-6 flex items-center gap-2 rounded-lg px-1 text-2xl font-bold text-gray-900 hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#111111]/40"
+          className={`mb-7 flex items-center gap-2 rounded-lg px-1 text-2xl font-bold tracking-tight text-ui-text hover:opacity-70 ${FOCUS_RING}`}
         >
           <ChevronLeft size={20} />
           Settings
@@ -98,12 +103,12 @@ export default function SettingsNav() {
         <NavGroup title="GENERAL" items={GENERAL_ITEMS} pathname={pathname} />
       </nav>
 
-      <nav aria-label="Settings" data-testid="settings-mobile-bar" className="border-b border-gray-100 md:hidden">
+      <nav aria-label="Settings" data-testid="settings-mobile-bar" className="border-b border-ui-border md:hidden">
         <div className="flex items-center gap-1 px-2 pt-2">
           <button
             onClick={() => router.push("/dashboard")}
             aria-label="Back to dashboard"
-            className="flex min-h-10 items-center gap-1 rounded-lg px-2 text-[15px] font-semibold text-gray-900 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#111111]/40"
+            className={`flex min-h-11 items-center gap-1 rounded-lg px-2 text-[15px] font-semibold text-ui-text hover:bg-ui-surface-sunken ${FOCUS_RING}`}
           >
             <ChevronLeft size={18} />
             Settings
@@ -118,15 +123,15 @@ export default function SettingsNav() {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#111111]/40 ${
+                className={`flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-[13px] font-medium ${FOCUS_RING} ${
                   active
-                    ? "border-gray-200 bg-gray-100 text-gray-900"
-                    : "border-transparent text-gray-600 hover:bg-gray-50"
+                    ? "border-ui-border-strong bg-ui-surface text-ui-text shadow-sm"
+                    : "border-transparent text-ui-muted hover:bg-ui-surface-sunken"
                 }`}
               >
                 <Icon size={14} />
                 {item.label}
-                {item.dot && <span className="h-1.5 w-1.5 rounded-full bg-[#00ab92]" />}
+                {item.dot && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-ui-accent" />}
               </Link>
             );
           })}

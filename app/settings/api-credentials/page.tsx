@@ -9,15 +9,15 @@ import GmailCard from "@/components/settings/GmailCard";
 import GoogleAnalyticsCard from "@/components/settings/GoogleAnalyticsCard";
 import GitHubCodeFixCard from "@/components/settings/GitHubCodeFixCard";
 import CompetitorDiscoveryToggle from "@/components/settings/CompetitorDiscoveryToggle";
+import { SettingsPageHeader } from "@/components/settings/ui";
 
 export default function ApiCredentialsPage() {
   return (
     <div className="min-w-0 max-w-3xl">
-      <h1 className="text-[15px] font-semibold text-gray-900">API Credentials</h1>
-      <p className="mb-4 text-[13px] text-gray-500">
-        External services that ground agents in real data — separate from the LLM providers that
-        do the writing.
-      </p>
+      <SettingsPageHeader
+        title="API Credentials"
+        caption="External services that ground agents in real data — separate from the LLM providers that do the writing."
+      />
 
       <div className="space-y-3">
         <PageSpeedCard />

@@ -8,6 +8,7 @@ import { useProviders } from "@/lib/providers-store";
 import { useToast } from "@/components/dashboard/Toast";
 import BrandIcon from "@/components/settings/BrandIcon";
 import { FEATURES } from "@/lib/features";
+import { SettingsPageHeader } from "@/components/settings/ui";
 
 /** Hosted/platform users never need to see all 9 self-host provider cards
  * (Anthropic, OpenAI, Google, Mistral, Groq, xAI, OpenRouter, LM Studio,
@@ -61,24 +62,24 @@ function SingleKeyCard() {
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className="rounded-xl border border-ui-border bg-ui-surface p-5 shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <BrandIcon id={provider.id} color={provider.color} fallback={provider.icon} size={19} />
           <div>
-            <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
+            <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-ui-text">
               {isConnected ? "Your API key" : "Included model"}
               {isConnected ? (
-                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">
+                <span className="flex items-center gap-1 rounded-full bg-ui-success-soft px-2 py-0.5 text-xs font-medium text-ui-success-text">
                   <Check size={10} /> Connected
                 </span>
               ) : hasPlatformKey ? (
-                <span className="flex items-center gap-1 rounded-full bg-[#eef2ff] px-2 py-0.5 text-xs font-medium text-[#4338ca]">
+                <span className="flex items-center gap-1 rounded-full bg-ui-info-soft px-2 py-0.5 text-xs font-medium text-ui-info-text">
                   <Sparkles size={10} /> Ready to use
                 </span>
               ) : null}
             </div>
-            <div className="text-[12px] text-gray-500">
+            <div className="text-[12px] text-ui-muted">
               {isConnected
                 ? "Chat and agents use your own key — no usage limits from us."
                 : "Chat and agents already work on the model included with your plan. Bring your own key for a different model or no usage limits."}
@@ -89,14 +90,14 @@ function SingleKeyCard() {
           href={provider.docsUrl}
           target="_blank"
           rel="noreferrer"
-          className="flex shrink-0 items-center gap-1 text-xs text-ui-subtle hover:text-gray-700"
+          className="flex shrink-0 items-center gap-1 text-xs text-ui-subtle hover:text-ui-text"
         >
           Get a key <ExternalLink size={11} />
         </a>
       </div>
 
       {isConnected ? (
-        <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
+        <div className="flex items-center justify-between rounded-lg bg-ui-surface-muted px-3 py-2 text-[12px] text-ui-muted">
           <span className="min-w-0 break-all font-mono">
             {connection.apiKey?.includes("•")
               ? connection.apiKey
@@ -107,7 +108,7 @@ function SingleKeyCard() {
           <button
             onClick={handleDisconnect}
             disabled={busy}
-            className="font-medium text-red-600 hover:underline disabled:opacity-50"
+            className="font-medium text-ui-danger-text hover:underline disabled:opacity-50"
           >
             Disconnect
           </button>
@@ -120,12 +121,12 @@ function SingleKeyCard() {
             onKeyDown={(e) => e.key === "Enter" && handleConnect()}
             placeholder={provider.keyPlaceholder}
             type="password"
-            className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
+            className="min-w-0 flex-1 min-h-11 rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 text-ui-text placeholder:text-ui-faint"
           />
           <button
             onClick={handleConnect}
             disabled={busy}
-            className="shrink-0 rounded-lg bg-[#111111] px-3 py-2 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50"
+            className="shrink-0 rounded-lg bg-ui-primary min-h-11 px-3.5 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 focus-visible:ring-offset-1 focus-visible:ring-offset-ui-surface font-medium text-ui-inverse hover:bg-ui-primary-hover disabled:opacity-50"
           >
             {busy ? "Activating..." : "Activate"}
           </button>
@@ -141,11 +142,10 @@ export default function LlmProvidersPage() {
   if (FEATURES.PLATFORM_MODE) {
     return (
       <div className="min-w-0 max-w-3xl">
-        <h1 className="text-[15px] font-semibold text-gray-900">LLM Provider</h1>
-        <p className="mb-4 text-[13px] text-gray-500">
-          Your plan already includes a model for chat and agents — nothing to set up. Bring your own key only if
-          you want a different model or no usage limits.
-        </p>
+        <SettingsPageHeader
+          title="LLM Provider"
+          caption="Your plan already includes a model for chat and agents — nothing to set up. Bring your own key only if you want a different model or no usage limits."
+        />
         <SingleKeyCard />
       </div>
     );
@@ -153,14 +153,13 @@ export default function LlmProvidersPage() {
 
   return (
     <div className="min-w-0 max-w-3xl">
-      <h1 className="text-[15px] font-semibold text-gray-900">LLM Providers</h1>
-      <p className="mb-4 text-[13px] text-gray-500">
-        Connect the model providers your agents can use. Pick one model as primary — that&apos;s what
-        the chat and agents default to.
-      </p>
+      <SettingsPageHeader
+        title="LLM Providers"
+        caption={<>Connect the model providers your agents can use. Pick one model as primary — that&apos;s what the chat and agents default to.</>}
+      />
 
-      <div className="mb-5 flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-[13px] text-gray-600">
-        <Info size={14} className="shrink-0 text-ui-faint" />
+      <div className="mb-5 flex items-center gap-2.5 rounded-xl border border-ui-border bg-ui-surface-muted px-4 py-3 text-[13px] text-ui-muted">
+        <Info size={14} className="shrink-0 text-ui-muted" aria-hidden="true" />
         {connectedModels.length === 0
           ? "No providers connected yet. Connect at least one to start using the chat and agents."
           : primaryModel

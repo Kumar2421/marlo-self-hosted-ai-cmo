@@ -102,7 +102,7 @@ export default function GoogleAnalyticsCard() {
   const connected = Boolean(gsc?.integrationId || ga4?.integrationId);
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className="rounded-xl border border-ui-border bg-ui-surface p-5 shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="flex shrink-0 -space-x-1.5">
@@ -110,7 +110,7 @@ export default function GoogleAnalyticsCard() {
             <BrandIcon id="search-console" color="#458cf5" fallback="S" className="flex h-9 w-9 items-center justify-center rounded-lg text-[13px] font-bold text-white ring-2 ring-white" size={15} />
           </span>
           <div>
-            <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
+            <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-ui-text">
               Google Analytics &amp; Search Console
               {connected && health.state === "needs_reconnect" && health.badge && (
                 <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
@@ -118,12 +118,12 @@ export default function GoogleAnalyticsCard() {
                 </span>
               )}
               {connected && health.state !== "needs_reconnect" && (
-                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">
+                <span className="flex items-center gap-1 rounded-full bg-ui-success-soft px-2 py-0.5 text-xs font-medium text-ui-success-text">
                   <Check size={10} /> Connected
                 </span>
               )}
             </div>
-            <div className="text-[12px] text-gray-500">
+            <div className="text-[12px] text-ui-muted">
               Powers the Traffic tab for the currently selected project.
             </div>
           </div>
@@ -131,24 +131,24 @@ export default function GoogleAnalyticsCard() {
       </div>
 
       {!project ? (
-        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+        <div className="rounded-lg border border-ui-border bg-ui-surface-muted px-3 py-2 text-xs text-ui-muted">
           Select or create a project before connecting Google.
         </div>
       ) : !loaded ? null : connected ? (
         <div className="space-y-3">
           {health.showReconnect && (
-            <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ui-warn/30 bg-ui-warn-soft px-3 py-2 text-[12px] text-ui-warn-text">
               <span className="min-w-0">{health.message}</span>
               <GoogleReconnectLink returnTo="settings" />
             </div>
           )}
-          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
+          <div className="rounded-lg border border-ui-border bg-ui-surface-muted px-3 py-2 text-[12px] text-ui-muted">
             {[gsc, ga4].map((i) => i?.resources.find((r) => r.selected)?.resourceName).filter(Boolean).join(" · ") ||
               "No site or property chosen yet."}{" "}
             Choose which Search Console site and Analytics property this project uses from the{" "}
-            <a href="/dashboard" className="font-medium text-gray-900 underline">SEO tab</a>.
+            <a href="/dashboard" className="font-medium text-ui-text underline">SEO tab</a>.
           </div>
-          <button onClick={handleDisconnect} disabled={busy} className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50">
+          <button onClick={handleDisconnect} disabled={busy} className="text-xs font-medium text-ui-danger-text hover:underline disabled:opacity-50">
             Disconnect Google from this project
           </button>
         </div>
@@ -156,14 +156,14 @@ export default function GoogleAnalyticsCard() {
         <button
           onClick={handlePlatformConnect}
           disabled={busy || connecting}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[#111111] px-3 py-2 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-ui-primary min-h-11 px-3.5 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 focus-visible:ring-offset-1 focus-visible:ring-offset-ui-surface font-medium text-ui-inverse hover:bg-ui-primary-hover disabled:opacity-50"
         >
           {busy || connecting ? "Connecting..." : "Connect Google"}
         </button>
       ) : (
         <a
           href="/api/auth/google-analytics/connect"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[#111111] px-3 py-2 text-[13px] font-medium text-white hover:bg-black"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-ui-primary min-h-11 px-3.5 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 focus-visible:ring-offset-1 focus-visible:ring-offset-ui-surface font-medium text-ui-inverse hover:bg-ui-primary-hover"
         >
           Connect Google Analytics
         </a>
