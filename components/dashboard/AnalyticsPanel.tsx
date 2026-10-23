@@ -269,6 +269,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
   /** A tab picked by the user: remembered for next time and never overridden by the default below. */
   const chooseTab = (next: Tab) => {
     tabDecided.current = true;
+    setOpenFinding(null); // a stale "open this finding" must not replay when Findings is mounted again
     setTab(next);
     try {
       window.localStorage.setItem(ANALYTICS_TAB_STORAGE_KEY, next);

@@ -6,6 +6,7 @@ import type { Finding, FindingStatus } from "@/lib/domain/findings/findingTypes"
 import { countFindings, explainPriority, findingCountStats, findingTitle, pagePath } from "@/lib/domain/findings/findingDisplay";
 import { friendlyGithubUrlError } from "@/lib/domain/github/friendlyGithubError";
 import { useToast } from "@/components/dashboard/Toast";
+import { pendingOpenRequest } from "@/lib/domain/overview/fixFirst";
 import SidePanel from "@/components/shared/SidePanel";
 import { SkeletonCard, SkeletonStats } from "@/components/shared/Skeleton";
 import FindingDetail, { STATUS_LABEL, severityClass, statusClass } from "./findings/FindingDetail";
@@ -53,14 +54,19 @@ export default function FindingsWorkspace({
 }) {
   const { list, update } = useFindings();
   const { show } = useToast();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The request that mounted this tab is applied in the first render, not in a later effect: the first click on
+  // the strip switches tabs and opens the drawer in one go.
+  const [handledN, setHandledN] = useState<number | null>(() => (pendingOpenRequest(openRequest, null) ? openRequest!.n : null));
+  const [selectedId, setSelectedId] = useState<string | null>(() => pendingOpenRequest(openRequest, null));
   const [verification, setVerification] = useState<"verified" | "failed" | null>(null);
   const [note, setNote] = useState<RecheckNote | null>(null);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (openRequest) setSelectedId(openRequest.id);
-  }, [openRequest]);
+  // A later click while this tab is already showing (adjusting state during render, keyed by the request's n).
+  const wanted = pendingOpenRequest(openRequest, handledN);
+  if (wanted && openRequest) {
+    setHandledN(openRequest.n);
+    setSelectedId(wanted);
+  }
 
   const findings = useMemo(() => list.data ?? [], [list.data]);
   const counts = useMemo(() => countFindings(findings), [findings]);
