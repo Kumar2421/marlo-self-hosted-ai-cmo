@@ -30,7 +30,7 @@ function ports(o: { fail?: boolean; reply?: string; tool?: boolean; failFirst?: 
         return { text: o.reply ?? `Hello ${EMAIL}, you have 4242 clicks. ${TOKEN}` };
       },
     },
-    credentials: { resolve: async () => ({ kind: "byok", apiKey: TOKEN }) },
+    credentials: { resolve: async () => ({ kind: "byok", apiKey: TOKEN, baseUrl: undefined }) },
     credits: { chargeBeforeAnswer: async () => ({ ok: true }) },
     prompts: { build: async () => "SYS" },
     data: { create: () => chatPorts },
@@ -146,7 +146,7 @@ test("percentile: nearest rank", () => {
 
 test("metrics: counts, errors by kind, fallbacks, window of 200", () => {
   const m = createMetrics(200, () => new Date("2026-10-23T00:00:00Z"));
-  const base = { evt: "assistant_turn", t: "x", provider: "p", model: "m", candidateIndex: 0, attempts: 1, tools: [], toolMs: 0, plan: "free", u: null } as const;
+  const base = { evt: "assistant_turn" as const, t: "x", provider: "p", model: "m", candidateIndex: 0, attempts: 1, tools: [] as string[], toolMs: 0, plan: "free", u: null };
   m.record({ ...base, ok: true, fallback: false, errorKind: null, groundingFlags: 0, totalMs: 100 });
   m.record({ ...base, ok: false, fallback: true, errorKind: "rate_limit", groundingFlags: 2, totalMs: 300 });
   m.record({ ...base, ok: false, fallback: false, errorKind: "rate_limit", groundingFlags: 0, totalMs: 200 });

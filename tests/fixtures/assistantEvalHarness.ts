@@ -43,7 +43,7 @@ export function scriptedDriver(script: Script): DriverFactory {
   };
 }
 
-export async function runCase(c: EvalCase, makeDriver: DriverFactory, opts: { model?: string; provider?: string; apiKey?: string; baseUrl?: string } = {}): Promise<CaseRun> {
+export async function runCase(c: EvalCase, makeDriver: DriverFactory, opts: { model?: string; provider?: string; apiKey?: string; baseUrl?: string; supportsTools?: boolean } = {}): Promise<CaseRun> {
   const called: string[] = [];
   const rejected: string[] = [];
   const results: string[] = [];
@@ -51,7 +51,9 @@ export async function runCase(c: EvalCase, makeDriver: DriverFactory, opts: { mo
   const provider = opts.provider ?? "anthropic";
 
   const driver = makeDriver({ rejected });
+  let lastSystem = "";
   const instrumented: DriverLike = async (req) => {
+    lastSystem = req.system ?? "";
     const tools = (req.tools ?? []).map((t) => ({
       ...t,
       execute: async (input: Record<string, unknown>) => {
@@ -70,7 +72,7 @@ export async function runCase(c: EvalCase, makeDriver: DriverFactory, opts: { mo
   let reply = "";
   const ports: AssistantPorts = {
     scope: { authenticate: async () => ({ userId: "eval-user" }), activeProjectId: async () => "eval-p1" },
-    llm: { getDriver: () => instrumented, supportsTools: () => true },
+    llm: { getDriver: () => instrumented, supportsTools: () => opts.supportsTools ?? true },
     credentials: { resolve: async () => ({ kind: "byok", apiKey: opts.apiKey ?? "eval-key", baseUrl: opts.baseUrl }) },
     credits: { chargeBeforeAnswer: async () => ({ ok: true }) },
     prompts: { build: async () => "You are Marlo, the user's AI CMO. Be concise and honest." },
@@ -86,7 +88,7 @@ export async function runCase(c: EvalCase, makeDriver: DriverFactory, opts: { mo
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
-  const grounding = checkReplyGrounding(reply, results, { today: EVAL_NOW, extraGrounded: [c.question] });
+  const grounding = checkReplyGrounding(reply, results, { today: EVAL_NOW, extraGrounded: [c.question, lastSystem] });
   return { reply, called, rejected, results, serviceToolsUsed, grounding, error, ms: Date.now() - started };
 }
 
