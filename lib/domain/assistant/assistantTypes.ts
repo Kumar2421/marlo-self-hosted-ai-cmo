@@ -18,8 +18,8 @@ export type AssistantTurnInput = {
   message: unknown;
   history: unknown;
   projectId: unknown;
-  requestedProvider?: string;
-  requestedModel?: string;
+  // The client no longer picks provider/model: the server decides (modelSelection.ts). Legacy
+  // `providerId`/`model` body fields are never read by the route, so they cannot steer which key is used.
 };
 
 /** Successful turn: the JSON body the chat API returns. */
@@ -38,11 +38,14 @@ export class AssistantError extends Error {
   readonly userMessage: string;
   /** Underlying provider/system error, if any. Never sent to the client. */
   readonly cause?: unknown;
-  constructor(status: number, userMessage: string, cause?: unknown) {
+  /** Extra JSON fields sent beside `error` (e.g. code/used/limit for the chat cap). Never secrets. */
+  readonly body?: Record<string, unknown>;
+  constructor(status: number, userMessage: string, cause?: unknown, body?: Record<string, unknown>) {
     super(userMessage);
     this.name = "AssistantError";
     this.status = status;
     this.userMessage = userMessage;
     this.cause = cause;
+    this.body = body;
   }
 }

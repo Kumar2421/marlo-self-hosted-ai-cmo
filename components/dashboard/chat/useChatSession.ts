@@ -1,22 +1,26 @@
 "use client";
 
 import { useState, useRef, useEffect, useReducer } from "react";
-import { useToast } from "../Toast";
-import { useProviders, findProviderForModel } from "@/lib/providers-store";
+import { useProviders } from "@/lib/providers-store";
 import { useProject } from "@/lib/project-store";
 import {
   chatSessionReducer,
   initialChatSessionState,
   historyForRequest,
   retryRequest,
+  describeChatFailure,
 } from "@/lib/domain/chat/chatSessionState";
 import { streamChatMessage } from "@/lib/query/chatTransport";
+import { unlockTrigger } from "@/lib/ui/unlockTrigger";
+import { useQueryClient } from "@tanstack/react-query";
+import { qk } from "@/lib/query/keys";
 
 /** All conversation state and the send flow. UI pieces only read from / call into this. */
 export function useChatSession() {
   const [{ messages, pending }, dispatch] = useReducer(chatSessionReducer, initialChatSessionState);
   const [input, setInputState] = useState("");
-  const { show } = useToast();
+  // Display-only (limited-data notice); sending never depends on it - the server picks the model.
+  const queryClient = useQueryClient();
   const { primaryModel } = useProviders();
   const { project } = useProject();
   const projectId = project?.id ?? null;
@@ -56,12 +60,6 @@ export function useChatSession() {
     const text = raw.trim();
     if (!text || pending) return;
 
-    const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
-    if (!primaryModel || !providerId) {
-      show("Select a model first — connect a provider in Settings → LLM Providers.");
-      return;
-    }
-
     const history = retryPlan ? retryPlan.history : historyForRequest(messages);
 
     const reqId = requestIdRef.current + 1;
@@ -80,13 +78,21 @@ export function useChatSession() {
 
     try {
       await streamChatMessage(
-        { message: text, model: primaryModel, providerId, history, projectId },
+        { message: text, history, projectId },
         (ev) => {
           if (!isCurrent()) return;
           if (ev.type === "status") dispatch({ type: "status", label: ev.label });
           else if (ev.type === "delta") dispatch({ type: "delta", text: ev.text });
-          else if (ev.type === "done") dispatch({ type: "done", lookedAt: ev.lookedAt.length > 0 ? ev.lookedAt : undefined });
-          else dispatch({ type: "fail", message: `⚠ ${ev.message}` });
+          else if (ev.type === "done") {
+            dispatch({ type: "done", lookedAt: ev.lookedAt.length > 0 ? ev.lookedAt : undefined });
+            queryClient.invalidateQueries({ queryKey: qk.chatAllowance() });
+          } else {
+            // Same path as the JSON endpoint: a chat_limit denial opens the unlock panel.
+            const failure = describeChatFailure({ error: ev.message, code: ev.code, limit: ev.limit });
+            dispatch({ type: "fail", message: failure.message });
+            if (failure.limitReached) unlockTrigger.fire();
+            queryClient.invalidateQueries({ queryKey: qk.chatAllowance() });
+          }
         },
         ctrl.signal,
       );

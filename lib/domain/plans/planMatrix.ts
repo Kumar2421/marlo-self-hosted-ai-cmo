@@ -37,8 +37,8 @@ export const PLAN_LIMITS: Record<LimitKey, Record<PlanId, number>> = {
   geo_prompts: { free: 3, lite: 10, pro: 10 },
   // Free: manual, 1 run/week. Paid plans also run weekly automatically.
   geo_manual_runs_per_week: { free: 1, lite: UNLIMITED, pro: UNLIMITED },
-  // Free: 10 messages/month at 1 credit each. Paid: spend credits.
-  chat_messages_per_month: { free: 10, lite: UNLIMITED, pro: UNLIMITED },
+  // Platform-key chat messages per UTC calendar month. Bring-your-own-key and self-host are not counted.
+  chat_messages_per_month: { free: 10, lite: 150, pro: 600 },
   // Free: 28-day view. Paid: full stored history (retention policy applies).
   traffic_view_days: { free: 28, lite: UNLIMITED, pro: UNLIMITED },
   // Leads finder is Pro-only.
@@ -70,6 +70,8 @@ export const FEATURE_IDS = [
   "article_writer",
   "cms_publish",
   "chat",
+  "chat_start_audit",
+  "chat_deep_tools",
   "support_community",
   "support_email",
   "support_priority",
@@ -110,7 +112,9 @@ export const FEATURES: readonly Feature[] = [
   { id: "hn_drafts", label: "Hacker News drafts", description: "AI-drafted Hacker News posts.", minPlan: "pro" },
   { id: "article_writer", label: "AI article writer", description: "Long-form articles written from your strategy.", minPlan: "pro" },
   { id: "cms_publish", label: "CMS publishing", description: "Publish articles to your CMS after your approval.", minPlan: "pro" },
-  { id: "chat", label: "AI CMO chat", description: "Free: 10 messages per month. Paid plans spend credits.", minPlan: "free", limitKey: "chat_messages_per_month" },
+  { id: "chat", label: "Chat messages per month", description: "Messages to the AI CMO chat each month (10 on Free, 150 on Lite, 600 on Pro). Bring your own key for unlimited.", minPlan: "free", limitKey: "chat_messages_per_month" },
+  { id: "chat_start_audit", label: "Start an SEO audit from chat", description: "Ask the chat to run an SEO audit for you.", minPlan: "lite" },
+  { id: "chat_deep_tools", label: "Deeper chat tools", description: "Chat can dig into GEO, links and technical detail.", minPlan: "lite" },
   { id: "support_community", label: "Community support", description: "Help from the community.", minPlan: "free" },
   { id: "support_email", label: "Email support", description: "Support by email.", minPlan: "lite" },
   { id: "support_priority", label: "Priority email support", description: "Priority support by email.", minPlan: "pro" },

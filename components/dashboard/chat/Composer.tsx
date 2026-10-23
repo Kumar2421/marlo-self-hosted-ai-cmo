@@ -1,8 +1,8 @@
 "use client";
 
 import type { Ref } from "react";
-import { Paperclip, AtSign, ArrowUp } from "lucide-react";
-import ModelPicker from "./ModelPicker";
+import { ArrowUp } from "lucide-react";
+import ChatUsageMeter from "./ChatUsageMeter";
 
 export default function Composer({
   value,
@@ -39,15 +39,7 @@ export default function Composer({
           className="mb-3 w-full bg-transparent text-[13px] text-gray-800 placeholder:text-gray-400 focus:outline-none"
         />
         <div className="flex items-center justify-between">
-          <div className="flex min-w-0 items-center gap-3 text-ui-subtle">
-            <ModelPicker />
-            <button type="button" disabled title="Coming soon" aria-label="Attach file (coming soon)" className="cursor-not-allowed opacity-40">
-              <Paperclip size={15} />
-            </button>
-            <button type="button" disabled title="Coming soon" aria-label="Mention (coming soon)" className="cursor-not-allowed opacity-40">
-              <AtSign size={15} />
-            </button>
-          </div>
+          <div className="min-w-0" />
           <button
             onClick={onSend}
             disabled={!value.trim() || pending}
@@ -58,6 +50,7 @@ export default function Composer({
           </button>
         </div>
       </div>
+      <ChatUsageMeter />
     </div>
   );
 }

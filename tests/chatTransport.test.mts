@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { streamChatMessage, type ChatRequest } from "../lib/query/chatTransport.ts";
+import { describeChatFailure } from "../lib/domain/chat/chatSessionState.ts";
 import { encodeSseEvent, type StreamEvent } from "../lib/domain/assistant/sse.ts";
 
-const req: ChatRequest = { message: "hi", model: "m", providerId: "openai", history: [], projectId: "p1" };
+const req: ChatRequest = { message: "hi", history: [], projectId: "p1" };
 const enc = new TextEncoder();
 
 function sseResponse(chunks: (string | Error)[], status = 200, contentType = "text/event-stream"): Response {
@@ -135,4 +136,28 @@ test("abort before the request: fetch rejects, no fallback call", async () => {
   await streamChatMessage(req, h.onEvent, ac.signal, h.fetchImpl);
   assert.deepEqual(h.urls, ["/api/chat/stream"]);
   assert.deepEqual(h.events, []);
+});
+
+test("chat_limit: in-stream error keeps code and fields, and maps to the same describeChatFailure path as JSON", async () => {
+  const err: StreamEvent = { type: "error", message: "You have used your free chats for this month.", code: "chat_limit", used: 10, limit: 10, resetsAt: "2026-11-01T00:00:00.000Z", plan: "free" };
+  const h = harness(() => sseResponse([encodeSseEvent(status), encodeSseEvent(err)]));
+  await streamChatMessage(req, h.onEvent, undefined, h.fetchImpl);
+  const got = h.events.at(-1) as Extract<StreamEvent, { type: "error" }>;
+  assert.deepEqual(got, err);
+  const viaStream = describeChatFailure({ error: got.message, code: got.code, limit: got.limit });
+  assert.deepEqual(viaStream, { message: "You've used your 10 free chats this month. Plans unlock more.", limitReached: true });
+});
+
+test("chat_limit via the JSON fallback yields the identical error event", async () => {
+  const body = { error: "You have used your free chats for this month.", code: "chat_limit", used: 10, limit: 10, resetsAt: "2026-11-01T00:00:00.000Z", plan: "free" };
+  const h = harness((url) => (url === "/api/chat/stream" ? json({}, 404) : json(body, 402)));
+  await streamChatMessage(req, h.onEvent, undefined, h.fetchImpl);
+  assert.deepEqual(h.events, [{ type: "error", message: body.error, code: "chat_limit", used: 10, limit: 10, resetsAt: body.resetsAt, plan: "free" }]);
+});
+
+test("request body no longer carries model or provider", async () => {
+  let sent = "";
+  const h = harness((_u, init) => { sent = String(init?.body); return sseResponse([encodeSseEvent(done)]); });
+  await streamChatMessage(req, h.onEvent, undefined, h.fetchImpl);
+  assert.deepEqual(Object.keys(JSON.parse(sent)).sort(), ["history", "message", "projectId"]);
 });

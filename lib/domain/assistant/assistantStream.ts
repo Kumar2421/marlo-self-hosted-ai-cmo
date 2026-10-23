@@ -38,6 +38,18 @@ export function chunkText(text: string, target = 24): string[] {
   return out;
 }
 
+/** Same facts as the JSON error body: a chat_limit denial keeps its code and used/limit/resetsAt/plan. */
+function errorEvent(err: AssistantError): StreamEvent {
+  const b = err.body ?? {};
+  return {
+    type: "error", message: err.userMessage, code: typeof b.code === "string" ? b.code : String(err.status),
+    ...(typeof b.used === "number" ? { used: b.used } : {}),
+    ...(typeof b.limit === "number" ? { limit: b.limit } : {}),
+    ...(typeof b.resetsAt === "string" || b.resetsAt === null ? { resetsAt: b.resetsAt as string | null } : {}),
+    ...(typeof b.plan === "string" ? { plan: b.plan } : {}),
+  };
+}
+
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** Never throws. Every outcome is an event: ... done, or error. A cancelled client gets nothing more. */
@@ -57,7 +69,7 @@ export async function runAssistantTurnStream(
 
   send({ type: "status", phase: "thinking", label: THINKING_LABEL });
   try {
-    const out = await runAssistantTurn(ports, ctx, input, {
+    const out = await runAssistantTurn(ports, ctx, input, {}, {
       signal,
       onToolStart: (tool) => send({ type: "status", phase: "tool", tool, label: toolStatusLabel(tool) }),
       onDelta: (text) => { streamed = true; send({ type: "delta", text }); },
@@ -78,7 +90,7 @@ export async function runAssistantTurnStream(
     send({ type: "done", toolsUsed: out.toolsUsed, lookedAt: out.lookedAt });
   } catch (err) {
     if (signal?.aborted) return;
-    if (err instanceof AssistantError) send({ type: "error", message: err.userMessage, code: String(err.status) });
+    if (err instanceof AssistantError) send(errorEvent(err));
     else send({ type: "error", message: "Something went wrong. Try again.", code: "internal" });
   }
 }

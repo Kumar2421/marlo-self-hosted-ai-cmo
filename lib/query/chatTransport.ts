@@ -2,21 +2,21 @@ import { createSseDecoder, type StreamEvent } from "../domain/assistant/sse.ts";
 
 export type ChatRequest = {
   message: string;
-  model: string;
-  providerId: string;
   history: { role: "user" | "assistant"; content: string }[];
   projectId: string | null;
 };
 
-export type ChatResponseBody = { reply?: string; lookedAt?: unknown; error?: string };
+export type ChatResponseBody = {
+  reply?: string; lookedAt?: unknown; error?: string;
+  /** "chat_limit" when the monthly cap is reached (HTTP 402); with used/limit/resetsAt/plan. */
+  code?: string; used?: number; limit?: number; resetsAt?: string | null; plan?: string;
+};
 
 type FetchLike = typeof fetch;
 
 const requestBody = (req: ChatRequest) =>
   JSON.stringify({
     message: req.message,
-    model: req.model,
-    providerId: req.providerId,
     history: req.history,
     projectId: req.projectId,
   });
@@ -43,13 +43,25 @@ const STREAM_UNAVAILABLE = new Set([404, 405, 501, 502, 503, 504]);
 const CONNECTION_LOST = "Connection lost before the answer finished. Try again.";
 const UNREACHABLE = "Couldn't reach the server. Check your connection and try again.";
 
+/** A failed JSON body as an error event, keeping chat_limit's code and fields. */
+function errorFromBody(data: ChatResponseBody): StreamEvent {
+  return {
+    type: "error", message: data.error ?? "Something went wrong.",
+    ...(data.code ? { code: data.code } : {}),
+    ...(typeof data.used === "number" ? { used: data.used } : {}),
+    ...(typeof data.limit === "number" ? { limit: data.limit } : {}),
+    ...(typeof data.resetsAt === "string" || data.resetsAt === null ? { resetsAt: data.resetsAt } : {}),
+    ...(data.plan ? { plan: data.plan } : {}),
+  };
+}
+
 /** Runs the JSON endpoint and replays its answer as stream events, so callers have one code path. */
 async function viaJson(req: ChatRequest, onEvent: (ev: StreamEvent) => void, signal: AbortSignal | undefined, fetchImpl: FetchLike) {
   try {
     const { ok, data } = await sendChatMessage(req, signal, fetchImpl);
     if (signal?.aborted) return;
     if (!ok || typeof data.reply !== "string") {
-      onEvent({ type: "error", message: data.error ?? "Something went wrong." });
+      onEvent(errorFromBody(data));
       return;
     }
     onEvent({ type: "delta", text: data.reply });
@@ -92,7 +104,7 @@ export async function streamChatMessage(
     if (!res.ok && !STREAM_UNAVAILABLE.has(res.status)) {
       // A real answer from the stream route (e.g. 400): show it, do not re-run the turn.
       const data = (await res.json().catch(() => ({}))) as ChatResponseBody;
-      if (!signal?.aborted) onEvent({ type: "error", message: data.error ?? "Something went wrong." });
+      if (!signal?.aborted) onEvent(errorFromBody(data));
       return;
     }
     return viaJson(req, onEvent, signal, fetchImpl);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FEATURES } from "@/lib/features";
 import type { TurnContext } from "@/lib/domain/assistant/assistantTypes";
+import { chatLimiter, guardChatRate } from "@/lib/domain/assistant/chatRateLimit";
 import { runAssistantTurnStream } from "@/lib/domain/assistant/assistantStream";
 import { createPlatformPorts } from "@/lib/domain/assistant/platformAdapters";
 import { createSelfHostPorts } from "@/lib/domain/assistant/selfHostAdapters";
@@ -21,9 +22,16 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "message is required" }, { status: 400 });
 
-  const { model, providerId } = body as { model?: string; providerId?: string };
+  // Legacy providerId/model fields are ignored: the server chooses the model and key.
   const platform = FEATURES.PLATFORM_MODE;
   const ctx: TurnContext = { mode: platform ? "platform" : "selfhost", userId: null, activeProjectId: null };
+
+  // Same per-user rate limit as /api/chat, answered as plain JSON BEFORE any streaming starts.
+  const ports = platform ? createPlatformPorts() : createSelfHostPorts();
+  const guard = await guardChatRate(ports, ctx, chatLimiter);
+  if (!guard.ok) {
+    return NextResponse.json({ error: guard.error }, { status: 429, headers: { "Retry-After": String(guard.retryAfterSec) } });
+  }
 
   // Aborts on client disconnect (req.signal) or when the response stream is cancelled.
   const work = new AbortController();
@@ -40,8 +48,8 @@ export async function POST(req: NextRequest) {
       keepalive = setInterval(() => { try { write(SSE_KEEPALIVE); } catch { work.abort(); } }, KEEPALIVE_MS);
       try {
         await runAssistantTurnStream(
-          platform ? createPlatformPorts() : createSelfHostPorts(), ctx,
-          { message: body.message, history: body.history, projectId: body.projectId, requestedProvider: providerId, requestedModel: model },
+          guard.ports, ctx,
+          { message: body.message, history: body.history, projectId: body.projectId },
           (ev) => write(encodeSseEvent(ev)),
           { signal: work.signal },
         );

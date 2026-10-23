@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { runAssistantTurnStream, chunkText } from "../lib/domain/assistant/assistantStream.ts";
+import type { ChatEntitlement } from "../lib/domain/assistant/chatEntitlements.ts";
 import type { AssistantPorts } from "../lib/domain/assistant/assistantService.ts";
 import type { TurnContext } from "../lib/domain/assistant/assistantTypes.ts";
 import type { DriverLike } from "../lib/domain/chat/toolLoop.ts";
@@ -14,20 +15,31 @@ const chatPorts = {
 } as unknown as ChatPorts;
 
 const ctx: TurnContext = { mode: "platform", userId: null, activeProjectId: null };
-const input = { message: "hi", history: [], projectId: "p1", requestedProvider: "openai", requestedModel: "m" };
+const input = { message: "hi", history: [], projectId: "p1" };
 
 function streamOf(...parts: string[]): ReadableStream<Uint8Array> {
   const enc = new TextEncoder();
   return new ReadableStream({ start(c) { for (const p of parts) c.enqueue(enc.encode(p)); c.close(); } });
 }
 
-function setup(driver: DriverLike, o: { tools?: boolean; withData?: boolean; cred?: "byok" | "platform" } = {}) {
+function setup(driver: DriverLike, o: { tools?: boolean; withData?: boolean; cred?: "byok" | "platform"; ent?: ChatEntitlement; used?: number; driverFor?: (id: string) => DriverLike } = {}) {
   const calls: string[] = [];
   const ports: AssistantPorts = {
     scope: { authenticate: async () => ({ userId: "u" }), activeProjectId: async () => "p1" },
-    llm: { getDriver: () => driver, supportsTools: () => !!o.tools },
-    credentials: { resolve: async () => { calls.push("cred"); return o.cred === "platform" ? { kind: "platform", loadApiKey: () => "pk" } : { kind: "byok", apiKey: "k", baseUrl: undefined }; } },
-    credits: { chargeBeforeAnswer: async () => { calls.push("charge"); return { ok: true }; } },
+    llm: { getDriver: (id) => (o.driverFor ? o.driverFor(id) : driver), supportsTools: () => !!o.tools },
+    credentials: {
+      resolve: async () => { calls.push("cred"); return o.cred === "platform" ? { kind: "platform", loadApiKey: () => "pk" } : { kind: "byok", apiKey: "k", baseUrl: undefined }; },
+      preferredModel: async () => (o.cred === "platform" ? null : { providerId: "openai", model: "m" }),
+      platformAvailable: (id) => o.cred === "platform" && (id === "groq" || id === "mistral"),
+    },
+    credits: {
+      canAfford: async () => ({ ok: true }),
+      charge: async () => { calls.push("charge"); return { ok: true }; },
+    },
+    entitlements: o.ent ? {
+      entitlement: async () => o.ent as ChatEntitlement,
+      countPlatformChatMessages: async () => o.used ?? 0,
+    } : undefined,
     prompts: { build: async () => "SYS" },
     data: { create: () => (o.withData ? chatPorts : null) },
   };
@@ -98,6 +110,66 @@ test("error before any text: one error event, stream ends, no done", async () =>
   assert.ok(!s.events.some((e) => e.type === "done"));
 });
 
+test("success on a platform key charges exactly once, after the reply", async () => {
+  const s = setup(async () => ({ stream: streamOf("hi") }), { cred: "platform" });
+  await runAssistantTurnStream(s.ports, ctx, input, s.emit, noDelay);
+  assert.equal(s.calls.filter((c) => c === "charge").length, 1);
+  assert.equal(s.events.at(-1)?.type, "done");
+});
+
+test("abort before a successful reply charges NOTHING (even if the driver finishes anyway)", async () => {
+  const ac = new AbortController();
+  // The driver ignores the signal and returns a good reply AFTER the client left.
+  const s = setup(async () => { ac.abort(); return { text: "late answer" }; }, { cred: "platform" });
+  await runAssistantTurnStream(s.ports, ctx, input, s.emit, { ...noDelay, signal: ac.signal });
+  assert.ok(!s.calls.includes("charge"), "no charge");
+  assert.ok(!s.events.some((e) => e.type === "done" || e.type === "delta"));
+});
+
+test("provider error before any text charges nothing", async () => {
+  const s = setup(async () => { throw new Error("401 invalid api key"); }, { cred: "platform" });
+  await runAssistantTurnStream(s.ports, ctx, input, s.emit, noDelay);
+  assert.ok(!s.calls.includes("charge"));
+});
+
+test("fallback still works before the first delta, but is blocked once text has streamed", async () => {
+  const rate = () => new Error("429 rate limit");
+  // Before any text: first model fails, second answers.
+  const seen: string[] = [];
+  const a = setup(async () => ({ text: "x" }), { cred: "platform", driverFor: (id) => async () => { seen.push(id); if (id === "groq") throw rate(); return { text: "from mistral" }; } });
+  await runAssistantTurnStream(a.ports, ctx, input, a.emit, noDelay);
+  assert.deepEqual(seen, ["groq", "mistral"]);
+  assert.equal(text(a.events), "from mistral");
+  // After text streamed: the failure ends the turn, no second model, no duplicated text.
+  const seen2: string[] = [];
+  const b = setup(async () => ({ text: "x" }), { cred: "platform", driverFor: (id) => async () => {
+    seen2.push(id);
+    let pulls = 0;
+    return { stream: new ReadableStream<Uint8Array>({ pull(c) { if (pulls++ === 0) c.enqueue(new TextEncoder().encode("partial")); else c.error(rate()); } }) };
+  } });
+  await runAssistantTurnStream(b.ports, ctx, input, b.emit, noDelay);
+  assert.deepEqual(seen2, ["groq"]);
+  assert.equal(text(b.events), "partial");
+  assert.equal(b.events.at(-1)?.type, "error");
+  assert.ok(!b.calls.includes("charge"));
+});
+
+test("chat_limit denial is an in-stream error event with code and body fields, nothing charged", async () => {
+  const s = setup(async () => ({ text: "never" }), { cred: "platform", ent: { plan: "free", enforced: true }, used: 10 });
+  await runAssistantTurnStream(s.ports, ctx, input, s.emit, noDelay);
+  const last = s.events.at(-1) as Extract<StreamEvent, { type: "error" }>;
+  assert.equal(last.type, "error");
+  assert.equal(last.code, "chat_limit");
+  assert.equal(last.used, 10);
+  assert.equal(last.limit, 10);
+  assert.equal(last.plan, "free");
+  assert.ok(String(last.resetsAt).endsWith("-01T00:00:00.000Z"));
+  assert.ok(!s.calls.includes("charge"));
+  // And it survives the wire.
+  const d = createSseDecoder();
+  assert.deepEqual(d.push(encodeSseEvent(last)), [last]);
+});
+
 test("pipeline errors keep their status as the error code (409 scope), before any charge", async () => {
   const s = setup(async () => ({ text: "x" }), { cred: "platform" });
   s.ports.scope.activeProjectId = async () => "other";
@@ -162,10 +234,12 @@ test("a sink that throws (closed connection) does not throw out of the runner", 
   await runAssistantTurnStream(s.ports, ctx, input, () => { throw new Error("closed"); }, noDelay);
 });
 
-test("empty reply is reported, not silently finished", async () => {
-  const s = setup(async () => ({ text: "" }));
+test("empty reply is an error, never a silent done (and never charged)", async () => {
+  const s = setup(async () => ({ text: "" }), { cred: "platform" });
   await runAssistantTurnStream(s.ports, ctx, input, s.emit, noDelay);
-  assert.equal((s.events.at(-1) as { code?: string }).code, "empty_reply");
+  assert.equal(s.events.at(-1)?.type, "error");
+  assert.ok(!s.events.some((e) => e.type === "done"));
+  assert.ok(!s.calls.includes("charge"));
 });
 
 test("SSE round trip: emitted events survive encode, arbitrary chunking, decode", async () => {

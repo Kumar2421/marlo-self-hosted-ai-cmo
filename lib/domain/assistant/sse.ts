@@ -9,7 +9,10 @@ export type StreamEvent =
   | { type: "status"; phase: "thinking" | "tool"; label: string; tool?: string }
   | { type: "delta"; text: string }
   | { type: "done"; toolsUsed: string[]; lookedAt: string[] }
-  | { type: "error"; message: string; code?: string };
+  | { type: "error"; message: string; code?: string } & ChatLimitFields;
+
+/** Same fields the JSON endpoint puts in a 402 chat_limit body, so one client path handles both. */
+export type ChatLimitFields = { used?: number; limit?: number; resetsAt?: string | null; plan?: string };
 
 /** A comment frame. Keeps proxies and load balancers from closing an idle connection. */
 export const SSE_KEEPALIVE = ": keepalive\n\n";
@@ -34,7 +37,14 @@ export function parseStreamEvent(raw: unknown): StreamEvent | null {
       return { type: "done", toolsUsed: strings(o.toolsUsed), lookedAt: strings(o.lookedAt) };
     case "error":
       if (typeof o.message !== "string") return null;
-      return { type: "error", message: o.message, ...(typeof o.code === "string" ? { code: o.code } : {}) };
+      return {
+        type: "error", message: o.message,
+        ...(typeof o.code === "string" ? { code: o.code } : {}),
+        ...(typeof o.used === "number" ? { used: o.used } : {}),
+        ...(typeof o.limit === "number" ? { limit: o.limit } : {}),
+        ...(typeof o.resetsAt === "string" || o.resetsAt === null ? { resetsAt: o.resetsAt as string | null } : {}),
+        ...(typeof o.plan === "string" ? { plan: o.plan } : {}),
+      };
     default:
       return null;
   }

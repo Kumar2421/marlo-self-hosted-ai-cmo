@@ -97,3 +97,12 @@ export function retryRequest(messages: ChatMsg[]): { text: string; history: { ro
   while (idx >= 0 && messages[idx].role !== "user") idx--;
   return { text: messages[idx].text, history: historyForRequest(messages.slice(0, idx)) };
 }
+
+/** What to show for a failed chat response, and whether it is the monthly free cap (which also opens the unlock panel). */
+export function describeChatFailure(data: { error?: string; code?: string; limit?: number }): { message: string; limitReached: boolean } {
+  if (data.code === "chat_limit") {
+    const n = typeof data.limit === "number" && data.limit > 0 ? data.limit : 10;
+    return { message: `You've used your ${n} free chats this month. Plans unlock more.`, limitReached: true };
+  }
+  return { message: `⚠ ${data.error ?? "Something went wrong."}`, limitReached: false };
+}

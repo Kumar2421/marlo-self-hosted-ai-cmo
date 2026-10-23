@@ -41,6 +41,8 @@ const SPEC_MIN_PLAN: Record<FeatureId, PlanId> = {
   article_writer: "pro",
   cms_publish: "pro",
   chat: "free",
+  chat_start_audit: "lite",
+  chat_deep_tools: "lite",
   support_community: "free",
   support_email: "lite",
   support_priority: "pro",
@@ -86,7 +88,7 @@ const SPEC_LIMITS: Record<LimitKey, Record<PlanId, number>> = {
   credits_per_month: { free: 20, lite: 300, pro: 1000 },
   geo_prompts: { free: 3, lite: 10, pro: 10 },
   geo_manual_runs_per_week: { free: 1, lite: -1, pro: -1 },
-  chat_messages_per_month: { free: 10, lite: -1, pro: -1 },
+  chat_messages_per_month: { free: 10, lite: 150, pro: 600 },
   traffic_view_days: { free: 28, lite: -1, pro: -1 },
   daily_leads: { free: 0, lite: 0, pro: -1 },
 };
