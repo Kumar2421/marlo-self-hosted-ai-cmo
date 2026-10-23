@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { BlockedFix } from "@/lib/domain/codefix/grounding";
 import { createPortal } from "react-dom";
 import { Check, ExternalLink, GitPullRequest, Loader2, Wrench } from "lucide-react";
@@ -13,6 +13,7 @@ import { closedPullRequestOf, pullRequestUrlOf } from "@/lib/domain/fixes/linkPu
 import { implementationOf } from "@/lib/domain/search/actionOutcome";
 import type { ActionWithOutcome } from "@/lib/domain/search/outcomeService";
 import { friendlyGithubError } from "@/lib/domain/github/friendlyGithubError";
+import { askConfirm, backToPreview, confirmSubmit, submitFailed, type ConfirmStep } from "@/lib/domain/codefix/confirmPr";
 import SidePanel from "@/components/shared/SidePanel";
 import { useTerminalLog } from "@/lib/terminal-log-store";
 import { useCodeFix, useGithubStatus, useSaveGithubRepo, type PreparedFix } from "./useCodeFix";
@@ -243,13 +244,25 @@ function PreviewPanel({
   const prUrl = approve.data?.prUrl ?? null;
   const { log, logDone } = useTerminalLog();
 
+  const [step, setStep] = useState<ConfirmStep>("preview");
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (step === "confirming") confirmRef.current?.focus();
+  }, [step]);
+
   const submit = () => {
+    const next = confirmSubmit(step);
+    if (!next.send) return;
+    setStep(next.step);
     log(`Opening a pull request on ${fix.repoFullName} for ${finding.entityId}...`);
     approve.mutate(
       { ticket: fix.ticket, changes, explanation: fix.explanation, edited: JSON.stringify(changes) !== JSON.stringify(fix.changes) },
       {
         onSuccess: (data) => logDone(`Applied fix: ${fix.label}. Pull request opened: ${data.prUrl}`),
-        onError: (error) => logDone(`Couldn't open the pull request: ${friendlyGithubError(error.message).message}`),
+        onError: (error) => {
+          setStep(submitFailed("submitting"));
+          logDone(`Couldn't open the pull request: ${friendlyGithubError(error.message).message}`);
+        },
       },
     );
   };
@@ -257,7 +270,7 @@ function PreviewPanel({
   return createPortal(
     <SidePanel
       open
-      onClose={onClose}
+      onClose={step === "preview" ? onClose : () => setStep(backToPreview(step))}
       title={`Fix in code: ${fix.label}`}
       subtitle={<span>Preview for <span className="font-mono">{fix.repoFullName}</span>. Nothing has been changed yet.</span>}
       footer={
@@ -267,6 +280,31 @@ function PreviewPanel({
             <a href={prUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 rounded-lg bg-[#111111] px-3 py-2 text-[12px] font-medium text-white hover:bg-black">
               View on GitHub <ExternalLink size={12} />
             </a>
+          </div>
+        ) : step !== "preview" ? (
+          <div className="space-y-2" role="region" aria-live="polite" aria-label="Confirm pull request" data-testid="codefix-confirm">
+            {approve.error && (
+              <FriendlyError error={approve.error} reconnectHref={reconnectHref} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700" />
+            )}
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[12px] text-amber-900">
+              <p className="font-semibold">This opens a pull request on <span className="font-mono">{fix.repoFullName}</span>. Marlo never merges.</p>
+              <p className="mt-1">Repository: <span className="font-mono">{fix.repoFullName}</span></p>
+              <p className="mt-1">Files that will change:</p>
+              <ul className="ml-4 list-disc font-mono">
+                {changes.map((c, i) => (
+                  <li key={`${c.path}-${i}`}>{c.path}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setStep(backToPreview(step))} disabled={step === "submitting"} className="rounded-lg border border-gray-200 px-3 py-2 text-[12px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                Back
+              </button>
+              <button ref={confirmRef} type="button" onClick={submit} disabled={step === "submitting"} className="flex items-center gap-1.5 rounded-lg bg-[#111111] px-3 py-2 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50">
+                {step === "submitting" ? <Loader2 size={13} className="animate-spin" /> : <GitPullRequest size={13} />}
+                Open pull request
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-2">
@@ -279,8 +317,8 @@ function PreviewPanel({
                 <button type="button" onClick={onClose} disabled={approve.isPending} className="rounded-lg border border-gray-200 px-3 py-2 text-[12px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
                   Cancel
                 </button>
-                <button type="button" onClick={submit} disabled={approve.isPending} className="flex items-center gap-1.5 rounded-lg bg-[#111111] px-3 py-2 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50">
-                  {approve.isPending ? <Loader2 size={13} className="animate-spin" /> : <GitPullRequest size={13} />}
+                <button type="button" onClick={() => { approve.reset(); setStep(askConfirm(step)); }} className="flex items-center gap-1.5 rounded-lg bg-[#111111] px-3 py-2 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50">
+                  <GitPullRequest size={13} />
                   Approve and open PR
                 </button>
               </div>
