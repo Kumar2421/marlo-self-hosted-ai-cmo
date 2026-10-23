@@ -282,7 +282,9 @@ export default function ContextPanel({
           <div key="header" className={HEADER_BLOCK}>
             <div className="mb-2.5 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="h-6 w-6 rounded-full bg-indigo-400" />
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded" data-testid="project-icon">
+                  <WebsiteIcon url={project.url} size={6} />
+                </span>
                 <span className="text-[13px] font-semibold text-gray-900">{project.name}</span>
               </div>
               <button

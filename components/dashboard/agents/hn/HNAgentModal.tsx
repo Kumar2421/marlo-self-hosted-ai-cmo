@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { X, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useProviders, findProviderForModel } from "@/lib/providers-store";
 import { useToast } from "@/components/dashboard/Toast";
+import { CloseButton } from "@/components/shared/CloseButton";
+import { useModal } from "@/components/shared/useModal";
 
 /** LLM output isn't guaranteed to be "title on line 1, body after" — models
  * sometimes prefix a "Title:" label, or leave a blank line first. Handle those
@@ -131,16 +133,16 @@ export default function HNAgentModal({
     }
   };
 
+  const { backdropProps, panelProps } = useModal(onClose, "Hacker News Agent", { open: isOpen });
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="flex h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+    <div {...backdropProps} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div {...panelProps} className="flex h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
           <h2 className="text-lg font-semibold text-gray-900">Hacker News Agent</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">
-            <X size={20} />
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         <div className="flex flex-1 overflow-hidden">

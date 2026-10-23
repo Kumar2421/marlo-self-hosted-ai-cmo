@@ -23,6 +23,7 @@ const SIZE_CLASS: Record<number, string> = {
 
 export function WebsiteIcon({ url, size = 8 }: { url: string; size?: number }) {
   // Result is tied to the url it was resolved for, so a changed url shows the placeholder, not a stale icon.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const [result, setResult] = useState<{ url: string; favicon: string | null } | null>(null);
 
   useEffect(() => {
@@ -46,22 +47,20 @@ export function WebsiteIcon({ url, size = 8 }: { url: string; size?: number }) {
     return <div className={`${sizeClass} shrink-0 rounded bg-gray-100`} />;
   }
 
-  if (favicon) {
+  if (favicon && failedSrc !== favicon) {
     return (
       <img
         src={favicon}
         alt=""
         className={`${sizeClass} shrink-0 rounded object-contain`}
-        onError={(e) => {
-          e.currentTarget.style.display = "none";
-        }}
+        onError={() => setFailedSrc(favicon)}
       />
     );
   }
 
   // Fallback to a globe when there is no favicon or the value is not a website.
   return (
-    <span className={`${sizeClass} shrink-0 flex items-center justify-center bg-white text-sm`}>
+    <span className={`${sizeClass} shrink-0 flex items-center justify-center bg-white text-sm`} aria-hidden="true">
       🌐
     </span>
   );
