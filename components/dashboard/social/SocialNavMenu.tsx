@@ -241,10 +241,10 @@ export default function SocialNavMenu() {
 
           <section aria-labelledby={dailyHeadingId} className="px-2.5 pb-1">
             <h4 id={dailyHeadingId} className="text-[12px] font-medium text-gray-900">Daily drafts</h4>
-            <p className="mb-2 text-[11px] text-gray-500">One draft per network each day, for review. Nothing is posted.</p>
+            <p className="mb-2 text-xs text-gray-500">One draft per network each day, for review. Nothing is posted.</p>
 
             {daily.query.isError ? (
-              <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800">
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
                 <span>Could not load settings.</span>
                 <button type="button" onClick={() => daily.query.refetch()} className="font-medium underline hover:no-underline">
                   Retry
@@ -260,7 +260,7 @@ export default function SocialNavMenu() {
                     <li key={network.id} className="flex items-center justify-between gap-3 py-1.5">
                       <span className="text-[12px] font-medium text-gray-800">{network.name}</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-gray-500">Auto-draft daily</span>
+                        <span className="text-xs text-gray-500">Auto-draft daily</span>
                         <button
                           type="button"
                           role="switch"
@@ -279,7 +279,7 @@ export default function SocialNavMenu() {
               </ul>
             )}
 
-            {daily.save.isError && <p className="mt-1 text-[11px] text-amber-700">Could not save. The switch was set back.</p>}
+            {daily.save.isError && <p className="mt-1 text-xs text-amber-700">Could not save. The switch was set back.</p>}
           </section>
         </div>
       )}

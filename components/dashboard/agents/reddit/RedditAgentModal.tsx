@@ -103,7 +103,7 @@ export default function RedditAgentModal({ onClose }: { onClose: () => void }) {
               <p className="text-[12px] text-gray-500">Find and engage with high-intent discussions</p>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 hover:bg-gray-100 text-gray-500">
+          <button onClick={onClose} className="rounded-lg p-2 hover:bg-gray-100 text-ui-muted">
             <X size={18} />
           </button>
         </div>
@@ -183,12 +183,12 @@ export default function RedditAgentModal({ onClose }: { onClose: () => void }) {
                 )}
                 {opportunities.map((opp, idx) => (
                   <div key={idx} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-                    <div className="text-[11px] font-bold text-[#FF4500] mb-1">{opp.subreddit}</div>
+                    <div className="text-xs font-bold text-[#FF4500] mb-1">{opp.subreddit}</div>
                     <h3 className="text-[14px] font-semibold text-gray-900 mb-1">{opp.title}</h3>
                     <p className="text-[12px] text-gray-500 mb-3 line-clamp-2">{opp.body}</p>
                     
                     <div className="rounded-lg bg-gray-50 p-3 border border-gray-100">
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Draft Reply</div>
+                      <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Draft Reply</div>
                       <textarea 
                         className="w-full bg-transparent text-[13px] text-gray-800 outline-none resize-none min-h-[80px]"
                         value={opp.reply_draft}

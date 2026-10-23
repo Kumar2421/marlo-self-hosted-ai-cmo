@@ -52,7 +52,7 @@ export default function BusinessSearchForm({
       />
 
       {hasProfile && fromProfile && (
-        <p className="text-[11px] text-gray-500">
+        <p className="text-xs text-gray-500">
           From your lead profile ·{" "}
           <button type="button" onClick={onEditProfile} className="text-gray-700 underline hover:text-gray-900">
             Edit profile
@@ -71,7 +71,7 @@ export default function BusinessSearchForm({
       </button>
 
       {showKeyHint && (
-        <p className="text-[11px] text-amber-600">
+        <p className="text-xs text-amber-600">
           ⚠ No Google Cloud key connected -{" "}
           <a href="/settings/api-credentials" className="underline hover:text-amber-700">
             connect one in Settings
@@ -79,7 +79,7 @@ export default function BusinessSearchForm({
           (with Places API enabled) to search real businesses.
         </p>
       )}
-      {!showKeyHint && <p className="text-[11px] text-gray-400">Real places from Google Maps, with their own websites checked.</p>}
+      {!showKeyHint && <p className="text-xs text-ui-subtle">Real places from Google Maps, with their own websites checked.</p>}
     </>
   );
 }

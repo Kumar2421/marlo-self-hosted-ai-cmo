@@ -162,7 +162,7 @@ export async function listSelectableRepos(deps: GithubAppDeps, projectId: string
   const link = await deps.store.get(projectId);
   if (!link) return { ok: false, disconnected: true };
   try {
-    const { token } = await mintInstallationToken(deps.cfg, link.installationId, { fetch: deps.fetch, now: deps.now?.() });
+    const { token } = await mintInstallationToken(deps.cfg, link.installationId, { fetch: deps.fetch, now: deps.now?.(), readOnly: true });
     const shared = await listInstallationRepos(token, deps.fetch);
     // Only repos both shared with the installation and visible to the user who connected it.
     return { ok: true, repos: shared.filter((r) => inList(link.allowedRepos, r.fullName)) };

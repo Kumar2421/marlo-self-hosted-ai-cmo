@@ -37,19 +37,19 @@ function EditForm({ project, onClose }: { project: ActiveProject; onClose: () =>
   return (
     <div className="space-y-3 border-t border-gray-200 px-4 py-3">
       <div>
-        <label className="mb-1 block text-[11px] font-medium text-gray-500">Name</label>
+        <label className="mb-1 block text-xs font-medium text-gray-500">Name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] outline-none focus:border-black" />
       </div>
       <div>
-        <label className="mb-1 block text-[11px] font-medium text-gray-500">Website URL</label>
+        <label className="mb-1 block text-xs font-medium text-gray-500">Website URL</label>
         <input value={url} onChange={(e) => setUrl(e.target.value)} className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] outline-none focus:border-black" />
       </div>
       <div>
-        <label className="mb-1 block text-[11px] font-medium text-gray-500">Category</label>
+        <label className="mb-1 block text-xs font-medium text-gray-500">Category</label>
         <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="SaaS" className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] outline-none focus:border-black" />
       </div>
       <div>
-        <label className="mb-1 block text-[11px] font-medium text-gray-500">Description</label>
+        <label className="mb-1 block text-xs font-medium text-gray-500">Description</label>
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="w-full resize-none rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] outline-none focus:border-black" />
       </div>
       <div className="flex justify-end gap-2">
@@ -108,16 +108,16 @@ function ProjectRow({ p, isActive }: { p: ActiveProject; isActive: boolean }) {
             <div className="flex items-center gap-2">
               <span className="truncate text-[13px] font-semibold text-gray-900">{p.name}</span>
               {isActive && (
-                <span className="shrink-0 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[11px] font-medium text-[#00846f]">Active</span>
+                <span className="shrink-0 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">Active</span>
               )}
               {p.category && (
-                <span className="shrink-0 rounded-full bg-gray-200 px-2 py-0.5 text-[11px] font-medium text-gray-600">{p.category}</span>
+                <span className="shrink-0 rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600">{p.category}</span>
               )}
             </div>
             <a href={normalizeHostUrl(p.url)?.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 truncate text-[12px] text-gray-500 hover:underline">
               {p.url.replace(/^https?:\/\//, "")} <ExternalLink size={10} className="shrink-0" />
             </a>
-            {p.description && <p className="mt-0.5 truncate text-[11px] text-gray-400">{p.description}</p>}
+            {p.description && <p className="mt-0.5 truncate text-xs text-ui-subtle">{p.description}</p>}
           </div>
         </div>
 
@@ -134,10 +134,10 @@ function ProjectRow({ p, isActive }: { p: ActiveProject; isActive: boolean }) {
           )}
           {!confirmingDelete && (
             <>
-              <button onClick={() => setEditing((v) => !v)} title="Edit" className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700">
+              <button onClick={() => setEditing((v) => !v)} title="Edit" className="rounded-lg p-1.5 text-ui-subtle hover:bg-gray-100 hover:text-gray-700">
                 <Pencil size={14} />
               </button>
-              <button onClick={() => setConfirmingDelete(true)} title="Delete" className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600">
+              <button onClick={() => setConfirmingDelete(true)} title="Delete" className="rounded-lg p-1.5 text-ui-subtle hover:bg-red-50 hover:text-red-600">
                 <Trash2 size={14} />
               </button>
             </>
@@ -196,7 +196,7 @@ export default function WebsitesPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-10 text-gray-400">
+        <div className="flex items-center justify-center py-10 text-ui-subtle">
           <Loader2 className="animate-spin" size={20} />
         </div>
       ) : projects.length === 0 ? (

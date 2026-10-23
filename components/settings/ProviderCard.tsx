@@ -80,12 +80,12 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
             <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
               {provider.name}
               {isConnected && (
-                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">
+                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">
                   <Check size={10} /> Connected
                 </span>
               )}
               {isPlatformIncluded && (
-                <span className="flex items-center gap-1 rounded-full bg-[#eef2ff] px-2 py-0.5 text-[10px] font-medium text-[#4338ca]">
+                <span className="flex items-center gap-1 rounded-full bg-[#eef2ff] px-2 py-0.5 text-xs font-medium text-[#4338ca]">
                   <Sparkles size={10} /> Included with your plan
                 </span>
               )}
@@ -98,7 +98,7 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
             href={provider.docsUrl}
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-700"
+            className="flex items-center gap-1 text-xs text-ui-subtle hover:text-gray-700"
           >
             Get key <ExternalLink size={11} />
           </a>
@@ -110,7 +110,7 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
           <div className="space-y-1.5 rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
             {connection.baseUrl && (
               <div className="flex items-center justify-between gap-3">
-                <span className="text-gray-400">Endpoint</span>
+                <span className="text-ui-subtle">Endpoint</span>
                 <span className="min-w-0 break-all font-mono">{connection.baseUrl}</span>
               </div>
             )}
@@ -139,7 +139,7 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
             Ready to use — no key needed. The platform provides this model for every hosted account.
           </div>
           <ModelPicker provider={provider} primaryModel={primaryModel} onPick={setPrimaryModel} show={show} />
-          <details className="text-[11px] text-gray-400">
+          <details className="text-xs text-ui-subtle">
             <summary className="cursor-pointer hover:text-gray-600">Use your own key instead</summary>
             <div className="mt-2 flex gap-2">
               <input
@@ -161,7 +161,7 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
           </details>
         </div>
       ) : blockedInPlatformMode ? (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800">
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
           <AlertTriangle size={12} className="mt-0.5 shrink-0" />
           {provider.name} only runs on your own machine — not reachable from a hosted deployment. Available in
           self-host mode only.
@@ -217,7 +217,7 @@ function ModelPicker({
 }) {
   return (
     <div>
-      <div className="mb-1.5 text-[11px] font-medium text-gray-500">Models</div>
+      <div className="mb-1.5 text-xs font-medium text-gray-500">Models</div>
       <div className="flex flex-wrap gap-1.5">
         {provider.models.map((m) => (
           <button
@@ -226,7 +226,7 @@ function ModelPicker({
               onPick(m);
               show(`${m} set as primary model.`);
             }}
-            className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+            className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
               primaryModel === m
                 ? "border-gray-900 bg-gray-900 text-white"
                 : "border-gray-200 text-gray-600 hover:bg-gray-50"

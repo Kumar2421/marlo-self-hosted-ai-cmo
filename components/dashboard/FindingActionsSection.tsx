@@ -18,13 +18,13 @@ function PullRequestState({ action }: { action: Action }) {
     <div className="mt-2 flex flex-wrap items-center gap-2" data-testid="pr-state">
       <span
         className={
-          "rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase " +
+          "rounded-full border px-2 py-0.5 text-xs font-semibold uppercase " +
           (openUrl ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700")
         }
       >
         {openUrl ? "Pull request open" : "Closed without merging"}
       </span>
-      <a href={url} target="_blank" rel="noreferrer" className="text-[11px] text-blue-600 hover:underline">
+      <a href={url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline">
         View the pull request
       </a>
     </div>
@@ -80,31 +80,31 @@ function OutcomeCard({ action, outcome, onUndo, busy }: { action: ActionWithOutc
     <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50/60 p-2.5" data-testid="outcome-card">
       <div className="flex flex-wrap items-center gap-2">
         {outcome && (
-          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${OUTCOME_CLASS[outcome.status]}`}>{OUTCOME_LABEL[outcome.status]}</span>
+          <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${OUTCOME_CLASS[outcome.status]}`}>{OUTCOME_LABEL[outcome.status]}</span>
         )}
-        <span className="text-[10px] text-gray-400">
+        <span className="text-xs text-ui-subtle">
           Made {new Date(implementation.implementedAt).toLocaleDateString()} {via}
         </span>
         {prUrl && (
-          <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[9px] font-semibold text-blue-700">
+          <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
             Pull request merged
           </span>
         )}
         {canUndo && (
-          <button type="button" onClick={onUndo} disabled={busy} className="ml-auto text-[10px] text-gray-500 hover:text-gray-800 hover:underline disabled:opacity-50">
+          <button type="button" onClick={onUndo} disabled={busy} className="ml-auto text-xs text-gray-500 hover:text-gray-800 hover:underline disabled:opacity-50">
             {stopTrackingOnly ? "Stop tracking" : "Undo"}
           </button>
         )}
       </div>
       {canUndo && stopTrackingOnly && (
-        <p className="mt-1 text-[10px] leading-4 text-gray-400" data-testid="stop-tracking-note">
+        <p className="mt-1 text-xs leading-4 text-ui-subtle" data-testid="stop-tracking-note">
           This only stops tracking the result. It does not change your site back.
         </p>
       )}
       {outcome && <p className="mt-1.5 text-[12px] leading-5 text-gray-800">{outcome.headline}</p>}
-      {outcome?.pageNote && <p className="mt-1 text-[11px] leading-4 text-gray-500">{outcome.pageNote}</p>}
+      {outcome?.pageNote && <p className="mt-1 text-xs leading-4 text-gray-500">{outcome.pageNote}</p>}
       {prUrl && (
-        <a href={prUrl} target="_blank" rel="noreferrer" className="mt-1 block text-[11px] text-blue-600 hover:underline">
+        <a href={prUrl} target="_blank" rel="noreferrer" className="mt-1 block text-xs text-blue-600 hover:underline">
           View the pull request
         </a>
       )}
@@ -131,20 +131,20 @@ function ImplementControl({
           type="button"
           onClick={() => onImplement(action, custom && url.trim() ? url.trim() : undefined)}
           disabled={busy}
-          className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
         >
           {busy ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
           I made this change
         </button>
         {!custom && (
-          <button type="button" onClick={() => setCustom(true)} className="text-[10px] text-gray-500 hover:text-gray-800 hover:underline">
+          <button type="button" onClick={() => setCustom(true)} className="text-xs text-gray-500 hover:text-gray-800 hover:underline">
             Changed a different page?
           </button>
         )}
       </div>
       {custom && (
         <label className="mt-2 block">
-          <span className="mb-0.5 block text-[10px] text-gray-500">The page you changed (on your website)</span>
+          <span className="mb-0.5 block text-xs text-gray-500">The page you changed (on your website)</span>
           <input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
@@ -153,7 +153,7 @@ function ImplementControl({
           />
         </label>
       )}
-      <p className="mt-1.5 text-[10px] text-gray-400">
+      <p className="mt-1.5 text-xs text-ui-subtle">
         Marlo saves today&apos;s numbers, then checks back after a week or two to show whether it helped.
       </p>
     </div>
@@ -215,12 +215,12 @@ export default function FindingActionsSection({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-[12px] font-semibold text-gray-900">{recommendation.title}</div>
-                <div className="mt-1 text-[11px] leading-4 text-gray-600">{recommendation.summary}</div>
+                <div className="mt-1 text-xs leading-4 text-gray-600">{recommendation.summary}</div>
               </div>
               {action ? (
                 <span className="flex shrink-0 items-center gap-1.5">
-                  <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[9px] font-semibold uppercase text-gray-500">{recommendation.priority}</span>
-                  <span className={"rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase " + STATUS_CLASS[action.status]}>
+                  <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-semibold uppercase text-gray-500">{recommendation.priority}</span>
+                  <span className={"rounded-full border px-2 py-0.5 text-xs font-semibold uppercase " + STATUS_CLASS[action.status]}>
                     {STATUS_LABEL[action.status]}
                   </span>
                 </span>
@@ -228,7 +228,7 @@ export default function FindingActionsSection({
                 <button
                   onClick={() => onCreate(recommendation)}
                   disabled={busy}
-                  className="flex shrink-0 items-center gap-1 rounded-lg bg-[#111111] px-2.5 py-1.5 text-[11px] font-medium text-white hover:bg-black disabled:opacity-50"
+                  className="flex shrink-0 items-center gap-1 rounded-lg bg-[#111111] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-black disabled:opacity-50"
                 >
                   {busy ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
                   Track action
@@ -236,14 +236,14 @@ export default function FindingActionsSection({
               )}
             </div>
 
-            <div className="mt-2 whitespace-pre-line text-[11px] leading-4 text-gray-500">
+            <div className="mt-2 whitespace-pre-line text-xs leading-4 text-gray-500">
               <span className="font-medium text-gray-700">{recommendation.implementation.kind}</span>
               {" · "}
               {recommendation.implementation.description}
             </div>
 
             {action?.status === "approved" && action.parameters?.autoApproved === true && (
-              <div className="mt-2 text-[10px] font-medium text-blue-700" data-testid="auto-approved-note">
+              <div className="mt-2 text-xs font-medium text-blue-700" data-testid="auto-approved-note">
                 Auto-approved by Marlo (a safe fix: nothing changes on your site until you act)
               </div>
             )}
@@ -253,11 +253,11 @@ export default function FindingActionsSection({
                 <PullRequestState action={action} />
                 <ImplementControl key={action.id} action={action} busy={busy} onImplement={onImplement} />
                 <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-2">
-                  <span className="text-[10px] text-gray-400">Saved as a tracked action. Nothing is changed on your site for you.</span>
+                  <span className="text-xs text-ui-subtle">Saved as a tracked action. Nothing is changed on your site for you.</span>
                   <button
                     onClick={() => onCancel(action)}
                     disabled={busy}
-                    className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-red-600 disabled:opacity-50"
+                    className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-red-600 disabled:opacity-50"
                   >
                     <XCircle size={11} />
                     Cancel
@@ -269,7 +269,7 @@ export default function FindingActionsSection({
             {action?.status === "completed" && <OutcomeCard action={action} outcome={action.outcome} onUndo={() => onUndo(action)} busy={busy} />}
 
             {action && action.status !== "proposed" && action.status !== "approved" && action.status !== "completed" && (
-              <div className="mt-2 border-t border-gray-100 pt-2 text-[10px] text-gray-400">
+              <div className="mt-2 border-t border-gray-100 pt-2 text-xs text-ui-subtle">
                 Action created {new Date(action.createdAt).toLocaleString()}
               </div>
             )}

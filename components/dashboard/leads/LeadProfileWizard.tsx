@@ -27,7 +27,7 @@ function Field({ title, hint, children }: { title: string; hint?: string; childr
 function Summary({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-t border-gray-100 px-3 py-2.5 first:border-t-0">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-ui-subtle">{label}</div>
       <div className="mt-0.5 text-[13px] text-gray-800">{value || "—"}</div>
     </div>
   );
@@ -71,13 +71,13 @@ export default function LeadProfileWizard({
         <li key={name} className="flex items-center gap-1.5">
           <span
             aria-current={index === step ? "step" : undefined}
-            className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold ${
-              index < step ? "bg-emerald-100 text-emerald-700" : index === step ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-400"
+            className={`flex h-5 w-5 items-center justify-center rounded-full text-xs font-semibold ${
+              index < step ? "bg-emerald-100 text-emerald-700" : index === step ? "bg-gray-900 text-white" : "bg-gray-100 text-ui-subtle"
             }`}
           >
             {index < step ? <Check size={11} /> : index + 1}
           </span>
-          <span className={`hidden text-[11px] sm:inline ${index === step ? "font-medium text-gray-900" : "text-gray-400"}`}>{name}</span>
+          <span className={`hidden text-xs sm:inline ${index === step ? "font-medium text-gray-900" : "text-ui-subtle"}`}>{name}</span>
           {index < STEPS.length - 1 && <span className="h-px w-3 bg-gray-200" />}
         </li>
       ))}
@@ -161,7 +161,7 @@ export default function LeadProfileWizard({
               placeholder="e.g. Small shops lose sales because their website is slow and hard to find on Google."
               className="w-full rounded-lg border border-gray-200 px-2.5 py-2 text-[12px] text-gray-800 placeholder:text-gray-400"
             />
-            <div className="mt-1 text-right text-[10px] text-gray-400">{draft.problem.length}/{LIMITS.problemLength}</div>
+            <div className="mt-1 text-right text-xs text-ui-subtle">{draft.problem.length}/{LIMITS.problemLength}</div>
           </Field>
           <Field title="Who should we never show you?" hint="Competitors and companies to skip. Your competitors are added for you.">
             <ChipInput label="Excluded companies" value={draft.exclude} onChange={(exclude) => update({ exclude })} placeholder="e.g. rival.com" max={LIMITS.exclude} />
@@ -193,7 +193,7 @@ export default function LeadProfileWizard({
           </div>
           {problems.length > 0 && <p className="mt-3 text-[12px] text-red-600">{problems[0]}</p>}
           {error && <p className="mt-3 text-[12px] text-red-600">{error}</p>}
-          <p className="mt-3 text-[11px] text-gray-500">You can change this any time from the Leads tab. Daily leads start once it is confirmed.</p>
+          <p className="mt-3 text-xs text-gray-500">You can change this any time from the Leads tab. Daily leads start once it is confirmed.</p>
         </>
       )}
     </SidePanel>

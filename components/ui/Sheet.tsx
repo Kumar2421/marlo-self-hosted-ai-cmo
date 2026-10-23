@@ -53,7 +53,7 @@ export function SheetContent({ title, subtitle, width = "lg", toolbar, footer, c
         <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 border-b border-ui-border px-4 py-2">
           <div className="min-w-0">
             <RadixDialog.Title className="truncate text-[13px] leading-5 font-semibold text-ui-text">{title}</RadixDialog.Title>
-            {subtitle ? <div className="truncate text-[11px] leading-4 text-ui-muted">{subtitle}</div> : null}
+            {subtitle ? <div className="truncate text-xs leading-4 text-ui-muted">{subtitle}</div> : null}
           </div>
           <RadixDialog.Close asChild>
             <IconButton aria-label="Close" size="sm" icon={<X className="h-4 w-4" />} className="-mr-1" />

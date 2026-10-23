@@ -27,7 +27,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: "go
   const color = tone === "good" ? "text-emerald-600" : tone === "bad" ? "text-red-600" : "text-gray-900";
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-3">
-      <div className="mb-1 text-[11px] uppercase text-gray-500">{label}</div>
+      <div className="mb-1 text-xs uppercase text-gray-500">{label}</div>
       <div className={`text-xl font-semibold ${color}`}>{value}</div>
     </div>
   );
@@ -36,7 +36,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: "go
 function TrackButton({ item, tracking }: { item: SearchOpportunity; tracking: OpportunityTracking }) {
   if (tracking.isTracked(item)) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
         <Check size={11} /> Tracked in Findings
       </span>
     );
@@ -47,7 +47,7 @@ function TrackButton({ item, tracking }: { item: SearchOpportunity; tracking: Op
       type="button"
       onClick={() => tracking.track(item)}
       disabled={busy}
-      className="rounded-md border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+      className="rounded-md border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
     >
       {busy ? "Adding…" : "Track this"}
     </button>
@@ -60,7 +60,7 @@ function OpportunityItem({ item, tracking }: { item: SearchOpportunity; tracking
       <div className="flex items-baseline justify-between gap-3">
         <span className="min-w-0 break-words text-[13px] font-medium text-gray-900">{item.query}</span>
         {item.pageUrl && (
-          <a href={item.pageUrl} target="_blank" rel="noreferrer" className="shrink-0 text-[11px] text-blue-600 hover:underline">
+          <a href={item.pageUrl} target="_blank" rel="noreferrer" className="shrink-0 text-xs text-blue-600 hover:underline">
             Open page
           </a>
         )}
@@ -87,7 +87,7 @@ function Overview({ groups, tracking }: { groups: OpportunityGroups; tracking: O
     <div className="space-y-5">
       <section>
         <h3 className="text-[12px] font-semibold text-gray-700">What changed in the last 28 days</h3>
-        <p className="mb-2 text-[11px] text-gray-500">Compared with the 28 days before, across your most-viewed searches.</p>
+        <p className="mb-2 text-xs text-gray-500">Compared with the 28 days before, across your most-viewed searches.</p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat label="Improved" value={groups.changes.up} tone="good" />
           <Stat label="Slipping" value={groups.changes.down} tone={groups.changes.down > 0 ? "bad" : undefined} />
@@ -119,7 +119,7 @@ function Opportunities({ groups, tracking }: { groups: OpportunityGroups; tracki
       {visible.map((section) => (
         <section key={section.key} className="rounded-xl border border-gray-200 bg-white px-4 pt-3">
           <h3 className="text-[12px] font-semibold text-gray-700">{section.title}</h3>
-          <p className="text-[11px] text-gray-500">{section.hint}</p>
+          <p className="text-xs text-gray-500">{section.hint}</p>
           <ul className="divide-y divide-gray-100">
             {groups[section.key].map((item) => (
               <OpportunityItem key={`${item.type}:${item.query}`} item={item} tracking={tracking} />
@@ -137,7 +137,7 @@ function Topics({ search }: { search: SearchInsights | null }) {
     <div className="space-y-5">
       <section>
         <h3 className="text-[12px] font-semibold text-gray-700">What people are trying to do</h3>
-        <p className="mb-3 text-[11px] text-gray-500">From your top {search.analysedQueries.toLocaleString()} searches.</p>
+        <p className="mb-3 text-xs text-gray-500">From your top {search.analysedQueries.toLocaleString()} searches.</p>
         <div className="space-y-2.5">
           {search.intents.map((intent) => (
             <div key={intent.intent}>
@@ -161,11 +161,11 @@ function Topics({ search }: { search: SearchInsights | null }) {
             <li key={theme.label} className="py-2.5">
               <div className="flex items-baseline justify-between gap-3">
                 <span className="min-w-0 break-words text-[13px] font-medium text-gray-900">{theme.label}</span>
-                <span className="shrink-0 text-[11px] text-gray-500">
+                <span className="shrink-0 text-xs text-gray-500">
                   {theme.impressions.toLocaleString()} views · you rank ~{theme.position.toFixed(1)}
                 </span>
               </div>
-              <div className="mt-0.5 text-[11px] text-gray-500">
+              <div className="mt-0.5 text-xs text-gray-500">
                 {INTENT_LABELS[theme.intent]}
                 {theme.queries > 1 && ` · ${theme.queries} similar searches: ${theme.examples.slice(1).join(", ")}`}
               </div>
@@ -182,7 +182,7 @@ function Queries({ queries }: { queries: TopQuery[] }) {
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200">
       <table className="w-full border-collapse text-[12px]">
-        <thead className="bg-gray-50 text-[11px] uppercase text-gray-500">
+        <thead className="bg-gray-50 text-xs uppercase text-gray-500">
           <tr>
             <th className="px-3 py-2 text-left font-semibold">Search</th>
             <th className="px-3 py-2 text-right font-semibold">Clicks</th>

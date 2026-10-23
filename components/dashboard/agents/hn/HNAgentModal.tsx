@@ -138,7 +138,7 @@ export default function HNAgentModal({
       <div className="flex h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
           <h2 className="text-lg font-semibold text-gray-900">Hacker News Agent</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">
+          <button onClick={onClose} className="text-ui-subtle hover:text-gray-700">
             <X size={20} />
           </button>
         </div>
@@ -190,7 +190,7 @@ export default function HNAgentModal({
               <div className="flex h-full items-center justify-center text-center text-sm text-gray-500">
                 {isGenerating ? (
                   <div className="flex flex-col items-center gap-3">
-                    <Loader2 size={24} className="animate-spin text-gray-400" />
+                    <Loader2 size={24} className="animate-spin text-ui-faint" />
                     <p>Channeling Paul Graham and drafting your Show HN...</p>
                   </div>
                 ) : (

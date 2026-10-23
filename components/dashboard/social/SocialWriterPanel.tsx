@@ -55,10 +55,10 @@ function DraftRow({ draft, platform, onOpen }: { draft: AnyDraft; platform: Soci
         className="w-full rounded-xl border border-gray-200 bg-white p-4 text-left transition-colors hover:border-gray-300 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gray-900"
       >
         <div className="mb-2 flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">{draft.angle}</span>
-          {draft.edited && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">Edited</span>}
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">{draft.angle}</span>
+          {draft.edited && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">Edited</span>}
           {draft.status === "completed" && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
               <Check size={10} /> Completed
             </span>
           )}
@@ -200,7 +200,7 @@ function DraftDetail({ draft, platform, onClose, onChange }: { draft: AnyDraft; 
 
         {draft.whyThisWorks && (
           <section className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-            <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Why this works</h3>
+            <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">Why this works</h3>
             <p className="text-[13px] leading-relaxed text-gray-700">{draft.whyThisWorks}</p>
           </section>
         )}
@@ -269,7 +269,7 @@ function UnlockedSocialWriterPanel({ platform, onClose }: { platform: SocialPlat
       toolbar={toolbar}
       footer={
         <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[11px] text-gray-500">Drafts open in {config.name} for you to post. Nothing is sent automatically.</p>
+          <p className="text-xs text-gray-500">Drafts open in {config.name} for you to post. Nothing is sent automatically.</p>
           {generateButton}
         </div>
       }

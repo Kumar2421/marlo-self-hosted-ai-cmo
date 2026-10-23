@@ -37,8 +37,8 @@ export function statusClass(status: FindingStatus) {
 function SectionTitle({ children, hint }: { children: React.ReactNode; hint?: string }) {
   return (
     <div className="mb-2">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{children}</div>
-      {hint && <div className="mt-0.5 text-[11px] text-gray-500">{hint}</div>}
+      <div className="text-xs font-semibold uppercase tracking-wide text-ui-subtle">{children}</div>
+      {hint && <div className="mt-0.5 text-xs text-gray-500">{hint}</div>}
     </div>
   );
 }
@@ -118,7 +118,7 @@ export default function FindingDetail({
 
       <section>
         <SectionTitle>Why this was flagged</SectionTitle>
-        <p className="mb-2 text-[11px] text-gray-500">Priority: {explainPriority(finding)}</p>
+        <p className="mb-2 text-xs text-gray-500">Priority: {explainPriority(finding)}</p>
         {why && <p className="mb-2 rounded-xl border border-gray-200 bg-gray-50 p-3 text-[12px] leading-5 text-gray-700">{why}</p>}
         {evidenceRows.length > 0 && (
           <div className="overflow-hidden rounded-xl border border-gray-200">
@@ -180,12 +180,12 @@ export default function FindingDetail({
           {STATUS_ORDER.map((status, index) => (
             <div key={status} className="flex items-center gap-1">
               <span
-                className={`rounded-full border px-2 py-1 text-[10px] font-medium ${
+                className={`rounded-full border px-2 py-1 text-xs font-medium ${
                   finding.status === status
                     ? statusClass(status)
                     : index < currentIndex
                       ? "border-emerald-100 bg-emerald-50 text-emerald-700"
-                      : "border-gray-200 bg-white text-gray-400"
+                      : "border-gray-200 bg-white text-ui-subtle"
                 }`}
               >
                 {STATUS_LABEL[status]}
@@ -194,7 +194,7 @@ export default function FindingDetail({
             </div>
           ))}
         </div>
-        <p className="mt-2 text-[10px] text-gray-400">
+        <p className="mt-2 text-xs text-ui-subtle">
           First seen {new Date(finding.firstSeen).toLocaleDateString()} · Last checked {new Date(finding.lastSeen).toLocaleString()}
         </p>
       </section>

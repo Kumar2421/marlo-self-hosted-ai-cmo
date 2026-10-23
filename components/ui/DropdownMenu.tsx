@@ -65,7 +65,7 @@ export function DropdownMenuCheckboxItem({ className, children, ...rest }: Compo
 }
 
 export function DropdownMenuLabel({ className, ...rest }: ComponentPropsWithoutRef<typeof RadixMenu.Label>) {
-  return <RadixMenu.Label className={cn("px-2 py-1 text-[11px] leading-4 font-semibold tracking-wider text-ui-subtle uppercase", className)} {...rest} />;
+  return <RadixMenu.Label className={cn("px-2 py-1 text-xs leading-4 font-semibold tracking-wider text-ui-subtle uppercase", className)} {...rest} />;
 }
 
 export function DropdownMenuSeparator({ className, ...rest }: ComponentPropsWithoutRef<typeof RadixMenu.Separator>) {
