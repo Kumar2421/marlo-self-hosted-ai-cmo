@@ -28,23 +28,41 @@
  * carries .theme-follow (full-screen fixed overlays inside an island follow automatically).
  */
 
+/* Light ramp: Tailwind's warm stone scale replaces the cool gray scale. Also restores the ramp inside islands. */
+:root,
+:root[data-theme="dark"] .theme-island {
+  --color-white: #fff;
+  --color-black: #000;
+  --color-gray-50: #fafaf9;
+  --color-gray-100: #f5f5f4;
+  --color-gray-200: #e7e5e4;
+  --color-gray-300: #d6d3d1;
+  --color-gray-400: #a8a29e;
+  --color-gray-500: #78716c;
+  --color-gray-600: #57534e;
+  --color-gray-700: #44403c;
+  --color-gray-800: #292524;
+  --color-gray-900: #1c1917;
+  --color-gray-950: #0c0a09;
+}
+
 :root[data-theme="dark"],
 :root[data-theme="dark"] .theme-island .theme-follow,
 :root[data-theme="dark"] .theme-island .fixed.inset-0 {
   color-scheme: dark;
-  --color-white: oklch(20.5% 0.006 264);
-  --color-black: oklch(96.5% 0.003 264);
-  --color-gray-50: oklch(23.5% 0.007 264);
-  --color-gray-100: oklch(26.5% 0.008 264);
-  --color-gray-200: oklch(31.5% 0.009 264);
-  --color-gray-300: oklch(39% 0.01 264);
-  --color-gray-400: oklch(62% 0.014 264);
-  --color-gray-500: oklch(71% 0.015 264);
-  --color-gray-600: oklch(78% 0.012 264);
-  --color-gray-700: oklch(84% 0.01 264);
-  --color-gray-800: oklch(90% 0.007 264);
-  --color-gray-900: oklch(94.5% 0.004 264);
-  --color-gray-950: oklch(98% 0.002 264);
+  --color-white: #1c1917;
+  --color-black: #f5f5f4;
+  --color-gray-50: #211e1c;
+  --color-gray-100: #292524;
+  --color-gray-200: #36312f;
+  --color-gray-300: #44403c;
+  --color-gray-400: #8a837e;
+  --color-gray-500: #a8a29e;
+  --color-gray-600: #bfbab6;
+  --color-gray-700: #d6d3d1;
+  --color-gray-800: #e7e5e4;
+  --color-gray-900: #f3f0ec;
+  --color-gray-950: #fafaf9;
   --color-red-50: oklch(25.8% 0.092 26.042);
   --color-red-100: oklch(39.6% 0.141 25.723);
   --color-red-200: oklch(44.4% 0.177 26.899);
@@ -115,22 +133,22 @@
   --color-yellow-700: oklch(90.5% 0.182 98.111);
   --color-yellow-800: oklch(94.5% 0.129 101.54);
   --color-yellow-900: oklch(97.3% 0.071 103.193);
-  --background: #16171a;
-  --foreground: #ececef;
-  --ui-surface: #16171a;
-  --ui-surface-muted: #1b1c20;
-  --ui-surface-sunken: #23252a;
+  --background: #110f0e;
+  --foreground: #f3f0ec;
+  --ui-surface: #1c1917;
+  --ui-surface-muted: #211e1c;
+  --ui-surface-sunken: #292524;
   --ui-overlay: rgb(0 0 0 / 0.6);
-  --ui-border: #2e3036;
-  --ui-border-strong: #41444c;
-  --ui-text: #ececef;
-  --ui-text-muted: #a4a9b3;
-  --ui-text-subtle: #a4a9b3;
-  --ui-text-faint: #6f7480;
-  --ui-text-muted-strong: #b8bdc7;
-  --ui-text-inverse: #111111;
-  --ui-primary: #ececef;
-  --ui-primary-hover: #ffffff;
+  --ui-border: #36312f;
+  --ui-border-strong: #44403c;
+  --ui-text: #f3f0ec;
+  --ui-text-muted: #b0aaa5;
+  --ui-text-subtle: #b0aaa5;
+  --ui-text-faint: #78716c;
+  --ui-text-muted-strong: #c8c3bf;
+  --ui-text-inverse: #110f0e;
+  --ui-primary: #ffffff;
+  --ui-primary-hover: #e7e5e4;
   --ui-accent: #00ab92;
   --ui-accent-strong: #3fd9c2;
   --ui-accent-soft: #0f2f2b;
@@ -146,30 +164,17 @@
   --ui-info: #3b82f6;
   --ui-info-soft: #14203a;
   --ui-info-text: #93c5fd;
-  --focus-ring-color: #f5f5f5;
-  --solid-bg: #ececef;
-  --solid-bg-hover: #ffffff;
-  --on-solid: #111111;
+  --focus-ring-color: #f5f5f4;
+  --solid-bg: #ffffff;
+  --solid-bg-hover: #e7e5e4;
+  --on-solid: #110f0e;
   --scrim: rgb(0 0 0 / 0.6);
-  --scrollbar-thumb: #4b4f58;
+  --scrollbar-thumb: #57534e;
   --skeleton-shine: rgb(255 255 255 / 0.07);
 }
 
 :root[data-theme="dark"] .theme-island {
   color-scheme: light;
-  --color-white: #fff;
-  --color-black: #000;
-  --color-gray-50: oklch(98.5% 0.002 247.839);
-  --color-gray-100: oklch(96.7% 0.003 264.542);
-  --color-gray-200: oklch(92.8% 0.006 264.531);
-  --color-gray-300: oklch(87.2% 0.01 258.338);
-  --color-gray-400: oklch(70.7% 0.022 261.325);
-  --color-gray-500: oklch(55.1% 0.027 264.364);
-  --color-gray-600: oklch(44.6% 0.03 256.802);
-  --color-gray-700: oklch(37.3% 0.034 259.733);
-  --color-gray-800: oklch(27.8% 0.033 256.848);
-  --color-gray-900: oklch(21% 0.034 264.665);
-  --color-gray-950: oklch(13% 0.028 261.692);
   --color-red-50: oklch(97.1% 0.013 17.38);
   --color-red-100: oklch(93.6% 0.032 17.717);
   --color-red-200: oklch(88.5% 0.062 18.334);
@@ -280,22 +285,22 @@
   --color-yellow-800: oklch(47.6% 0.114 61.907);
   --color-yellow-900: oklch(42.1% 0.095 57.708);
   --color-yellow-950: oklch(28.6% 0.066 53.813);
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fafaf9;
+  --foreground: #1c1917;
   --ui-surface: #ffffff;
-  --ui-surface-muted: #f9fafb;
-  --ui-surface-sunken: #f3f4f6;
-  --ui-overlay: rgb(17 24 39 / 0.2);
-  --ui-border: #e5e7eb;
-  --ui-border-strong: #d1d5db;
-  --ui-text: #111827;
-  --ui-text-muted: #646b78;
-  --ui-text-subtle: #646b78;
-  --ui-text-faint: #9ca3af;
-  --ui-text-muted-strong: #4b5563;
+  --ui-surface-muted: #fafaf9;
+  --ui-surface-sunken: #f5f5f4;
+  --ui-overlay: rgb(17 15 14 / 0.2);
+  --ui-border: #e7e5e4;
+  --ui-border-strong: #d6d3d1;
+  --ui-text: #1c1917;
+  --ui-text-muted: #66605c;
+  --ui-text-subtle: #66605c;
+  --ui-text-faint: #a8a29e;
+  --ui-text-muted-strong: #57534e;
   --ui-text-inverse: #ffffff;
-  --ui-primary: #111111;
-  --ui-primary-hover: #2b2b2b;
+  --ui-primary: #110f0e;
+  --ui-primary-hover: #292524;
   --ui-accent: #00ab92;
   --ui-accent-strong: #007a69;
   --ui-accent-soft: #e6f7f4;
@@ -311,12 +316,12 @@
   --ui-info: #2563eb;
   --ui-info-soft: #eff6ff;
   --ui-info-text: #1d4ed8;
-  --focus-ring-color: #111111;
-  --solid-bg: #111111;
-  --solid-bg-hover: #000000;
+  --focus-ring-color: #110f0e;
+  --solid-bg: #110f0e;
+  --solid-bg-hover: #292524;
   --on-solid: #ffffff;
   --scrim: rgb(0 0 0 / 0.5);
-  --scrollbar-thumb: #c7cad1;
+  --scrollbar-thumb: #d6d3d1;
   --skeleton-shine: rgb(255 255 255 / 0.7);
 }
 
@@ -335,16 +340,24 @@
   :where(:root[data-theme="dark"]) .text-white {
     color: #fff;
   }
-  :where(:root[data-theme="dark"]) :is(.bg-black, .bg-gray-900, .bg-gray-800, .bg-\[\#111111\]) {
+  /* Neutral solid fills (primary buttons, selected pills): warm black in light, white in dark. */
+  :where(:root) :is(.bg-black, .bg-gray-900, .bg-gray-800, .bg-\[\#111111\]) {
     background-color: var(--solid-bg);
   }
-  :where(:root[data-theme="dark"]) :is(.hover\:bg-black, .hover\:bg-gray-800, .hover\:bg-\[\#111111\]):hover {
+  :where(:root) :is(.hover\:bg-black, .hover\:bg-gray-800, .hover\:bg-\[\#111111\]):hover {
     background-color: var(--solid-bg-hover);
   }
   /* Solid button text: the fill is light in dark mode, so the label goes dark. */
   :where(:root[data-theme="dark"]) :is(.bg-black, .bg-gray-900, .bg-gray-800, .bg-\[\#111111\]).text-white,
   :where(:root[data-theme="dark"]) :is(.bg-black, .bg-gray-900, .bg-gray-800, .bg-\[\#111111\]) .text-white {
     color: var(--on-solid);
+  }
+  /* Dark: solid buttons and links are white pills (Okara look). Light keeps each button's own radius. */
+  :where(:root[data-theme="dark"]) :is(button, a):is(.bg-black, .bg-gray-900, .bg-gray-800, .bg-\[\#111111\], .bg-ui-primary) {
+    border-radius: 9999px;
+  }
+  :where(:root) :is(input[type="checkbox"], input[type="radio"]) {
+    accent-color: var(--solid-bg);
   }
   :where(:root[data-theme="dark"]) :is(.bg-black\/40, .bg-black\/50, .bg-gray-900\/20) {
     background-color: var(--scrim);

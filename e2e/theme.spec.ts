@@ -127,23 +127,55 @@ test.describe("theme setting", () => {
     await expect(page.getByRole("radio", { name: "System" })).toHaveAttribute("aria-checked", "true");
   });
 
-  test("the user menu has a theme toggle that cycles light, dark, system", async ({ page }) => {
-    await page.emulateMedia({ colorScheme: "light" });
+  test("the user menu has a labelled Light / Dark / System control that applies immediately", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark" }); // dark OS: System looks like Dark, so the check must be on state
     await page.addInitScript(() => localStorage.setItem("marlo-theme", "light"));
     await page.goto("/dashboard");
     await page.getByRole("button", { name: "Account menu" }).click();
-    await page.getByRole("button", { name: /^Theme: Light\. Switch to Dark/ }).click();
+    const group = page.getByRole("radiogroup", { name: "Theme" }).filter({ visible: true });
+    await expect(group.getByRole("radio")).toHaveText(["Light", "Dark", "System"]);
+    await expect(group.getByRole("radio", { name: "Light" })).toHaveAttribute("aria-checked", "true");
+    await group.getByRole("radio", { name: "Dark" }).click();
     await expect(root(page)).toHaveAttribute("data-theme", "dark");
-    await page.getByRole("button", { name: /^Theme: Dark\. Switch to System/ }).click();
-    await expect(root(page)).toHaveAttribute("data-theme", "light"); // system + light OS
-    await page.getByRole("button", { name: /^Theme: System\. Switch to Light/ }).click();
-    expect(await page.evaluate(() => localStorage.getItem("marlo-theme"))).toBe("light");
+    await expect(group.getByRole("radio", { name: "Dark" })).toHaveAttribute("aria-checked", "true");
+    await expect(group.getByRole("radio", { name: "Light" })).toHaveAttribute("aria-checked", "false");
+    await group.getByRole("radio", { name: "Light" }).click();
+    await expect(root(page)).toHaveAttribute("data-theme", "light");
+    await group.getByRole("radio", { name: "System" }).click();
+    // The selected option is shown even though System resolves to the same look as Dark.
+    await expect(group.getByRole("radio", { name: "System" })).toHaveAttribute("aria-checked", "true");
+    await expect(root(page)).toHaveAttribute("data-theme", "dark");
+    expect(await page.evaluate(() => localStorage.getItem("marlo-theme"))).toBe("system");
+  });
+
+  test("the user menu and Settings controls share one preference", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto("/dashboard");
+    await page.getByRole("button", { name: "Account menu" }).click();
+    await page.getByRole("radiogroup", { name: "Theme" }).filter({ visible: true }).getByRole("radio", { name: "Dark" }).click();
+    await page.goto("/settings/account");
+    await expect(page.getByRole("radiogroup", { name: "Appearance" }).filter({ visible: true }).getByRole("radio", { name: "Dark" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  test("palette: warm page and card surfaces, white pill primary in dark, warm black in light", async ({ page }) => {
+    const rgb = (sel: string, prop: string) => page.locator(sel).first().evaluate((el, p) => getComputedStyle(el).getPropertyValue(p), prop);
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.goto("/dashboard");
+    await expect(root(page)).toHaveAttribute("data-theme", "dark");
+    expect(await bodyBg(page)).toBe("rgb(17, 15, 14)"); // #110f0e, same as the top bar
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--color-white").trim())).toBe("#1c1917");
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--solid-bg").trim())).toMatch(/^#fff(fff)?$/);
+    await page.emulateMedia({ colorScheme: "light" });
+    await expect(root(page)).toHaveAttribute("data-theme", "light");
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--solid-bg").trim())).toBe("#110f0e");
+    expect(await rgb("body", "color")).toBe("rgb(28, 25, 23)"); // stone-900
   });
 
   test("the top bar stays dark in both themes", async ({ page }) => {
     const barBg = () => page.getByTestId("terminal-bar").evaluate((el) => getComputedStyle(el).backgroundColor);
     await page.emulateMedia({ colorScheme: "light" });
     await page.goto("/dashboard");
+    await page.waitForLoadState("networkidle"); // the follow-system listener attaches on hydration
     const light = await barBg();
     await page.emulateMedia({ colorScheme: "dark" });
     await expect(root(page)).toHaveAttribute("data-theme", "dark");
