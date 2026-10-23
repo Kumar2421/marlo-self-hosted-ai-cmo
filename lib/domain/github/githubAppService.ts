@@ -165,7 +165,10 @@ export async function listSelectableRepos(deps: GithubAppDeps, projectId: string
     const { token } = await mintInstallationToken(deps.cfg, link.installationId, { fetch: deps.fetch, now: deps.now?.(), readOnly: true });
     const shared = await listInstallationRepos(token, deps.fetch);
     // Only repos both shared with the installation and visible to the user who connected it.
-    return { ok: true, repos: shared.filter((r) => inList(link.allowedRepos, r.fullName)) };
+    const repos = shared.filter((r) => inList(link.allowedRepos, r.fullName));
+    // Counts only (no names, no tokens): tells "GitHub shares nothing" from "Marlo's filter removed everything".
+    if (repos.length === 0) console.warn(`[github] empty repository list: installation shares ${shared.length}, user-visible ${link.allowedRepos.length}`);
+    return { ok: true, repos };
   } catch (err) {
     if (err instanceof InstallationGoneError) {
       await deps.store.clear(projectId);
