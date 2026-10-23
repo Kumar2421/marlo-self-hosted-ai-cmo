@@ -10,7 +10,7 @@ import { fetchJson } from "@/lib/query/fetchJson";
 import { qk } from "@/lib/query/keys";
 import { useGoogleConnection } from "@/lib/query/useGoogleConnection";
 import { referralNotice } from "@/lib/domain/integrations/googleHealthView";
-import GoogleReconnectLink from "@/components/settings/GoogleReconnectLink";
+import { RECONNECT_IN_TRAFFIC_HINT } from "@/lib/googleOAuthScopes";
 import { useToast } from "@/components/dashboard/Toast";
 import type { GeoOverview, PromptRow, ReferralView } from "@/lib/domain/geo/geoService";
 import type { ReadinessResult } from "@/lib/domain/geo/readiness";
@@ -126,9 +126,7 @@ function Referrals({ pid }: { pid: string | undefined }) {
         <div className="rounded-xl border border-dashed border-gray-200 p-4 text-[12px] text-gray-500">
           <p>{notice.text}</p>
           {notice.showReconnect && (
-            <div className="mt-2">
-              <GoogleReconnectLink returnTo="dashboard" />
-            </div>
+            <p className="mt-1">{RECONNECT_IN_TRAFFIC_HINT}</p>
           )}
         </div>
       ) : query.data && "total" in query.data ? (

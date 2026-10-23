@@ -14,6 +14,7 @@ import { auditFindingInputs, saveAuditFindings } from "@/lib/domain/findings/aud
 import { flagVanishedFindings } from "@/lib/domain/findings/vanishedFindings";
 import { sqliteVanishPorts, supabaseVanishPorts } from "@/lib/domain/findings/findingRepositories";
 import { decideAutoRename } from "@/lib/domain/project/projectName";
+import { withLastGoodPageSpeed, type PageSpeedCarrier } from "@/lib/domain/seo/pageSpeedFallback";
 import { resolvePlatformApiKey } from "@/lib/domain/shared/resolvePlatformApiKey";
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
@@ -79,8 +80,21 @@ export async function POST(req: NextRequest) {
         // No PageSpeed key means this audit would produce the exact same
         // result as the public /audit crawl for this URL — reuse it instead
         // of crawling again if the user just came through that funnel.
-        const auditResult = (!pageSpeedApiKey && takeCachedPublicAudit(url))
-          || await new SEOAgent(pageSpeedApiKey, pageSpeedOptions).audit(url);
+        const fresh = (!pageSpeedApiKey && takeCachedPublicAudit(url))
+          || await new SEOAgent(pageSpeedApiKey, pageSpeedOptions).audit(url);
+
+        // This run got no PageSpeed answer: keep the last good scores for this URL, dated, beside (never in) pageSpeed.
+        let auditResult = fresh;
+        if (fresh.pageSpeedUnavailable && !fresh.pageSpeed) {
+          const { data: previous } = await db
+            .from("seo_audits")
+            .select("payload, created_at")
+            .eq("user_id", user.id)
+            .eq("project_id", projectId)
+            .eq("url", url)
+            .maybeSingle();
+          auditResult = withLastGoodPageSpeed(fresh, (previous?.payload ?? null) as PageSpeedCarrier | null, previous?.created_at ?? null);
+        }
 
         const createdAt = new Date().toISOString();
         const { error } = await db.from("seo_audits").upsert(
@@ -116,8 +130,21 @@ export async function POST(req: NextRequest) {
       | undefined;
     const pageSpeedApiKey = stored?.value || process.env.PAGESPEED_API_KEY || undefined;
 
-    const auditResult = (!pageSpeedApiKey && takeCachedPublicAudit(url))
+    const fresh = (!pageSpeedApiKey && takeCachedPublicAudit(url))
       || await new SEOAgent(pageSpeedApiKey, pageSpeedOptions).audit(url);
+
+    // This run got no PageSpeed answer: keep the last good scores for this URL, dated, beside (never in) pageSpeed.
+    let auditResult = fresh;
+    if (fresh.pageSpeedUnavailable && !fresh.pageSpeed) {
+      const previousRow = db.prepare("SELECT payload, created_at FROM seo_audits WHERE url = ?").get(url) as { payload: string; created_at: string } | undefined;
+      let previous: PageSpeedCarrier | null = null;
+      try {
+        previous = previousRow ? (JSON.parse(previousRow.payload) as PageSpeedCarrier) : null;
+      } catch {
+        previous = null;
+      }
+      auditResult = withLastGoodPageSpeed(fresh, previous, previousRow?.created_at ?? null);
+    }
 
     const createdAt = new Date().toISOString();
 

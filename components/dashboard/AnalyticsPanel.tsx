@@ -26,13 +26,14 @@ import { useFindings } from "@/components/dashboard/findings/useFindings";
 import { countFindings, findingCountSentence, stripInlineCode } from "@/lib/domain/findings/findingDisplay";
 import { auditOverviewTiles, encodingLabel, lastAuditedLabel } from "@/lib/domain/seo/auditDisplay";
 import { lighthouseScoreLabel } from "@/lib/domain/seo/lighthouseAudits";
+import { describeAge } from "@/lib/domain/seo/pageSpeedFallback";
 import GoogleSourcesCard from "@/components/dashboard/search/GoogleSourcesCard";
 import GoogleSummary from "@/components/dashboard/search/GoogleSummary";
 import SearchHistoryBar from "@/components/dashboard/search/SearchHistoryBar";
 import SearchOverviewPanel from "@/components/dashboard/search/SearchOverviewPanel";
 import SearchInsightsSection from "@/components/dashboard/search/SearchInsightsSection";
 import GeoVisibility from "@/components/dashboard/geo/GeoVisibility";
-import GoogleReconnectLink from "@/components/settings/GoogleReconnectLink";
+import GoogleConnectRows from "@/components/dashboard/search/GoogleConnectRows";
 import { buildTrafficView } from "@/lib/domain/analytics/trafficView";
 import { RECONNECT_TEXT } from "@/lib/domain/integrations/googleHealthView";
 
@@ -166,6 +167,8 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
     },
   });
   const auditData = auditQuery.data ?? null;
+  // Scores from an earlier run are shown only under their own date, never as this run's result.
+  const lastGoodPageSpeed = auditData && !auditData.pageSpeed ? auditData.lastGoodPageSpeed ?? null : null;
   // The overview's finding numbers come from the stored findings, the same list and the same counting as the
   // Findings tab, so the two can never disagree (fixed and verified findings are not "needs attention").
   const storedFindings = useFindings({ enabled: open }).list;
@@ -233,7 +236,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
   useEffect(() => {
     const error = searchParams.get("ga_error");
     const connected = searchParams.get("ga_connected");
-    if (error) show(`Google Analytics connect failed: ${error}`);
+    if (error) show(`Google connect: ${error}`);
     if (connected) {
       tabDecided.current = true;
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -243,6 +246,9 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
       void queryClient.invalidateQueries({ queryKey: qk.traffic(pid) });
     }
     if (error || connected) {
+      // A partial grant still stored the service that was granted: refresh the per-service rows.
+      void queryClient.invalidateQueries({ queryKey: qk.googleConnection(pid) });
+      void queryClient.invalidateQueries({ queryKey: qk.googleResources(pid) });
       const clean = new URLSearchParams(window.location.search);
       ["ga_error", "ga_connected", "ga_project", "ga_gsc_count", "ga_ga4_count"].forEach((key) => clean.delete(key));
       const query = clean.toString();
@@ -588,6 +594,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                 : "Real search clicks, rankings and top queries from Search Console"
             }
           >
+            <GoogleConnectRows />
             {trafficLoading ? (
               <div className="space-y-4" aria-busy="true">
                 <SkeletonStats count={3} />
@@ -605,7 +612,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                       onClick={() => setTab("SEO")}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-[#111111] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-black"
                     >
-                      Connect Google or choose your site
+                      Choose your site
                     </button>
                   ) : (
                     <button
@@ -631,11 +638,6 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                         {trafficView.showReconnect ? RECONNECT_TEXT : trafficView.message}
                       </span>
                     </div>
-                    {trafficView.showReconnect && (
-                      <div className="mt-2">
-                        <GoogleReconnectLink returnTo="dashboard" />
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -906,8 +908,11 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                       <span>
                         PageSpeed Insights {auditData.pageSpeedUnavailable === "timeout" ? "was too slow to answer" : "did not return a result"}{" "}
                         for this run, so Performance/Accessibility/Best Practices/SEO scores and Core Web Vitals are
-                        not measured — below is real data from our own crawl instead, not a substitute score. Re-run
-                        the audit to try again.
+                        not measured this time.{" "}
+                        {lastGoodPageSpeed
+                          ? `Below are the last scores we measured, from ${describeAge(lastGoodPageSpeed.measuredAt)} — not from this run.`
+                          : "Below is real data from our own crawl instead, not a substitute score."}{" "}
+                        Re-run the audit to try again.
                       </span>
                     ) : (
                       <span>
@@ -958,21 +963,26 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                 </Section>
 
                 <Section title="PageSpeed Scores">
-                  {auditData.pageSpeed ? (
+                  {auditData.pageSpeed || lastGoodPageSpeed ? (
                     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                      <div className="mb-2 text-xs font-semibold tracking-wide text-gray-500">DESKTOP</div>
+                      {lastGoodPageSpeed && (
+                        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800" data-testid="pagespeed-stale-note">
+                          Old scores, measured {describeAge(lastGoodPageSpeed.measuredAt)}. PageSpeed did not answer this run.
+                        </div>
+                      )}
+                      <div className="mb-2 text-[11px] font-semibold tracking-wide text-gray-500">DESKTOP</div>
                       <div className="grid grid-cols-4 gap-2 mb-4">
-                        <ScoreCircle value={auditData.pageSpeed.desktop.performance} label="Performance" />
-                        <ScoreCircle value={auditData.pageSpeed.desktop.accessibility} label="Accessibility" />
-                        <ScoreCircle value={auditData.pageSpeed.desktop.bestPractices} label="Best Practices" />
-                        <ScoreCircle value={auditData.pageSpeed.desktop.seo} label="SEO" />
+                        <ScoreCircle value={(auditData.pageSpeed ?? lastGoodPageSpeed!.pageSpeed).desktop.performance} label="Performance" />
+                        <ScoreCircle value={(auditData.pageSpeed ?? lastGoodPageSpeed!.pageSpeed).desktop.accessibility} label="Accessibility" />
+                        <ScoreCircle value={(auditData.pageSpeed ?? lastGoodPageSpeed!.pageSpeed).desktop.bestPractices} label="Best Practices" />
+                        <ScoreCircle value={(auditData.pageSpeed ?? lastGoodPageSpeed!.pageSpeed).desktop.seo} label="SEO" />
                       </div>
                       <div className="mb-2 text-xs font-semibold tracking-wide text-gray-500">MOBILE</div>
                       <div className="grid grid-cols-4 gap-2">
-                        <ScoreCircle value={auditData.pageSpeed.mobile.performance} label="Performance" />
-                        <ScoreCircle value={auditData.pageSpeed.mobile.accessibility} label="Accessibility" />
-                        <ScoreCircle value={auditData.pageSpeed.mobile.bestPractices} label="Best Practices" />
-                        <ScoreCircle value={auditData.pageSpeed.mobile.seo} label="SEO" />
+                        <ScoreCircle value={(auditData.pageSpeed ?? lastGoodPageSpeed!.pageSpeed).mobile.performance} label="Performance" />
+                        <ScoreCircle value={(auditData.pageSpeed ?? lastGoodPageSpeed!.pageSpeed).mobile.accessibility} label="Accessibility" />
+                        <ScoreCircle value={(auditData.pageSpeed ?? lastGoodPageSpeed!.pageSpeed).mobile.bestPractices} label="Best Practices" />
+                        <ScoreCircle value={(auditData.pageSpeed ?? lastGoodPageSpeed!.pageSpeed).mobile.seo} label="SEO" />
                       </div>
                     </div>
                   ) : (

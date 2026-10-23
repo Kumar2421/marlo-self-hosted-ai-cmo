@@ -7,9 +7,22 @@ import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
+import { GA_SERVICE_COOKIE, parseServiceParam, scopesForServices, serviceParamFor, type GoogleDataService } from "@/lib/googleOAuthScopes";
+
+function authRedirect(baseUrl: string, services: GoogleDataService[]) {
+  const url = new URL(baseUrl);
+  // Only the requested service(s) are asked for; earlier grants are kept (incremental consent).
+  url.searchParams.set("scope", scopesForServices(services));
+  url.searchParams.set("include_granted_scopes", "true");
+  const res = NextResponse.redirect(url.toString());
+  // Remembered for the callback (10 min, same life as the OAuth state).
+  res.cookies.set(GA_SERVICE_COOKIE, serviceParamFor(services), { httpOnly: true, sameSite: "lax", maxAge: 600, path: "/api/auth/google-analytics" });
+  return res;
+}
 
 export async function GET(req: NextRequest) {
   const redirectUri = req.nextUrl.origin + "/api/auth/google-analytics/callback";
+  const services = parseServiceParam(req.nextUrl.searchParams.get("service"));
   const returnTo = req.nextUrl.searchParams.get("return") === "dashboard" ? "dashboard" : "settings";
   const errorRedirect = (message: string) =>
     NextResponse.redirect(req.nextUrl.origin + CREDENTIALS_PATH + "?ga_error=" + encodeURIComponent(message));
@@ -29,7 +42,7 @@ export async function GET(req: NextRequest) {
 
     try {
       const state = await createOAuthStateSupabase(db, user.id, { projectId, returnTo });
-      return NextResponse.redirect(buildAuthUrl(redirectUri, state));
+      return authRedirect(buildAuthUrl(redirectUri, state), services);
     } catch (err) {
       return errorRedirect(err instanceof Error ? err.message : String(err));
     }
@@ -42,7 +55,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const state = createOAuthState({ projectId, returnTo });
-    return NextResponse.redirect(buildAuthUrl(redirectUri, state));
+    return authRedirect(buildAuthUrl(redirectUri, state), services);
   } catch (err) {
     return errorRedirect(err instanceof Error ? err.message : String(err));
   }

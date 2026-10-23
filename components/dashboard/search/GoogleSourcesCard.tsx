@@ -7,7 +7,7 @@ import { fetchJson } from "@/lib/query/fetchJson";
 import { qk } from "@/lib/query/keys";
 import { useProject } from "@/lib/project-store";
 import { useGoogleConnection } from "@/lib/query/useGoogleConnection";
-import GoogleReconnectLink from "@/components/settings/GoogleReconnectLink";
+import { CONNECT_IN_TRAFFIC_HINT, RECONNECT_IN_TRAFFIC_HINT } from "@/lib/googleOAuthScopes";
 import { buildGoogleCardSummary } from "@/lib/domain/integrations/googleCardSummary";
 
 type IntegrationType = "google-search-console" | "google-analytics";
@@ -28,6 +28,21 @@ const COPY: Record<IntegrationType, { title: string; empty: string; noun: string
     noun: "property",
   },
 };
+
+/** The account and the Search Console / Analytics choices, shared with the Traffic tab's connect rows. */
+export function useGoogleResources(projectId: string | undefined) {
+  return useQuery({
+    queryKey: qk.googleResources(projectId),
+    queryFn: async (): Promise<Loaded> => {
+      const json = await fetchJson<Partial<Loaded>>("/api/project/integrations/google/resources");
+      return {
+        account: json.account ?? { connectedHere: false, canReuse: false, email: null },
+        integrations: json.integrations ?? [],
+      };
+    },
+    enabled: Boolean(projectId),
+  });
+}
 
 function Skeleton() {
   return (
@@ -178,17 +193,7 @@ export default function GoogleSourcesCard({ onReadyChange }: { onReadyChange?: (
   const projectId = project?.id;
   const queryClient = useQueryClient();
 
-  const resources = useQuery({
-    queryKey: qk.googleResources(projectId),
-    queryFn: async (): Promise<Loaded> => {
-      const json = await fetchJson<Partial<Loaded>>("/api/project/integrations/google/resources");
-      return {
-        account: json.account ?? { connectedHere: false, canReuse: false, email: null },
-        integrations: json.integrations ?? [],
-      };
-    },
-    enabled: Boolean(projectId),
-  });
+  const resources = useGoogleResources(projectId);
   const data = resources.data;
   const [expanded, setExpanded] = useState(false);
   const health = useGoogleConnection(projectId);
@@ -246,34 +251,10 @@ export default function GoogleSourcesCard({ onReadyChange }: { onReadyChange?: (
   const { account, integrations } = data;
 
   if (summary.mode === "connect") {
+    // The only Connect button lives in the Traffic tab; here a plain hint.
     return (
-      <div className="mb-5 rounded-xl border border-gray-200 bg-white px-3 py-2.5" data-testid="google-connect-row">
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-          <span className="min-w-0 text-[12px] text-gray-600">Google isn&apos;t connected. Connect it to see real search rankings and traffic.</span>
-          {summary.canReuse ? (
-            <span className="flex shrink-0 items-center gap-3">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => post("/api/project/integrations/google/use-account")}
-                className="rounded-lg bg-gray-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50"
-              >
-                {busy ? "Connecting…" : `Use ${account.email ?? "your connected Google account"}`}
-              </button>
-              <a href="/api/auth/google-analytics/connect?return=dashboard" className="text-xs text-gray-500 hover:text-gray-800 hover:underline">
-                Different account
-              </a>
-            </span>
-          ) : (
-            <a
-              href="/api/auth/google-analytics/connect?return=dashboard"
-              className="shrink-0 rounded-lg bg-gray-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-black"
-            >
-              Connect Google
-            </a>
-          )}
-        </div>
-        {error && <p className="mt-2 text-[12px] text-red-600">{error}</p>}
+      <div className="mb-5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[12px] text-gray-600" data-testid="google-connect-row">
+        Google isn&apos;t connected. {CONNECT_IN_TRAFFIC_HINT}
       </div>
     );
   }
@@ -306,7 +287,7 @@ export default function GoogleSourcesCard({ onReadyChange }: { onReadyChange?: (
         {summary.message && (
           <div role="alert" className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-[12px] text-amber-800">
             <span className="min-w-0">{summary.message}</span>
-            {summary.showReconnect && <GoogleReconnectLink returnTo="dashboard" />}
+            {summary.showReconnect && <span className="shrink-0 text-amber-700">{RECONNECT_IN_TRAFFIC_HINT}</span>}
           </div>
         )}
       </div>
@@ -335,7 +316,7 @@ export default function GoogleSourcesCard({ onReadyChange }: { onReadyChange?: (
       {health.showReconnect && (
         <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
           <span className="min-w-0">{health.message}</span>
-          <GoogleReconnectLink returnTo="dashboard" />
+          <span className="shrink-0 text-amber-700">{RECONNECT_IN_TRAFFIC_HINT}</span>
         </div>
       )}
       <div className="space-y-4">
