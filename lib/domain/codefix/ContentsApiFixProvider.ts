@@ -1,7 +1,7 @@
 import type { LlmDriver } from "@/lib/llm";
 import type { Finding } from "@/lib/domain/seo/SEOAgent";
 import type { CatalogApplyMeta, CatalogFixInput, CatalogProposal, CodeFixContext, CodeFixProvider, FixChange, ProposedFix } from "./types.ts";
-import { getRepo, searchCode, getFileContent, createBranch, putFileContent, createPullRequest, pathExists, listOpenPullRequests, deleteBranch, GitHubHttpError } from "./githubApi.ts";
+import { getRepo, searchCode, getFileContent, getFileContentOrNull, createBranch, putFileContent, createPullRequest, pathExists, listOpenPullRequests, deleteBranch, GitHubHttpError, type GitHubRepo } from "./githubApi.ts";
 import { openPrForHead } from "./openPrPolicy.ts";
 import {
   applyEditsToContent,
@@ -15,6 +15,20 @@ import {
   parseCatalogResponse,
   validateProposal,
 } from "./catalogFix.ts";
+import {
+  FixBlockedError,
+  checkEditSafety,
+  currentTextOf,
+  exportsMetadata,
+  groundInFile,
+  groundingCandidates,
+  mismatchMessage,
+  notFoundMessage,
+  replacesAnchor,
+  type FileGrounding,
+} from "./grounding.ts";
+import { readRepoEvidence, scoreRepoMatch, siteIdentityOf } from "./repoMatch.ts";
+import type { FixKind } from "./fixCatalog.ts";
 import { MAX_FIX_FILES, MAX_NEW_FILE_BYTES, MAX_SOURCE_FILE_BYTES, isSafeRepoPath, plannedTargets } from "./fixCatalog.ts";
 
 const EXCLUDED_DIRS = /(^|\/)(tests?|__tests__|lib|docs?|node_modules|e2e|spec|fixtures|scripts)\//i;
@@ -40,12 +54,8 @@ async function locateFile(token: string, repoFullName: string, defaultBranch: st
   if (!pathname) {
     const candidates = ["app/page.tsx", "app/page.jsx", "src/app/page.tsx", "pages/index.tsx", "pages/index.jsx", "index.html"];
     for (const candidate of candidates) {
-      try {
-        await getFileContent(token, repoFullName, candidate, defaultBranch);
-        return candidate;
-      } catch {
-        continue;
-      }
+      // Only "not there" moves on to the next convention; any other failure (GitHub unreachable) stops the fix.
+      if (await getFileContentOrNull(token, repoFullName, candidate, defaultBranch)) return candidate;
     }
     throw new Error("Couldn't locate the homepage file automatically — none of the common framework paths matched. Fix it manually.");
   }
@@ -59,6 +69,14 @@ async function locateFile(token: string, repoFullName: string, defaultBranch: st
   const best = pickPageFile(results.map((r) => r.path), segment);
   if (!best) throw new Error(`Couldn't find a file Marlo may edit for "${pathname}". Fix it manually.`);
   return best;
+}
+
+/** Which title/description fix a legacy audit finding is about (by its issue id), so its current text can be grounded. */
+function metaKindsOf(issueId: string): FixKind[] {
+  const id = issueId.toLowerCase();
+  if (id.includes("meta-description")) return ["meta_description"];
+  if (id.includes("meta-title") || id === "title") return ["title"];
+  return [];
 }
 
 type ParsedPatch = { old: string; new: string; explanation: string };
@@ -124,6 +142,11 @@ export class ContentsApiFixProvider implements CodeFixProvider {
     const file = await getFileContent(ctx.githubToken, ctx.repoFullName, filePath, repo.defaultBranch);
     if (Buffer.byteLength(file.content, "utf8") > MAX_SOURCE_FILE_BYTES) throw new Error(`${filePath} is too large for an automatic fix. Make this change manually.`);
 
+    // Same rule as catalog fixes: nothing is drafted unless the text it replaces is really in this file.
+    const legacyKinds = metaKindsOf(finding.issueId);
+    const found = groundInFile({ kinds: legacyKinds, evidence: finding.evidence, content: file.content });
+    if (found.status === "not_found") throw new Error(`${notFoundMessage(ctx.repoFullName)} Searched: ${filePath}. Fix it manually or choose another repository.`);
+
     const system = `You are a senior engineer making one small, surgical fix to a real source file for a real SEO issue. Output ONLY the exact format requested, nothing else. Never touch anything unrelated to this one issue.`;
     const prompt = `Repo: ${ctx.repoFullName}
 File: ${filePath}
@@ -162,7 +185,13 @@ The OLD block must exist character-for-character in the file above — copy it e
       throw new Error("Generated fix didn't match the real file content exactly — the model may have paraphrased. Try again.");
     }
 
-    const after = file.content.replace(parsed.old, parsed.new);
+    if ((found.status === "exact" || found.status === "declaration") && !replacesAnchor({ oldSnippet: parsed.old }, found.anchor)) {
+      throw new Error("The draft didn't replace the text the finding is about. Try again.");
+    }
+    const safety = checkEditSafety(file.content, { oldSnippet: parsed.old, newSnippet: parsed.new });
+    if (!safety.ok) throw new Error(safety.message);
+
+    const after = file.content.replace(parsed.old, () => parsed.new);
     return {
       filePath,
       before: file.content,
@@ -200,15 +229,56 @@ The OLD block must exist character-for-character in the file above — copy it e
 
     let pagePath: string | null = null;
     let pageContent: string | null = null;
+    let grounding: FileGrounding = { status: "insert" };
+    const filesSearched: string[] = [];
     if (pageKinds.length > 0) {
-      pagePath = await locateFile(ctx.githubToken, ctx.repoFullName, repo.defaultBranch, input.pageUrl ?? ctx.projectUrl);
+      const located = await locateFile(ctx.githubToken, ctx.repoFullName, repo.defaultBranch, input.pageUrl ?? ctx.projectUrl);
       // Checked before the file is read or any LLM call is made.
-      if (!isSafeRepoPath(pagePath)) throw new Error("The page source is in a place Marlo won't edit. Make this change manually.");
-      const file = await getFileContent(ctx.githubToken, ctx.repoFullName, pagePath, repo.defaultBranch);
-      if (Buffer.byteLength(file.content, "utf8") > MAX_SOURCE_FILE_BYTES) {
-        throw new Error(`${pagePath} is too large for an automatic fix. Make this change manually.`);
+      if (!isSafeRepoPath(located)) throw new Error("The page source is in a place Marlo won't edit. Make this change manually.");
+      const searchedFor = currentTextOf(input.kinds, input.evidence);
+      for (const candidate of groundingCandidates(located).filter(isSafeRepoPath)) {
+        const file =
+          candidate === located
+            ? await getFileContent(ctx.githubToken, ctx.repoFullName, candidate, repo.defaultBranch)
+            : await getFileContentOrNull(ctx.githubToken, ctx.repoFullName, candidate, repo.defaultBranch);
+        if (!file) continue;
+        if (Buffer.byteLength(file.content, "utf8") > MAX_SOURCE_FILE_BYTES) {
+          if (candidate === located) throw new Error(`${candidate} is too large for an automatic fix. Make this change manually.`);
+          continue;
+        }
+        filesSearched.push(candidate);
+        const found = groundInFile({ kinds: input.kinds, evidence: input.evidence, content: file.content });
+        if (found.status === "not_found") continue;
+        pagePath = candidate;
+        pageContent = file.content;
+        grounding = found;
+        break;
       }
-      pageContent = file.content;
+      if (pagePath === null) {
+        // Nothing to replace was found anywhere we looked: say so, and never ask a model to invent a fix.
+        const site = siteIdentityOf(ctx.projectUrl, ctx.projectName);
+        throw new FixBlockedError({
+          kind: "not_found",
+          repoFullName: ctx.repoFullName,
+          filesSearched,
+          searchedFor,
+          message: notFoundMessage(ctx.repoFullName),
+          host: site.host,
+          repoLooksWrong: await this.repoLooksWrong(ctx, repo, false),
+        });
+      }
+    }
+
+    // The repo must plausibly belong to this site (an exact hit of the finding's text already proves it).
+    if (grounding.status !== "exact" && !input.confirmRepoMismatch && (await this.repoLooksWrong(ctx, repo, false))) {
+      const site = siteIdentityOf(ctx.projectUrl, ctx.projectName);
+      throw new FixBlockedError({
+        kind: "repo_mismatch",
+        repoFullName: ctx.repoFullName,
+        host: site.host,
+        filesSearched,
+        message: mismatchMessage(site.host),
+      });
     }
 
     const newFiles: { kind: (typeof newFileKinds)[number]; path: string }[] = [];
@@ -232,11 +302,34 @@ The OLD block must exist character-for-character in the file above — copy it e
       pagePath,
       pageContent,
       newFiles,
+      anchor: grounding.status === "exact" || grounding.status === "declaration" ? grounding.anchor : null,
+      existingMetadata: pageContent !== null && exportsMetadata(pageContent),
     });
     const result = await this.llmDriver({ apiKey: this.llmApiKey, model: this.llmModel, system, messages: [{ role: "user", content: prompt }], baseUrl: this.llmBaseUrl });
     const parsed = parseCatalogResponse(result.text ?? "");
     const changes = validateProposal(parsed, { pagePath, pageContent, newFilePaths: newFiles.map((f) => f.path) });
-    return { changes, explanation: parsed.explanation };
+    // The draft must really replace the finding's text, and must not break the build.
+    for (const c of changes) {
+      if (c.type !== "edit" || pageContent === null) continue;
+      if ((grounding.status === "exact" || grounding.status === "declaration") && !replacesAnchor(c, grounding.anchor)) {
+        throw new Error("The draft didn't replace the text the finding is about. Try again.");
+      }
+      const safety = checkEditSafety(pageContent, c);
+      if (!safety.ok) {
+        throw new FixBlockedError({ kind: "unsafe", reason: safety.reason, repoFullName: ctx.repoFullName, filesSearched, message: safety.message });
+      }
+    }
+    return { changes, explanation: parsed.explanation, grounding: grounding.status };
+  }
+
+  /** True when nothing links this repo to the project's site (zero score). Reads at most README.md and package.json, within a time budget. */
+  private async repoLooksWrong(ctx: CodeFixContext, repo: GitHubRepo, foundCurrentText: boolean): Promise<boolean> {
+    const site = siteIdentityOf(ctx.projectUrl, ctx.projectName);
+    const evidence = await readRepoEvidence(
+      { fullName: ctx.repoFullName, description: repo.description, homepage: repo.homepage, foundCurrentText },
+      { readFile: async (path) => (await getFileContentOrNull(ctx.githubToken, ctx.repoFullName, path, repo.defaultBranch))?.content ?? null },
+    );
+    return scoreRepoMatch(site, evidence).score === 0;
   }
 
   async applyCatalogFix(changes: FixChange[], ctx: CodeFixContext, meta: CatalogApplyMeta): Promise<{ prUrl: string; branch: string; files: string[] }> {

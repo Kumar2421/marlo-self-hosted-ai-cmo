@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { BlockedFix } from "@/lib/domain/codefix/grounding";
 import { createPortal } from "react-dom";
 import { Check, ExternalLink, GitPullRequest, Loader2, Wrench } from "lucide-react";
 import type { Finding } from "@/lib/domain/findings/findingTypes";
@@ -123,6 +124,59 @@ function RepoPicker({ returnTo, reconnectHref }: { returnTo: string; reconnectHr
       <a href={`/settings/integrations?returnTo=${encodeURIComponent(returnTo)}`} className="mt-2 inline-block text-xs font-medium text-blue-600 hover:underline">
         Choose repository in settings
       </a>
+    </div>
+  );
+}
+
+/** Why no fix is offered. Honest states only: there is no approve button here, since nothing was drafted. */
+export function BlockedNotice({ blocked, onConfirmMismatch, busy }: { blocked: BlockedFix; onConfirmMismatch: () => void; busy: boolean }) {
+  const [confirmed, setConfirmed] = useState(false);
+  const settings = (
+    <a href="/settings/integrations" className="mt-2 inline-block text-xs font-medium text-blue-600 hover:underline">
+      Choose another repository in Settings &gt; Integrations
+    </a>
+  );
+  if (blocked.kind === "repo_mismatch") {
+    return (
+      <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3" data-testid="codefix-repo-mismatch">
+        <div className="text-[12px] font-semibold text-amber-900">{blocked.message}</div>
+        <p className="mt-1 text-xs leading-4 text-amber-800">
+          Nothing in <span className="font-mono">{blocked.repoFullName}</span> links it to <span className="font-mono">{blocked.host}</span>. Editing the wrong repository would open a pull request that does nothing for this site.
+        </p>
+        <label className="mt-2 flex items-start gap-2 text-xs text-amber-900">
+          <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} className="mt-0.5" />
+          <span>
+            I confirm <span className="font-mono">{blocked.repoFullName}</span> is the repository for {blocked.host}.
+          </span>
+        </label>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <button type="button" onClick={onConfirmMismatch} disabled={!confirmed || busy} className={primaryButton}>
+            {busy ? "Preparing..." : "Prepare anyway"}
+          </button>
+          {settings}
+        </div>
+      </div>
+    );
+  }
+  if (blocked.kind === "not_found") {
+    return (
+      <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3" data-testid="codefix-not-found">
+        <div className="text-[12px] font-semibold text-amber-900">{blocked.message}</div>
+        {blocked.searchedFor && <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded-md border border-amber-200 bg-white px-2 py-1.5 font-mono text-xs text-gray-800">{blocked.searchedFor}</pre>}
+        <p className="mt-1 text-xs leading-4 text-amber-800">
+          Files searched: {blocked.filesSearched.length > 0 ? blocked.filesSearched.map((f) => <span key={f} className="mr-1 font-mono">{f}</span>) : "none could be read"}. Nothing was drafted and no pull request can be opened.
+        </p>
+        {blocked.repoLooksWrong && (
+          <p className="mt-1 text-xs font-medium text-amber-900">This repo doesn&apos;t appear to contain {blocked.host}.</p>
+        )}
+        {settings}
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3" data-testid="codefix-unsafe">
+      <div className="text-[12px] font-semibold text-amber-900">Marlo won&apos;t draft this change</div>
+      <p className="mt-1 text-xs leading-4 text-amber-800">{blocked.message}</p>
     </div>
   );
 }
@@ -389,11 +443,12 @@ export default function FindingCodeFix({ finding, actions }: { finding: Finding;
 
   if (!gh) return <CouldntCheck onRetry={retryStatus} retrying={statusRetrying} />;
 
-  const runPrepare = () => {
+  const runPrepare = (confirmRepoMismatch = false) => {
     log(`Reading ${gh.repoFullName} to prepare: ${verdict.label}...`);
-    prepare.mutate(undefined, {
+    prepare.mutate({ confirmRepoMismatch }, {
       onSuccess: (data) => {
-        if (data.mode === "auto") {
+        if (data.mode === "blocked") logDone(data.message);
+        else if (data.mode === "auto") {
           logDone(`Prepared a fix for ${verdict.label}. Review it before anything is opened.`);
           setFix(data);
         } else logDone("This one needs a manual change.");
@@ -413,7 +468,7 @@ export default function FindingCodeFix({ finding, actions }: { finding: Finding;
         </div>
         <button
           type="button"
-          onClick={runPrepare}
+          onClick={() => runPrepare()}
           disabled={prepare.isPending || !hasModel}
           title={hasModel ? undefined : "Select a model in Settings first"}
           className={`flex shrink-0 items-center gap-1.5 ${primaryButton}`}
@@ -430,6 +485,9 @@ export default function FindingCodeFix({ finding, actions }: { finding: Finding;
           </a>{" "}
           settings to prepare fixes.
         </p>
+      )}
+      {prepare.data?.mode === "blocked" && !prepare.isPending && (
+        <BlockedNotice blocked={prepare.data} onConfirmMismatch={() => runPrepare(true)} busy={prepare.isPending} />
       )}
       {prepare.error && <FriendlyError error={prepare.error} reconnectHref={reconnectHref} className="mt-2 text-xs text-red-600" />}
       {fix && (

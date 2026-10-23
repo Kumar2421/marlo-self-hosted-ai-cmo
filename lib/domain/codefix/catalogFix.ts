@@ -21,9 +21,11 @@ export type CatalogFixInput = {
   evidence: Record<string, unknown>;
   /** The page the finding is about, when known. */
   pageUrl: string | null;
+  /** The user saw "this repo doesn't appear to contain your site" and chose to continue. */
+  confirmRepoMismatch?: boolean;
 };
 
-export type CatalogProposal = { changes: FixChange[]; explanation: string };
+export type CatalogProposal = { changes: FixChange[]; explanation: string; grounding?: "exact" | "declaration" | "insert" };
 
 export type CatalogApplyMeta = {
   findingId: string;
@@ -50,6 +52,9 @@ export function buildCatalogPrompt(args: {
   pagePath: string | null;
   pageContent: string | null;
   newFiles: { kind: FixKind; path: string }[];
+  /** The text in the page source this fix must replace (found by a deterministic search), when the finding has one. */
+  anchor?: string | null;
+  existingMetadata?: boolean;
 }): { system: string; prompt: string } {
   const { input } = args;
   const system =
@@ -62,6 +67,12 @@ export function buildCatalogPrompt(args: {
   const createBlock = args.newFiles.length
     ? `New files to create (exactly these paths):\n${args.newFiles.map((f) => `- ${f.path} (${FIX_KIND_INFO[f.kind].label})`).join("\n")}\n`
     : "";
+  const anchorBlock = args.anchor
+    ? `The text this fix must replace is in the page source exactly as: ${JSON.stringify(args.anchor)}. Every OLD block that changes it must contain that text verbatim. Do not add new code elsewhere to work around it.\n`
+    : "";
+  const metadataNote = args.existingMetadata
+    ? "The page source already exports metadata. Edit that object; never add a second metadata or generateMetadata export.\n"
+    : "";
   const prompt = `Repo: ${args.repoFullName}
 Product: ${args.projectName} (${args.projectUrl})
 Issue: ${input.label}
@@ -70,7 +81,7 @@ ${wants}
 Recommendation: ${input.recommendation}
 Evidence: ${JSON.stringify(input.evidence).slice(0, 2000)}
 
-${pageBlock}${createBlock}
+${pageBlock}${createBlock}${anchorBlock}${metadataNote}
 Return the fix in exactly this format and nothing else. Use one EDIT block per change to the page source file, and one CREATE block per new file listed above.
 
 EDIT: <the page source file path>
