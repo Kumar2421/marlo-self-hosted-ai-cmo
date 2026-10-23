@@ -1,6 +1,7 @@
 /**
  * Wording for audit facts the SEO and Technical tabs show. Pure, so the "honest when absent" rules are tested.
  */
+import { relativeDayLabel, shortDateLabel } from "../shared/dayLabel.ts";
 
 /**
  * The Content-Encoding row on the Technical tab. The crawler asks for uncompressed pages (the guarded
@@ -34,13 +35,10 @@ export function auditOverviewTiles(counts: { needsAttention: number | null; ligh
   return tiles;
 }
 
-/** "Last audited Oct 6, 2026 (16 days ago)" from an ISO timestamp, or null when the date is missing or unreadable. UTC day, so it does not shift by timezone. */
-export function lastAuditedLabel(auditedAt: string | null | undefined, now: Date = new Date()): string | null {
+/** "Last audited Oct 6, 2026 (16 days ago)" from an ISO timestamp, or null when the date is missing or unreadable. Calendar days in the viewer's timezone (or `timeZone`), so "today" means today for them. */
+export function lastAuditedLabel(auditedAt: string | null | undefined, now: Date = new Date(), timeZone?: string): string | null {
   if (!auditedAt) return null;
   const at = new Date(auditedAt);
   if (Number.isNaN(at.getTime())) return null;
-  const date = at.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
-  const days = Math.floor((now.getTime() - at.getTime()) / 86_400_000);
-  const age = days <= 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
-  return `Last audited ${date} (${age})`;
+  return `Last audited ${shortDateLabel(at, timeZone)} (${relativeDayLabel(at, now, timeZone)})`;
 }

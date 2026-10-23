@@ -106,3 +106,16 @@ export function pickInitialTab<T extends string>(args: {
   if (args.openFindings === null) return null;
   return args.openFindings > 0 ? args.findingsTab : args.fallback;
 }
+
+/** A request from the strip to open one finding's drawer. `n` changes on every click so repeats are distinct. */
+export type OpenFindingRequest = { id: string; n: number };
+
+/**
+ * The finding id to select for a request, or null when there is nothing new to open. The request has to be
+ * honoured on the render the Findings tab first mounts (the first click switches tabs AND opens the drawer),
+ * so the caller tracks the last `n` it acted on instead of relying on a later effect that a remount can lose.
+ */
+export function pendingOpenRequest(request: OpenFindingRequest | null | undefined, lastHandledN: number | null): string | null {
+  if (!request || !request.id) return null;
+  return request.n === lastHandledN ? null : request.id;
+}

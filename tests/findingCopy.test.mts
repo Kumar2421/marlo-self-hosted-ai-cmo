@@ -257,11 +257,11 @@ test("counts follow the de-duplicated list the Findings tab shows", () => {
   assert.equal(countFindings(visible).needsAttention, 1);
 });
 
-test("Last audited label: UTC date and age, nothing when the date is missing", () => {
+test("Last audited label: date and age, nothing when the date is missing", () => {
   const now = new Date("2026-10-22T12:00:00Z");
-  assert.equal(lastAuditedLabel("2026-10-06T08:30:00Z", now), "Last audited Oct 6, 2026 (16 days ago)");
-  assert.equal(lastAuditedLabel("2026-10-22T01:00:00Z", now), "Last audited Oct 22, 2026 (today)");
-  assert.equal(lastAuditedLabel("2026-10-21T01:00:00Z", now), "Last audited Oct 21, 2026 (yesterday)");
+  assert.equal(lastAuditedLabel("2026-10-06T08:30:00Z", now, "UTC"), "Last audited Oct 6, 2026 (16 days ago)");
+  assert.equal(lastAuditedLabel("2026-10-22T01:00:00Z", now, "UTC"), "Last audited Oct 22, 2026 (today)");
+  assert.equal(lastAuditedLabel("2026-10-21T01:00:00Z", now, "UTC"), "Last audited Oct 21, 2026 (yesterday)");
   assert.equal(lastAuditedLabel(undefined, now), null);
   assert.equal(lastAuditedLabel(null, now), null);
   assert.equal(lastAuditedLabel("not a date", now), null);

@@ -134,4 +134,14 @@ test.describe("Fix first strip", () => {
     await page.reload();
     await expect(analytics(page).getByRole("tab", { name: "Links", exact: true })).toHaveAttribute("aria-selected", "true");
   });
+  test("from another tab, ONE click on the strip button opens that finding's drawer", async ({ page }) => {
+    await page.route("**/api/agents/analytics/findings", (r) => r.fulfill(json({ findings: [0, 1].map((i) => finding(i, { entityId: i ? "canonical-missing" : "meta-description-missing", evidence: { label: `Thing ${i}` } })) })));
+    await page.addInitScript(() => window.localStorage.setItem("marlo:analytics-tab", "Technical"));
+    await page.goto("/dashboard");
+    const panel = analytics(page);
+    await expect(panel.getByRole("tab", { name: "Technical", exact: true })).toHaveAttribute("aria-selected", "true");
+    await panel.getByTestId("fix-first").getByRole("button", { name: /^(Open|Fix this)$/ }).first().click();
+    await expect(panel.getByRole("tab", { name: "Findings", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("dialog")).toContainText("Thing 0");
+  });
 });
