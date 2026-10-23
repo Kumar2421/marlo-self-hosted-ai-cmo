@@ -1,3 +1,4 @@
+import { rankFindingsForChat } from "./rankedFindings.ts";
 import { CHAT_TOOLS, MAX_RESULT_CHARS, runTool, type ChatPorts } from "./tools.ts";
 
 /** Minimal slice of the LlmDriver contract this module needs (structural, so it can be faked). */
@@ -22,7 +23,7 @@ export const MAX_TOTAL_RESULT_CHARS = 12_000;
 
 const BUDGET_MESSAGE = "Tool budget used up. Answer now from what you already have, and say what you could not check.";
 
-export const TOOL_SYSTEM_RULES = `You can look things up with read-only tools: search performance, search opportunities, findings, the latest SEO audit, tracked competitors, tracked actions and their measured outcomes, leads, and the AI-search (GEO) check. Zero findings can mean the site was never audited rather than that nothing is wrong: when a tool says neverAudited, tell the user to run an SEO audit. Call a tool whenever the question depends on the user's data, and call only what the question needs. Never invent numbers, dates, findings, or results. If a tool says data is not available, or you did not look it up, say so plainly. Mention how recent the data is when it matters. Do not claim an action worked unless its outcome says it improved.`;
+export const TOOL_SYSTEM_RULES = `You can look things up with read-only tools: search performance, search opportunities, findings, the latest SEO audit, tracked competitors, tracked actions and their measured outcomes, leads, and the AI-search (GEO) check. Zero findings can mean the site was never audited rather than that nothing is wrong: when a tool says neverAudited, tell the user to run an SEO audit. Call a tool whenever the question depends on the user's data, and call only what the question needs. Never invent numbers, dates, findings, or results. If a tool says data is not available, or you did not look it up, say so plainly. Mention how recent the data is when it matters. Do not claim an action worked unless its outcome says it improved. When listing findings or what to fix first, keep the exact order and count the tool returned (rank 1 first); never re-sort them, and never add or drop items. If several items share the same issue, you may combine them into one line with the page count, at the position of the first.`;
 
 export type ChatRunInput = {
   driver: DriverLike;
@@ -91,6 +92,8 @@ export async function buildAutoSummary(ports: ChatPorts): Promise<string> {
     const by: Record<string, number> = {};
     for (const f of findings) by[f.status] = (by[f.status] ?? 0) + 1;
     lines.push(`Findings: ${findings.length} total (${Object.entries(by).map(([k, v]) => `${v} ${k}`).join(", ") || "none"}).`);
+    const top = rankFindingsForChat(findings, ports.now()).filter((r) => r.rank !== null).slice(0, 5);
+    if (top.length > 0) lines.push(`Fix first, in priority order (keep this order): ${top.map((r) => `${r.rank}. ${r.issue}`).join(" | ")}.`);
   }
 
   let auditOk = true;

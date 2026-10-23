@@ -23,13 +23,9 @@ import { checkChatProjectScope } from "@/lib/domain/chat/projectScope";
 // platform max for this route (Hobby plan caps at 60s; Pro allows more).
 export const maxDuration = 60;
 
-/** ChatPanel renders replies as plain text — no markdown parser (see
- * components/dashboard/ChatPanel.tsx, `<p>{msg.text}</p>`) — so `**bold**`,
- * numbered-list markdown, headers, and emoji-heavy formatting all show up
- * as literal clutter instead of rendering as anything. This is the fix:
- * tell the model to write what the UI actually displays, not a markdown
- * renderer it doesn't have. Always present, even with no active project. */
-const STYLE_INSTRUCTION = `Write in plain conversational text only — this is displayed as-is, with no markdown rendering. Never use markdown syntax: no **bold**, no # headers, no markdown bullet/numbered lists, no code fences. Use plain sentences and, if you need a list, write it as short lines separated by a real line break, not markdown dashes or asterisks. Don't use emoji unless the user uses them first. Be concise — skip preamble and filler.`;
+/** ChatPanel has no full markdown renderer: it draws paragraphs plus simple lists (see lib/chatText.ts).
+ * Lists must use one fixed syntax so they always render the same way. */
+const STYLE_INSTRUCTION = `Write in plain conversational text. No markdown formatting: no **bold**, no # headers, no code fences, no tables. If you need a list, put each item on its own line starting with "1. ", "2. " (for ordered or ranked things, in the order you mean) or "- " (for unordered things). Use one list style per answer, never "1)", "*" or bullet symbols, no nested lists, and keep each item to one or two short sentences. Put a blank line between a list and the sentences around it. Don't use emoji unless the user uses them first. Be concise: skip preamble and filler.`;
 
 /** Chat had zero project awareness before this — no system prompt at all,
  * so it didn't know the product's name, let alone its real Product
