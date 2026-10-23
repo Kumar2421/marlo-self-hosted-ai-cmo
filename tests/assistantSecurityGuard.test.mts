@@ -68,11 +68,7 @@ test("platform adapter: data reads use the user client; the service client is on
   const credEnd = text.indexOf("credits:");
   const defStart = text.indexOf("const getServiceDb");
   for (const at of uses) {
-    const line = text.slice(text.lastIndexOf("
-", at) + 1, text.indexOf("
-", at));
-    const entitlement = /platformEntitlementPort(getServiceDb)/.test(line); // usage_events count, not chat data
-    assert.ok((at > credStart && at < credEnd) || (at >= defStart && at < defStart + 80) || entitlement, "getServiceDb used outside credentials");
+    assert.ok((at > credStart && at < credEnd) || (at >= defStart && at < defStart + 80), "getServiceDb used outside credentials");
   }
   assert.ok(text.includes("createSupabaseGateway(await getUserDb())"));
 });
