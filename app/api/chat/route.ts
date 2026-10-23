@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(out);
   } catch (err) {
     if (err instanceof AssistantError) {
-      return NextResponse.json({ error: err.userMessage }, { status: err.status });
+      return NextResponse.json({ ...err.body, error: err.userMessage }, { status: err.status });
     }
     throw err;
   }

@@ -35,15 +35,17 @@ export type ChatRunInput = {
   ports: ChatPorts;
   /** Whether this provider's driver runs a tool-call loop (providerSupportsTools). */
   supportsTools: boolean;
+  /** Tool names withheld from the model (plan locks). Their data is also left out of the context summary. */
+  lockedTools?: readonly string[];
 };
 
 export type ChatRunResult = { text: string; toolsUsed: string[]; lookedAt: string[]; mode: "tools" | "context" };
 
 /** Tool definitions for the driver, wrapped to enforce call/char budgets and record what was used. */
-export function buildToolDefs(ports: ChatPorts, used: string[]): ToolDefLike[] {
+export function buildToolDefs(ports: ChatPorts, used: string[], lockedTools: readonly string[] = []): ToolDefLike[] {
   let calls = 0;
   let chars = 0;
-  return CHAT_TOOLS.map((spec) => ({
+  return CHAT_TOOLS.filter((spec) => !lockedTools.includes(spec.name)).map((spec) => ({
     name: spec.name,
     description: spec.description,
     parameters: spec.parameters,
@@ -73,7 +75,7 @@ export function buildToolDefs(ports: ChatPorts, used: string[]): ToolDefLike[] {
  * Compact, auto-built overview used when the provider can't call tools:
  * a few counts only, so the model has something real without a bigger prompt.
  */
-export async function buildAutoSummary(ports: ChatPorts): Promise<string> {
+export async function buildAutoSummary(ports: ChatPorts, lockedTools: readonly string[] = []): Promise<string> {
   const lines: string[] = [];
   const safe = async <T,>(fn: () => Promise<T>): Promise<T | null> => { try { return await fn(); } catch { return null; } };
 
@@ -96,8 +98,8 @@ export async function buildAutoSummary(ports: ChatPorts): Promise<string> {
     if (top.length > 0) lines.push(`Fix first, in priority order (keep this order): ${top.map((r) => `${r.rank}. ${r.issue}`).join(" | ")}.`);
   }
 
-  let auditOk = true;
-  const audit = await ports.getAuditSummary().catch(() => { auditOk = false; return null; });
+  let auditOk = !lockedTools.includes("get_audit_summary");
+  const audit = auditOk ? await ports.getAuditSummary().catch(() => { auditOk = false; return null; }) : null;
   if (auditOk) {
     lines.push(audit ? `Site audit (${audit.checkedAt.slice(0, 10)}): ${audit.errors} errors, ${audit.warnings} warnings.` : "Site audit: never run for this project (zero findings does not mean the site is fine).");
   }
@@ -112,8 +114,8 @@ export async function buildAutoSummary(ports: ChatPorts): Promise<string> {
   const leads = await safe(() => ports.getLeadSummary(0));
   if (leads) lines.push(`Leads: ${leads.truncated ? `${leads.total}+` : leads.total} total, ${leads.emailed} emailed, ${leads.replied} replied.`);
 
-  const geo = await safe(() => ports.getGeoStatus());
-  lines.push(geo ? `GEO check (${geo.checkedAt.slice(0, 10)}): cited for ${geo.rows.filter((r) => r.found).length} of ${geo.rows.length} queries.` : "GEO check: not run yet.");
+  const geo = lockedTools.includes("get_geo_status") ? null : await safe(() => ports.getGeoStatus());
+  if (!lockedTools.includes("get_geo_status")) lines.push(geo ? `GEO check (${geo.checkedAt.slice(0, 10)}): cited for ${geo.rows.filter((r) => r.found).length} of ${geo.rows.length} queries.` : "GEO check: not run yet.");
 
   return `Overview of stored project data (counts only; say when you lack detail):\n${lines.join("\n")}`;
 }
@@ -128,7 +130,7 @@ export async function runChatTurn(input: ChatRunInput): Promise<ChatRunResult> {
       const result = await driver({
         apiKey, model, baseUrl, messages,
         system: `${input.system}\n\n${TOOL_SYSTEM_RULES}`,
-        tools: buildToolDefs(ports, used),
+        tools: buildToolDefs(ports, used, input.lockedTools),
       });
       return { text: result.text ?? "", toolsUsed: used, lookedAt: labelsFor(used), mode: "tools" };
     } catch (err) {
@@ -141,7 +143,7 @@ export async function runChatTurn(input: ChatRunInput): Promise<ChatRunResult> {
     }
   }
 
-  const summary = await buildAutoSummary(ports);
+  const summary = await buildAutoSummary(ports, input.lockedTools);
   const result = await driver({
     apiKey, model, baseUrl, messages,
     system: `${input.system}\n\n${summary}\n\nYou cannot look up more detail in this chat. Never invent figures; if the overview above does not cover the question, say you do not have that data here.`,

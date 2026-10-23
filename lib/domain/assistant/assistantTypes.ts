@@ -30,11 +30,14 @@ export class AssistantError extends Error {
   readonly userMessage: string;
   /** Underlying provider/system error, if any. Never sent to the client. */
   readonly cause?: unknown;
-  constructor(status: number, userMessage: string, cause?: unknown) {
+  /** Extra JSON fields sent beside `error` (e.g. code/used/limit for the chat cap). Never secrets. */
+  readonly body?: Record<string, unknown>;
+  constructor(status: number, userMessage: string, cause?: unknown, body?: Record<string, unknown>) {
     super(userMessage);
     this.name = "AssistantError";
     this.status = status;
     this.userMessage = userMessage;
     this.cause = cause;
+    this.body = body;
   }
 }

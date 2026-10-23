@@ -3,6 +3,7 @@ import { checkChatProjectScope } from "../chat/projectScope.ts";
 import { runChatTurn, type DriverLike } from "../chat/toolLoop.ts";
 import type { ChatPorts } from "../chat/tools.ts";
 import { AssistantError, type AssistantTurnInput, type AssistantTurnResult, type ChatTurnMessage, type TurnContext } from "./assistantTypes.ts";
+import { CHAT_LIMIT_MESSAGE, checkChatAllowance, chatLimitBody, resolveChatToolPolicy, type ChatEntitlement, type EntitlementPort } from "./chatEntitlements.ts";
 import type { CredentialPort, CreditPort } from "./credentialResolver.ts";
 import { classifyProviderError, friendlyProviderError } from "./errorMapping.ts";
 import { resolveModelPlan, shouldFallback, type ModelCandidate } from "./modelSelection.ts";
@@ -42,13 +43,15 @@ export type AssistantPorts = {
   credits: CreditPort;
   prompts: PromptPort;
   data: DataPort;
+  /** Plan limits/locks for chat. Absent = no limits (self-host, tests). */
+  entitlements?: EntitlementPort;
   observer?: TurnObserver;
 };
 
 /** One chat turn: tools when there's an active project, plain driver call otherwise. */
 async function answer(args: {
   driver: DriverLike; supportsTools: boolean; apiKey: string; model: string; baseUrl?: string; system: string;
-  messages: ChatTurnMessage[]; ports: ChatPorts | null;
+  messages: ChatTurnMessage[]; ports: ChatPorts | null; lockedTools?: readonly string[];
 }): Promise<AssistantTurnResult> {
   if (!args.ports) {
     const result = await args.driver({ apiKey: args.apiKey, model: args.model, system: args.system, messages: args.messages, baseUrl: args.baseUrl });
@@ -56,7 +59,7 @@ async function answer(args: {
   }
   const run = await runChatTurn({
     driver: args.driver, apiKey: args.apiKey, model: args.model, baseUrl: args.baseUrl, system: args.system,
-    messages: args.messages, ports: args.ports, supportsTools: args.supportsTools,
+    messages: args.messages, ports: args.ports, supportsTools: args.supportsTools, lockedTools: args.lockedTools,
   });
   return { reply: run.text, toolsUsed: run.toolsUsed, lookedAt: run.lookedAt };
 }
@@ -73,11 +76,17 @@ export async function attemptWithCandidate(
 
   let apiKey: string;
   let baseUrl: string | undefined;
+  let knownEntitlement: ChatEntitlement | undefined;
   if (cred.kind === "byok") {
     apiKey = cred.apiKey;
     baseUrl = cred.baseUrl;
   } else {
-    // Closed-source: platform-provided key, metered via credits.
+    // Closed-source: platform-provided key. Monthly plan cap first (BYOK is exempt), then credits.
+    if (ports.entitlements) {
+      const allowance = await checkChatAllowance(ports.entitlements, ctx);
+      knownEntitlement = { plan: allowance.plan, enforced: allowance.enforced };
+      if (!allowance.allowed) throw new AssistantError(402, CHAT_LIMIT_MESSAGE, undefined, chatLimitBody(allowance));
+    }
     const charge = await ports.credits.chargeBeforeAnswer(ctx, model);
     if (!charge.ok) throw new AssistantError(402, "Out of credits. Upgrade or connect your own key.");
     apiKey = cred.loadApiKey(); // platform key: baseUrl intentionally not set
@@ -85,11 +94,15 @@ export async function attemptWithCandidate(
 
   try {
     // Note: credits already charged for this message — no refund path yet on generation failure.
-    const system = await ports.prompts.build(ctx);
+    const policy = await resolveChatToolPolicy(ports.entitlements, ctx, knownEntitlement);
+    const built = await ports.prompts.build(ctx);
+    const system = policy.note ? `${built}
+
+${policy.note}` : built;
     const driver = ports.llm.getDriver(providerId)!;
     return await answer({
       driver, supportsTools: ports.llm.supportsTools(providerId), apiKey, model, baseUrl, system,
-      messages, ports: ports.data.create(ctx),
+      messages, ports: ports.data.create(ctx), lockedTools: policy.lockedTools,
     });
   } catch (err) {
     throw new AssistantError(502, friendlyProviderError(providerId, err), err);
