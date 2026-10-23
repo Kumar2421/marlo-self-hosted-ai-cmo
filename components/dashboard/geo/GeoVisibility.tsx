@@ -218,7 +218,7 @@ function Prompts({ pid, overview }: { pid: string | undefined; overview: GeoOver
     <Block title="Questions we track" subtitle="Questions a buyer might ask an AI assistant. Each one is asked three times and we report how often you come up.">
       <div className="overflow-hidden rounded-xl border border-gray-200">
         {overview.prompts.length === 0 && (
-          <div className="p-4 text-[12px] text-gray-500">No questions yet. Connect Search Console and we will suggest some from your top searches, or add your own below.</div>
+          <div className="p-4 text-[12px] text-gray-500">No questions yet. Use Suggest below to get questions based on what you offer and your competitors (plus your top searches if Search Console is connected), or add your own.</div>
         )}
         {overview.prompts.map((p) => (
           <div key={p.prompt} className={`border-t border-gray-100 px-3 py-2.5 first:border-t-0 ${p.active ? "" : "opacity-50"}`}>
@@ -277,7 +277,7 @@ function Prompts({ pid, overview }: { pid: string | undefined; overview: GeoOver
       >
         <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add a question, e.g. What is the best CRM for a small team?" className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-1.5 text-[12px]" />
         <button type="submit" className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-[12px] font-medium text-gray-700 hover:bg-gray-50"><Plus size={12} /> Add</button>
-        <button type="button" onClick={() => suggest.mutate()} disabled={suggest.isPending} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[12px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60">Suggest from Search Console</button>
+        <button type="button" onClick={() => suggest.mutate()} disabled={suggest.isPending} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[12px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60">Suggest questions</button>
       </form>
       <PromptHistory pid={pid} prompt={openPrompt} onClose={() => setOpenPrompt(null)} />
     </Block>
@@ -286,15 +286,16 @@ function Prompts({ pid, overview }: { pid: string | undefined; overview: GeoOver
 
 function MethodsExplainer() {
   return (
-    <div className="mb-6 rounded-xl border border-dashed border-gray-200 p-4 text-[12px] leading-5 text-gray-600">
-      <div className="mb-1 text-[13px] font-semibold text-gray-900">How we measure AI visibility</div>
+    <details className="mb-6 rounded-xl border border-dashed border-gray-200 p-4 text-[12px] leading-5 text-gray-600" data-testid="geo-methods-explainer">
+      <summary className="cursor-pointer text-[13px] font-semibold text-gray-900">How this is measured</summary>
+      <div className="mt-2 mb-1 text-[13px] font-semibold text-gray-900">How we measure AI visibility</div>
       <ul className="list-disc space-y-1 pl-4">
         <li><b>Gemini + Google Search</b>: we ask Google&apos;s Gemini the question with live search switched on, three times, and count how often you are named or used as a source. This is a real answer, but only from Gemini.</li>
         <li><b>Simulated</b>: we run a web search and have a free model write an answer from the results. It is a rough stand-in, <b>not</b> ChatGPT, Perplexity or any real assistant, and it is never combined with the other numbers.</li>
         <li><b>Readiness</b>: facts about your site that help AI tools read it.</li>
         <li><b>AI referral visits</b>: real visits from AI assistants that show up in Google Analytics.</li>
       </ul>
-    </div>
+    </details>
   );
 }
 
@@ -371,9 +372,6 @@ export default function GeoVisibility() {
 
   return (
     <div className="mb-8">
-      <MethodsExplainer />
-      <Readiness pid={pid} />
-      <Referrals pid={pid} />
       {overview.isPending ? (
         <SkeletonCard rows={5} />
       ) : overview.isError ? (
@@ -401,6 +399,9 @@ export default function GeoVisibility() {
           <Prompts pid={pid} overview={overview.data} />
         </>
       )}
+      <Readiness pid={pid} />
+      <Referrals pid={pid} />
+      <MethodsExplainer />
     </div>
   );
 }

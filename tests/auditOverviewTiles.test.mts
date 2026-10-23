@@ -23,3 +23,20 @@ test("findings still loading (no number) never merge, and show a dash value", ()
   assert.equal(tiles.length, 3);
   assert.equal(tiles[0].value, null);
 });
+
+import { onPageIssues } from "../lib/domain/seo/auditDisplay.ts";
+
+test("onPageIssues drops the duplicate canonical line and PageSpeed notices (5 raw lines -> 3 real issues)", () => {
+  const raw = [
+    { label: "Missing canonical URL", level: "Warning" as const },
+    { label: "Missing Meta Description", level: "Error" as const },
+    { label: "Missing canonical tag", level: "Warning" as const },
+    { label: "No H1 tag found", level: "Error" as const },
+    { label: "PageSpeed Insights was too slow to answer — Performance/CWV not measured this run", level: "Warning" as const },
+  ];
+  assert.deepEqual(onPageIssues(raw).map((i) => i.label), ["Missing canonical URL", "Missing Meta Description", "No H1 tag found"]);
+});
+
+test("the on-page tile is labelled as checks, not as audit issues", () => {
+  assert.equal(auditOverviewTiles({ needsAttention: 1, lighthouse: 0, onPage: 2 })[2].label, "On-page checks");
+});
