@@ -33,7 +33,7 @@ export default function IntegrationCard({
         </div>
       </div>
       <div className="flex items-center justify-between gap-3">
-        <span className="flex items-center gap-1.5 text-[12px] text-gray-400">
+        <span className="flex items-center gap-1.5 text-[12px] text-ui-subtle">
           <span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-[#00ab92]" : "bg-gray-300"}`} />
           {connected ? "Connected" : "Not connected"}
         </span>

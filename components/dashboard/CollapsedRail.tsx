@@ -15,8 +15,8 @@ export function RailButton({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full flex-col items-center gap-1 dash-focus py-2 text-[10px] font-medium transition-colors ${
-        active ? "text-gray-900" : "text-gray-400 hover:text-gray-700"
+      className={`flex w-full flex-col items-center gap-1 dash-focus py-2 text-xs font-medium transition-colors ${
+        active ? "text-gray-900" : "text-ui-subtle hover:text-gray-700"
       }`}
       title={label}
     >
@@ -50,7 +50,7 @@ export default function CollapsedRail({
       <button
         onClick={onExpand}
         className={`dash-focus mb-3 flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
-          dark ? "text-gray-400 hover:bg-white/10 hover:text-white" : "text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+          dark ? "text-gray-400 hover:bg-white/10 hover:text-white" : "text-ui-subtle hover:bg-gray-100 hover:text-gray-700"
         }`}
         title="Expand"
         aria-label="Expand panel"

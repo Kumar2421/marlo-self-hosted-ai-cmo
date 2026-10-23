@@ -85,7 +85,7 @@ export default function XConnectCard() {
             <div className="text-[13px] font-semibold text-gray-900">X (Twitter)</div>
             <div className="mt-1 text-[12px] text-gray-500">Posting requires an OAuth connection. Hosted token entry is disabled; OAuth-based X publishing will be enabled here when the platform connection is available.</div>
           </div>
-          <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500">OAuth coming soon</span>
+          <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-ui-muted">OAuth coming soon</span>
         </div>
       </div>
     );
@@ -101,7 +101,7 @@ export default function XConnectCard() {
           <div className="flex items-center gap-2 truncate text-[13px] font-semibold text-gray-900">
             X (Twitter)
             {connected && (
-              <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">
+              <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">
                 <Check size={10} /> Connected
               </span>
             )}
@@ -112,7 +112,7 @@ export default function XConnectCard() {
           href="https://developer.x.com/en/portal/dashboard"
           target="_blank"
           rel="noreferrer"
-          className="flex shrink-0 items-center gap-1 text-[11px] text-gray-400 hover:text-gray-700"
+          className="flex shrink-0 items-center gap-1 text-xs text-ui-subtle hover:text-gray-700"
         >
           Get token <ExternalLink size={11} />
         </a>

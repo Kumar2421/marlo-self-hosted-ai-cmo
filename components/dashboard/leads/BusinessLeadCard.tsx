@@ -44,8 +44,8 @@ const ACTION =
 
 const CHIP_CLASS: Record<LeadChip["key"], string> = {
   phone: "bg-gray-100 text-gray-700",
-  whatsapp: "bg-[#e6f7f4] text-[#00846f]",
-  email: "bg-[#e6f7f4] text-[#00846f]",
+  whatsapp: "bg-[#e6f7f4] text-ui-accent-strong",
+  email: "bg-[#e6f7f4] text-ui-accent-strong",
   website: "bg-gray-100 text-gray-700",
   contact: "bg-gray-100 text-gray-700",
 };
@@ -108,7 +108,7 @@ export default function BusinessLeadCard({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="truncate text-[13px] font-semibold text-gray-900">{lead.name}</div>
-            <div className="truncate text-[11px] text-gray-500">
+            <div className="truncate text-xs text-gray-500">
               {[category, lead.location].filter(Boolean).join(" · ")}
             </div>
           </div>
@@ -117,33 +117,33 @@ export default function BusinessLeadCard({
             onClick={() => onRemove(lead.id)}
             aria-label={`Remove ${lead.name}`}
             title="Remove"
-            className="flex h-9 w-9 shrink-0 items-center justify-center text-gray-400 hover:text-gray-700 md:opacity-0 md:group-hover:opacity-100"
+            className="flex h-9 w-9 shrink-0 items-center justify-center text-ui-subtle hover:text-gray-700 md:opacity-0 md:group-hover:opacity-100"
           >
             <X size={14} />
           </button>
         </div>
 
         {lead.address && (
-          <div className="mt-1 flex items-start gap-1 text-[11px] text-gray-500">
+          <div className="mt-1 flex items-start gap-1 text-xs text-gray-500">
             <MapPin size={11} className="mt-0.5 shrink-0" />
             <span className="break-words">{lead.address}</span>
           </div>
         )}
 
         {rating && (
-          <div className="mt-1 flex items-center gap-1 text-[11px] text-gray-700">
+          <div className="mt-1 flex items-center gap-1 text-xs text-gray-700">
             <Star size={11} className="fill-amber-400 text-amber-400" />
             {rating}
           </div>
         )}
 
         {lead.fit_reason && <p className="mt-1.5 text-[12px] leading-4 text-gray-700">{lead.fit_reason}</p>}
-        {lead.description && <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-gray-500">{lead.description}</p>}
+        {lead.description && <p className="mt-1 line-clamp-2 text-xs leading-4 text-gray-500">{lead.description}</p>}
 
         {chips.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {chips.map((chip) => (
-              <span key={chip.key} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${CHIP_CLASS[chip.key]}`}>
+              <span key={chip.key} className={`rounded-full px-2 py-0.5 text-xs font-medium ${CHIP_CLASS[chip.key]}`}>
                 {chip.label}
               </span>
             ))}
@@ -151,12 +151,12 @@ export default function BusinessLeadCard({
         )}
 
         {lead.email && (
-          <p className="mt-1.5 break-all text-[11px] text-gray-700">
+          <p className="mt-1.5 break-all text-xs text-gray-700">
             {lead.email}
-            {emailText && <span className="text-gray-400"> · {emailText}</span>}
+            {emailText && <span className="text-ui-subtle"> · {emailText}</span>}
           </p>
         )}
-        {note && <p className="mt-1 text-[11px] text-gray-400">{note}</p>}
+        {note && <p className="mt-1 text-xs text-ui-subtle">{note}</p>}
 
         <div className="mt-2.5 flex flex-wrap gap-1.5">
           {tel && (
@@ -204,7 +204,7 @@ export default function BusinessLeadCard({
         </div>
 
         {showStatus && (
-          <label className="mt-2.5 flex items-center gap-2 text-[11px] text-gray-500">
+          <label className="mt-2.5 flex items-center gap-2 text-xs text-gray-500">
             Status
             <select
               value={status}

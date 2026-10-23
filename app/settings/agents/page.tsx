@@ -45,7 +45,7 @@ function ChipField({
     <div>
       <div className="mb-1 flex items-center justify-between text-[12px] text-gray-600">
         {label}
-        <span className="text-gray-400">
+        <span className="text-ui-subtle">
           {items.length}/{max}
         </span>
       </div>
@@ -63,7 +63,7 @@ function ChipField({
                     aria-label={`Remove ${item}`}
                     disabled={disabled}
                     onClick={() => void commit({ ok: true, list: items.filter((x) => x !== item) }, false)}
-                    className="rounded-full p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700 disabled:opacity-50"
+                    className="rounded-full p-0.5 text-ui-subtle hover:bg-gray-200 hover:text-gray-700 disabled:opacity-50"
                   >
                     <X size={11} />
                   </button>
@@ -89,7 +89,7 @@ function ChipField({
         </>
       )}
       {error && (
-        <p role="alert" className="mt-1 text-[11px] text-red-600">
+        <p role="alert" className="mt-1 text-xs text-red-600">
           {error}
         </p>
       )}
@@ -166,8 +166,8 @@ export default function AgentsSettingsPage() {
           add={addKeyword}
           onChange={(keywords) => saveReddit({ keywords })}
         />
-        {reddit.isError && <p className="mt-2 text-[11px] text-red-600">Could not load your saved Reddit settings. Refresh to try again.</p>}
-        <p className="mt-2 text-[11px] text-gray-400">Priority subreddits, keywords and region save as you change them and focus the next Reddit run.</p>
+        {reddit.isError && <p className="mt-2 text-xs text-red-600">Could not load your saved Reddit settings. Refresh to try again.</p>}
+        <p className="mt-2 text-xs text-ui-subtle">Priority subreddits, keywords and region save as you change them and focus the next Reddit run.</p>
       </div>
     </div>
   );

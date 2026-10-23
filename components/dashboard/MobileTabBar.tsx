@@ -67,7 +67,7 @@ export default function MobileTabBar({
               tabIndex={isActive ? 0 : -1}
               onClick={() => onChange(tab.key)}
               onKeyDown={(e) => onKeyDown(e, tab.key)}
-              className={`flex min-h-12 min-w-12 flex-1 flex-col items-center justify-center gap-0.5 py-1 text-[10px] font-medium transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gray-900 ${
+              className={`flex min-h-12 min-w-12 flex-1 flex-col items-center justify-center gap-0.5 py-1 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gray-900 ${
                 isActive ? "text-gray-900" : "text-gray-500"
               }`}
             >

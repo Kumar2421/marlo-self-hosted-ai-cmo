@@ -371,7 +371,7 @@ export default function LoginPage() {
                       Verification code
                     </label>
                     <div className="flex h-10 items-center gap-2 rounded-lg border border-gray-200 px-3 focus-within:border-gray-900">
-                      <KeyRound className="h-4 w-4 shrink-0 text-gray-400" />
+                      <KeyRound className="h-4 w-4 shrink-0 text-ui-faint" />
                       <input
                         id="otp"
                         inputMode="numeric"
@@ -392,7 +392,7 @@ export default function LoginPage() {
                         New password
                       </label>
                       <div className="flex h-10 items-center gap-2 rounded-lg border border-gray-200 px-3 focus-within:border-gray-900">
-                        <Lock className="h-4 w-4 shrink-0 text-gray-400" />
+                        <Lock className="h-4 w-4 shrink-0 text-ui-faint" />
                         <input
                           id="newPassword"
                           type="password"
@@ -451,7 +451,7 @@ export default function LoginPage() {
                       Email
                     </label>
                     <div className="flex h-10 items-center gap-2 rounded-lg border border-gray-200 px-3 focus-within:border-gray-900">
-                      <Mail className="h-4 w-4 shrink-0 text-gray-400" />
+                      <Mail className="h-4 w-4 shrink-0 text-ui-faint" />
                       <input
                         id="email"
                         type="email"
@@ -524,7 +524,7 @@ export default function LoginPage() {
                       Email
                     </label>
                     <div className="flex h-10 items-center gap-2 rounded-lg border border-gray-200 px-3 focus-within:border-gray-900">
-                      <Mail className="h-4 w-4 shrink-0 text-gray-400" />
+                      <Mail className="h-4 w-4 shrink-0 text-ui-faint" />
                       <input
                         id="email"
                         type="email"
@@ -542,7 +542,7 @@ export default function LoginPage() {
                       Password
                     </label>
                     <div className="flex h-10 items-center gap-2 rounded-lg border border-gray-200 px-3 focus-within:border-gray-900">
-                      <Lock className="h-4 w-4 shrink-0 text-gray-400" />
+                      <Lock className="h-4 w-4 shrink-0 text-ui-faint" />
                       <input
                         id="password"
                         type="password"

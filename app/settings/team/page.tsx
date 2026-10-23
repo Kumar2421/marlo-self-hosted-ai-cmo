@@ -24,7 +24,7 @@ export default function TeamPage() {
 
       <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#8a8a8a] text-[11px] font-semibold text-white">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#8a8a8a] text-xs font-semibold text-white">
             {loading ? <Loader2 size={12} className="animate-spin" /> : user?.initials || "?"}
           </div>
           <div>
@@ -32,10 +32,10 @@ export default function TeamPage() {
             <div className="text-[12px] text-gray-500">{user?.email || ""}</div>
           </div>
         </div>
-        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-600">Owner</span>
+        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">Owner</span>
       </div>
 
-      <p className="mt-3 text-[11px] text-gray-400">
+      <p className="mt-3 text-xs text-ui-subtle">
         Multi-person workspaces aren&apos;t available yet — every project is single-owner for now.
       </p>
     </div>

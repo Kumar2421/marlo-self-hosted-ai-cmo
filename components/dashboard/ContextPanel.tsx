@@ -233,12 +233,12 @@ export default function ContextPanel({
           <div className="mt-auto pt-2">
             <button
               onClick={onToggle}
-              className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#00ab92] text-[11px] font-semibold text-[#00ab92]"
+              className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#00ab92] text-xs font-semibold text-[#00ab92]"
               title={`On-Page Score: ${onPageScore}`}
             >
               {onPageScore}
             </button>
-            <div className="mt-1 text-center text-[9px] font-medium text-gray-400">SEO</div>
+            <div className="mt-1 text-center text-xs font-medium text-ui-subtle">SEO</div>
           </div>
         )}
       </CollapsedRail>
@@ -248,11 +248,11 @@ export default function ContextPanel({
   return (
     <div className="flex h-full min-h-0 flex-col border-r border-gray-200 bg-white">
       <div className="dash-panel-header">
-        <div className="dash-title">
+        <h2 className="dash-title">
           <Layers size={15} className="text-gray-500" />
           Context
-        </div>
-        <button onClick={onToggle} className="hidden text-gray-400 hover:text-gray-700 md:block" title="Collapse">
+        </h2>
+        <button onClick={onToggle} className="hidden text-ui-subtle hover:text-gray-700 md:block" title="Collapse">
           <ChevronLeft size={15} />
         </button>
       </div>
@@ -289,14 +289,14 @@ export default function ContextPanel({
                 onClick={() => router.push("/settings/websites")}
                 title="Edit in Settings → Websites"
                 aria-label="Edit project in Settings, Websites"
-                className="text-gray-400 hover:text-gray-700"
+                className="text-ui-subtle hover:text-gray-700"
               >
                 <Pencil size={13} />
               </button>
             </div>
 
             {project.category && (
-              <span className="mb-3 inline-block rounded-full border border-gray-200 px-2.5 py-0.5 text-[11px] text-gray-500">
+              <span className="mb-3 inline-block rounded-full border border-gray-200 px-2.5 py-0.5 text-xs text-gray-500">
                 {project.category}
               </span>
             )}
@@ -319,7 +319,7 @@ export default function ContextPanel({
               <div className="mb-3 flex flex-wrap gap-2">
                 <button
                   onClick={() => router.push("/settings/websites")}
-                  className="flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
+                  className="flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50"
                 >
                   <Plus size={11} /> Add category in Settings
                 </button>
@@ -341,12 +341,12 @@ export default function ContextPanel({
                   <span className="min-w-0">
                     {row.label}
                     {row.optional ? " (optional)" : ""}
-                    <span className="block truncate text-[11px] text-amber-700">{row.note}</span>
+                    <span className="block truncate text-xs text-amber-700">{row.note}</span>
                   </span>
                   {row.canRun && (
                     <button
                       onClick={() => void retrySetupStep(row.key)}
-                      className="dash-focus flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-100"
+                      className="dash-focus flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
                     >
                       {row.kind === "failed" || row.kind === "interrupted" ? "Retry" : "Run"}
                     </button>
@@ -402,7 +402,7 @@ export default function ContextPanel({
                     {hasContent && <span className="h-1.5 w-1.5 rounded-full bg-[#00ab92]" />}
                   </span>
                   {!doc.available ? (
-                    <span className="text-[11px] text-gray-400">Coming soon</span>
+                    <span className="text-xs text-ui-subtle">Coming soon</span>
                   ) : (
                     <ChevronRight size={13} className="text-gray-300" />
                   )}
@@ -430,7 +430,7 @@ export default function ContextPanel({
                 }
                 if (!discovering) handleDiscoverCompetitors();
               }}
-              className={`text-gray-400 hover:text-gray-700 ${discovering ? "pointer-events-none" : ""}`}
+              className={`text-ui-subtle hover:text-gray-700 ${discovering ? "pointer-events-none" : ""}`}
             >
               {discovering ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
             </span>
@@ -445,7 +445,7 @@ export default function ContextPanel({
                 }
                 setAddingCompetitor((v) => !v);
               }}
-              className="text-gray-400 hover:text-gray-700"
+              className="text-ui-subtle hover:text-gray-700"
             >
               <Plus size={14} />
             </span>
@@ -485,7 +485,7 @@ export default function ContextPanel({
                 <div className="h-6 w-2/3 animate-pulse rounded bg-gray-100" />
               </div>
             ) : competitors.length === 0 ? (
-              <p className="text-[12px] leading-5 text-gray-400">
+              <p className="text-[12px] leading-5 text-ui-subtle">
                 No competitors added yet. Add one manually above, or use &ldquo;Find competitors automatically&rdquo;
                 {FEATURES.PLATFORM_MODE
                   ? "."
@@ -521,7 +521,7 @@ export default function ContextPanel({
         )}
       </div>
 
-      <div className="dash-meta shrink-0 border-t border-gray-200 px-4 py-3 text-gray-400">
+      <div className="dash-meta shrink-0 border-t border-gray-200 px-4 py-3 text-ui-subtle">
         What your CMO reads before writing anything — edit any of it, anytime.
       </div>
 

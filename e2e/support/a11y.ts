@@ -13,6 +13,8 @@ export type Violation = {
 };
 
 const BLOCKING = new Set(["serious", "critical"]);
+// Reported as "moderate" by axe, but a skipped level breaks the outline screen-reader users navigate by.
+const ALWAYS_BLOCKING_RULES = new Set(["heading-order"]);
 
 // A run of class selectors such as `.group.gap-2\.5.py-2\.5` (escaped characters stay inside a token).
 const CLASS_RUN = /(?:\.(?:\\.|[^.\s>+~:[\]()])+)+/g;
@@ -39,12 +41,12 @@ export async function scan(page: Page, label: string): Promise<Violation[]> {
   const results = await new AxeBuilder({ page }).analyze();
   const rows = new Map<string, Violation>();
   for (const v of results.violations) {
-    if (!v.impact || !BLOCKING.has(v.impact)) continue;
+    if (!ALWAYS_BLOCKING_RULES.has(v.id) && (!v.impact || !BLOCKING.has(v.impact))) continue;
     for (const node of v.nodes) {
       const selector = normalizeSelector(node.target.join(" >> "));
       const row = rows.get(`${v.id}|${selector}`);
       if (row) row.count += 1;
-      else rows.set(`${v.id}|${selector}`, { page: label, rule: v.id, impact: v.impact, selector, help: v.help, count: 1 });
+      else rows.set(`${v.id}|${selector}`, { page: label, rule: v.id, impact: v.impact ?? "moderate", selector, help: v.help, count: 1 });
     }
   }
   return [...rows.values()];
