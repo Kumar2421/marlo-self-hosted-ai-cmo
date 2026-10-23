@@ -1,32 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Loader2, Zap, Lock } from "lucide-react";
-import { creditsDisplay } from "@/lib/credits-display";
+import { Zap, Lock } from "lucide-react";
+import { creditsDisplay, creditsStatus } from "@/lib/credits-display";
 import { PlanBadge } from "@/components/plan/PlanBadge";
-
-type UsageEvent = {
-  id: string;
-  agent_type: string;
-  model: string | null;
-  tokens_in: number | null;
-  tokens_out: number | null;
-  credits_charged: number;
-  status: "ok" | "failed" | "refunded";
-  created_at: string;
-};
-
-type CreditCost = { agent_type: string; credits: number; description: string | null };
-
-type UsageData = {
-  available: boolean;
-  balance?: number;
-  granted?: number;
-  planTier?: string;
-  billingEnabled?: boolean;
-  events?: UsageEvent[];
-  costs?: CreditCost[];
-};
+import { SkeletonCard } from "@/components/shared/Skeleton";
+import { usePlan } from "@/components/plan/usePlan";
+import { useUsage } from "@/lib/query/useUsage";
 
 function formatAgentType(agentType: string): string {
   return agentType
@@ -36,26 +15,21 @@ function formatAgentType(agentType: string): string {
 }
 
 export default function CreditsPage() {
-  const [data, setData] = useState<UsageData | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  // Start the plan request now, in parallel with usage; PlanBadge shares this query.
+  usePlan();
+  const { data, isPending, isError } = useUsage();
 
-  useEffect(() => {
-    fetch("/api/usage")
-      .then((r) => r.json())
-      .then(setData)
-      .catch(() => setData({ available: false }))
-      .finally(() => setLoaded(true));
-  }, []);
-
-  if (!loaded) {
+  if (isPending) {
     return (
-      <div className="flex items-center gap-2 text-[13px] text-gray-500">
-        <Loader2 size={14} className="animate-spin" /> Loading credits...
+      <div className="min-w-0 max-w-3xl">
+        <h1 className="text-[15px] font-semibold text-gray-900">Credits</h1>
+        <p className="mb-4 text-[13px] text-gray-500">Monitor usage and manage tasks for your AI CMO.</p>
+        <SkeletonCard rows={4} />
       </div>
     );
   }
 
-  if (!data?.available) {
+  if (isError || !data?.available) {
     return (
       <div className="min-w-0 max-w-2xl">
         <h1 className="text-[15px] font-semibold text-gray-900">Credits</h1>
@@ -71,8 +45,7 @@ export default function CreditsPage() {
   // accounts always have the signup grant) — guards divide-by-zero for the
   // rare row that predates the credits system, backfilled with a grant of 0.
   const view = creditsDisplay({ balance, granted, billingEnabled });
-  const pctRemaining = granted > 0 ? balance / granted : 1;
-  const status = !billingEnabled ? "Beta" : pctRemaining > 0.2 ? "Healthy" : pctRemaining > 0 ? "Low" : "Out";
+  const status = creditsStatus({ balance, granted, billingEnabled });
   const statusColor =
     status === "Out" ? "bg-red-50 text-red-700" : status === "Low" ? "bg-amber-50 text-amber-700" : "bg-[#e6f7f4] text-ui-accent-strong";
 

@@ -45,3 +45,13 @@ test("used is never negative when balance exceeds the grant", () => {
   assert.equal(view.used, 0);
   assert.equal(view.barPercent, 0);
 });
+
+import { creditsStatus } from "../lib/credits-display.ts";
+
+test("creditsStatus: beta, healthy, low, out, and zero-grant rows", () => {
+  assert.equal(creditsStatus({ balance: -5, granted: 20, billingEnabled: false }), "Beta");
+  assert.equal(creditsStatus({ balance: 10, granted: 20, billingEnabled: true }), "Healthy");
+  assert.equal(creditsStatus({ balance: 4, granted: 20, billingEnabled: true }), "Low");
+  assert.equal(creditsStatus({ balance: 0, granted: 20, billingEnabled: true }), "Out");
+  assert.equal(creditsStatus({ balance: 0, granted: 0, billingEnabled: true }), "Healthy");
+});

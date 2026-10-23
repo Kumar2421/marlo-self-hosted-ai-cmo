@@ -16,9 +16,11 @@ export type PrefsResponse = {
 
 const put = (body: unknown): RequestInit => ({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
+export const fetchNotificationPrefs = () => fetchJson<PrefsResponse>("/api/notifications/preferences");
+
 export function useNotificationPrefs() {
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: qk.notificationPrefs(), queryFn: () => fetchJson<PrefsResponse>("/api/notifications/preferences") });
+  const query = useQuery({ queryKey: qk.notificationPrefs(), queryFn: fetchNotificationPrefs });
 
   const save = useMutation({
     mutationFn: (body: { prefs?: NotificationPrefs; unsubscribedAll?: boolean }) => fetchJson<PrefsResponse>("/api/notifications/preferences", put(body)),

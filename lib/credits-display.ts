@@ -40,3 +40,12 @@ export function creditsDisplay({ balance, granted, billingEnabled }: CreditsDisp
     remainingLabel: billingEnabled ? balance.toLocaleString() : BETA_UNLIMITED_LABEL,
   };
 }
+
+export type CreditsStatus = "Beta" | "Healthy" | "Low" | "Out";
+
+/** The status pill on Settings > Credits. */
+export function creditsStatus({ balance, granted, billingEnabled }: CreditsDisplayInput): CreditsStatus {
+  if (!billingEnabled) return "Beta";
+  const pctRemaining = granted > 0 ? balance / granted : 1;
+  return pctRemaining > 0.2 ? "Healthy" : pctRemaining > 0 ? "Low" : "Out";
+}
