@@ -5,9 +5,11 @@ import { buildProjectContextBlock } from "@/lib/domain/shared/projectContextProm
 import { getFindingRecommendations } from "@/lib/domain/recommendations/recommendationService";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
-import { chargeCredits, InsufficientCreditsError } from "@/lib/credits";
+import { chargeCredits, getCreditState, InsufficientCreditsError } from "@/lib/credits";
+import { providers as PROVIDER_DEFS } from "@/lib/mock-providers";
 import { platformKeyFor, resolveLlmCredential } from "@/lib/llm/platformKeys";
 import type { AssistantPorts } from "./assistantService";
+import { pickPreferredModel } from "./credentialResolver";
 import { buildChatSystemPromptSupabase } from "./promptBuilder";
 import { createDataPorts } from "./toolRegistry";
 import { createSupabaseGateway } from "./gateway/supabaseGateway";
@@ -67,9 +69,25 @@ export function createPlatformPorts(): AssistantPorts {
         }
         return { kind: "missing" };
       },
+      // Preferred = the model saved in Settings, only if the user connected a key for its provider.
+      async preferredModel(ctx) {
+        const db = await getUserDb(); // own-row selects, covered by RLS (select_own policies)
+        const userId = ctx.userId as string;
+        const [{ data: setting }, { data: conns }] = await Promise.all([
+          db.from("user_settings").select("value").eq("user_id", userId).eq("key", "primaryModel").maybeSingle(),
+          db.from("provider_connections").select("provider_id, api_key_secret_id").eq("user_id", userId),
+        ]);
+        const connected = (conns ?? []).filter((c) => c.api_key_secret_id).map((c) => c.provider_id as string);
+        return pickPreferredModel(setting?.value as string | undefined, connected, PROVIDER_DEFS);
+      },
+      platformAvailable: (providerId) => Boolean(platformKeyFor(providerId)),
     },
     credits: {
-      async chargeBeforeAnswer(ctx, model) {
+      async canAfford(ctx) {
+        const state = await getCreditState(ctx.userId as string, "chat_message");
+        return !state.billingEnabled || state.balance >= state.cost ? { ok: true } : { ok: false, reason: "insufficient" };
+      },
+      async charge(ctx, model) {
         try {
           await chargeCredits(ctx.userId as string, "chat_message", { model });
           return { ok: true };
