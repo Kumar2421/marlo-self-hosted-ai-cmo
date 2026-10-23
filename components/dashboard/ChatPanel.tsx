@@ -18,6 +18,7 @@ import { useToast } from "./Toast";
 import { useProviders, findProviderForModel } from "@/lib/providers-store";
 import { useProject } from "@/lib/project-store";
 import { limitedDataNotice } from "@/lib/llm/capabilities";
+import { parseChatText } from "@/lib/chatText";
 
 const SUGGESTED_PROMPTS = [
   "What should I fix first on my site?",
@@ -232,7 +233,21 @@ export default function ChatPanel({
             </div>
           ) : (
             <div key={i} className="space-y-3 text-[13px] leading-relaxed text-gray-700">
-              <p>{msg.text}</p>
+              {parseChatText(msg.text).map((b, k) =>
+                b.kind === "p" ? (
+                  <p key={k} className="break-words">{b.text}</p>
+                ) : (
+                  (b.kind === "ol" ? (
+                    <ol key={k} className="list-decimal space-y-1.5 pl-5 marker:text-gray-400">
+                      {b.items.map((it, j) => <li key={j} className="break-words pl-1">{it}</li>)}
+                    </ol>
+                  ) : (
+                    <ul key={k} className="list-disc space-y-1.5 pl-5 marker:text-gray-400">
+                      {b.items.map((it, j) => <li key={j} className="break-words pl-1">{it}</li>)}
+                    </ul>
+                  ))
+                ),
+              )}
               {msg.lookedAt && msg.lookedAt.length > 0 && (
                 <p className="text-xs text-ui-subtle">Looked at: {msg.lookedAt.join(", ")}</p>
               )}

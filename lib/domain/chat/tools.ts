@@ -6,6 +6,7 @@ import { buildOpportunities, type OpportunityType, type SearchOpportunity } from
 import type { SearchSnapshotPayload } from "../search/searchSnapshot.ts";
 import { summaryTotals } from "../search/summaryTotals.ts";
 import { weekChanges } from "../search/weekChanges.ts";
+import { rankFindingsForChat } from "./rankedFindings.ts";
 
 /**
  * Read-only tools the chat model can call to fetch facts about the ACTIVE
@@ -179,8 +180,8 @@ function oppRow(o: SearchOpportunity) {
   };
 }
 
-function findingRow(f: Finding) {
-  return { id: f.id, severity: f.severity, status: f.status, category: f.category, url: f.url, summary: f.recommendation.slice(0, 160), lastSeen: f.lastSeen };
+function findingRow(f: Finding, rank?: number | null, issue?: string | null) {
+  return { ...(rank ? { rank, issue } : {}), id: f.id, severity: f.severity, status: f.status, category: f.category, url: f.url, summary: f.recommendation.slice(0, 160), lastSeen: f.lastSeen };
 }
 
 function outcomeRow(a: ActionWithOutcomeLite) {
@@ -238,10 +239,12 @@ export async function runTool(ports: ChatPorts, name: string, args: Record<strin
             note: "The site was audited and no findings are stored for it. Use get_audit_summary for the audit itself.",
           });
         }
-        const rows = status ? all.filter((f) => f.status === (status as FindingStatus)) : all;
+        // Ranked exactly like the dashboard's Fix-first strip; rank 1 is what to fix first.
+        const ranked = rankFindingsForChat(status ? all.filter((f) => f.status === (status as FindingStatus)) : all, ports.now());
+        const rows = ranked.map((r) => r.finding);
         const byStatus: Record<string, number> = {};
         for (const f of all) byStatus[f.status] = (byStatus[f.status] ?? 0) + 1;
-        return pack({ asOf: ports.now().toISOString().slice(0, 10), totalFindings: all.length, byStatus, shown: Math.min(rows.length, MAX_ROWS), findings: rows.slice(0, MAX_ROWS).map(findingRow) });
+        return pack({ asOf: ports.now().toISOString().slice(0, 10), totalFindings: all.length, byStatus, shown: Math.min(rows.length, MAX_ROWS), order: "Findings are listed in priority order (rank 1 = fix first), the same order as the dashboard's Fix-first list. Keep this order.", findings: ranked.slice(0, MAX_ROWS).map((r) => findingRow(r.finding, r.rank, r.issue)) });
       }
       case "get_audit_summary": {
         const a = await ports.getAuditSummary();
