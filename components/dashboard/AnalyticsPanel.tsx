@@ -28,6 +28,7 @@ import { countFindings, findingCountSentence, stripInlineCode } from "@/lib/doma
 import { auditOverviewTiles, encodingLabel, lastAuditedLabel, onPageIssues } from "@/lib/domain/seo/auditDisplay";
 import { lighthouseScoreLabel } from "@/lib/domain/seo/lighthouseAudits";
 import { describeAge } from "@/lib/domain/seo/pageSpeedFallback";
+import { usePageSpeedAutoMeasure } from "@/components/dashboard/usePageSpeedAutoMeasure";
 import GoogleSourcesCard from "@/components/dashboard/search/GoogleSourcesCard";
 import GoogleSummary from "@/components/dashboard/search/GoogleSummary";
 import SearchHistoryBar from "@/components/dashboard/search/SearchHistoryBar";
@@ -170,6 +171,14 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
   const auditData = auditQuery.data ?? null;
   // Scores from an earlier run are shown only under their own date, never as this run's result.
   const lastGoodPageSpeed = auditData && !auditData.pageSpeed ? auditData.lastGoodPageSpeed ?? null : null;
+  // PageSpeed gave nothing for the stored audit (too slow / failed): measure it again on its own, once per audit.
+  const pageSpeedAuto = usePageSpeedAutoMeasure({
+    projectId: pid,
+    hasProjectUrl: Boolean(project?.url),
+    audit: open ? auditData : null,
+    auditStamp: auditData?.auditedAt,
+    onChanged: () => void queryClient.invalidateQueries({ queryKey: auditKey }),
+  });
   // The overview's finding numbers come from the stored findings, the same list and the same counting as the
   // Findings tab, so the two can never disagree (fixed and verified findings are not "needs attention").
   const storedFindings = useFindings({ enabled: open }).list;
@@ -913,7 +922,20 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                   />
                 )}
 
-                {!auditData.pageSpeed && (
+                {!auditData.pageSpeed && pageSpeedAuto.state === "measuring" && (
+                  <div role="status" aria-live="polite" data-testid="pagespeed-measuring" className="mb-5 flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-[12px] text-gray-600">
+                    <Loader2 size={14} className="shrink-0 animate-spin" />
+                    <span>Measuring PageSpeed... this can take up to a minute</span>
+                  </div>
+                )}
+
+                {!auditData.pageSpeed && pageSpeedAuto.state === "no_key" && !FEATURES.PLATFORM_MODE && (
+                  <div data-testid="pagespeed-no-key" className="mb-5 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-[12px] text-gray-600">
+                    PageSpeed key not configured. Add one in <span className="font-medium">Settings → API Credentials</span>.
+                  </div>
+                )}
+
+                {!auditData.pageSpeed && pageSpeedAuto.state !== "measuring" && !(pageSpeedAuto.state === "no_key" && !FEATURES.PLATFORM_MODE) && (
                   <div className="mb-5 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-800">
                     <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                     {auditData.pageSpeedUnavailable ? (
@@ -925,6 +947,16 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                           ? `Below are the last scores we measured, from ${describeAge(lastGoodPageSpeed.measuredAt)} — not from this run.`
                           : "Below is real data from our own crawl instead, not a substitute score."}{" "}
                         Re-run the audit to try again.
+                        {pageSpeedAuto.state === "failed" && (
+                          <button
+                            type="button"
+                            onClick={pageSpeedAuto.retry}
+                            data-testid="pagespeed-try-again"
+                            className="ml-2 rounded-md border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-100"
+                          >
+                            Try again
+                          </button>
+                        )}
                       </span>
                     ) : (
                       <span>
