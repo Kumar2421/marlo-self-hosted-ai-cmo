@@ -61,7 +61,7 @@ function PlanCard({ card, interval, featured }: { card: PlanCardView; interval: 
   const shown = annual ? price.annualPerMonth : price.monthly;
 
   const buttonClass = cn(
-    "ui-transition inline-flex h-11 w-full cursor-pointer items-center justify-center rounded-ui-md px-4 text-[14px] font-medium",
+    "ui-transition inline-flex h-11 w-full cursor-pointer items-center justify-center rounded-ui-md [:root[data-theme=dark]_&]:rounded-full px-4 text-[14px] font-medium",
     FOCUS_RING,
     featured ? "bg-white text-ui-primary hover:bg-gray-200" : "bg-ui-primary text-ui-inverse hover:bg-ui-primary-hover",
   );

@@ -16,9 +16,6 @@ import {
   LogOut,
   Loader2,
   ScrollText,
-  Sun,
-  Moon,
-  Monitor,
 } from "lucide-react";
 import { user as mockUser } from "@/lib/mock-data";
 import { useTerminalLog } from "@/lib/terminal-log-store";
@@ -28,8 +25,8 @@ import { headerStatus, statusExpiresAt } from "@/lib/headerStatus";
 import { headerCenter } from "@/lib/domain/navbar/headerCenter";
 import { useHeaderStats } from "./useHeaderStats";
 import { useAuthUser } from "@/lib/useAuthUser";
+import SegmentedThemeControl from "@/components/ui/SegmentedThemeControl";
 import { useTheme } from "@/lib/useTheme";
-import { THEME_LABEL, nextThemePreference } from "@/lib/theme";
 import { useToast } from "./Toast";
 import NotificationBell from "./notifications/NotificationBell";
 import SocialNavMenu from "./social/SocialNavMenu";
@@ -64,9 +61,8 @@ function UserMenu() {
   const { show } = useToast();
   const { user: authUser } = useAuthUser();
   const credits = useCredits();
-  const { preference, setPreference } = useTheme();
-  const nextTheme = nextThemePreference(preference);
-  const ThemeIcon = preference === "light" ? Sun : preference === "dark" ? Moon : Monitor;
+  // Keeps the follow-system listener mounted on the dashboard even while the menu (and its theme control) is closed.
+  useTheme();
 
   // Falls back to mock data until Supabase credentials are wired — keeps the
   // dashboard usable in local/self-host dev before a project exists.
@@ -156,6 +152,14 @@ function UserMenu() {
               </button>
             ))}
           </div>
+          <div className="border-t border-gray-100 pt-2">
+            <div className="px-2 pb-1 text-[11px] font-medium text-gray-500" id="user-menu-theme-label">
+              Theme
+            </div>
+            <div className="px-1 pb-2">
+              <SegmentedThemeControl labelledBy="user-menu-theme-label" fill testId="user-menu-theme" />
+            </div>
+          </div>
           <div className="flex items-center justify-between border-t border-gray-100 pt-2">
             <button
               onClick={() => {
@@ -166,14 +170,6 @@ function UserMenu() {
             >
               <FileText size={14} />
               Docs
-            </button>
-            <button
-              onClick={() => setPreference(nextTheme)}
-              aria-label={`Theme: ${THEME_LABEL[preference]}. Switch to ${THEME_LABEL[nextTheme]}`}
-              title={`Theme: ${THEME_LABEL[preference]}`}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-50"
-            >
-              <ThemeIcon size={14} aria-hidden />
             </button>
             <button
               onClick={handleLogout}
