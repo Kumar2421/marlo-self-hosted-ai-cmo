@@ -9,8 +9,10 @@ import {
   initialChatSessionState,
   historyForRequest,
   lastFailedUserText,
+  type ChatMsg,
 } from "@/lib/domain/chat/chatSessionState";
 import { sendChatMessage } from "@/lib/query/chatTransport";
+import { useChatThreads } from "./useChatThreads";
 
 /** All conversation state and the send flow. UI pieces only read from / call into this. */
 export function useChatSession() {
@@ -35,6 +37,17 @@ export function useChatSession() {
     requestIdRef.current += 1;
     dispatch({ type: "reset" });
   }
+
+  /** Shows a stored conversation (restore / open a saved chat); anything in flight is dropped. */
+  function showMessages(next: ChatMsg[]) {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    requestIdRef.current += 1;
+    dispatch({ type: "load", messages: next });
+  }
+
+  // Saved chats of this project (server-side history). Hidden by the panel when the server has none.
+  const threads = useChatThreads({ projectId, loadMessages: showMessages });
 
   /** Typing: also remembers the draft for the current project. */
   function setInput(value: string) {
@@ -61,7 +74,10 @@ export function useChatSession() {
       return;
     }
 
-    const history = historyForRequest(messages);
+    // With a saved chat the server owns the history; otherwise (history unavailable) the client sends it as before.
+    const threadId = threads.activeId;
+    const history = threadId ? [] : historyForRequest(messages);
+    threads.touch();
 
     const reqId = requestIdRef.current + 1;
     requestIdRef.current = reqId;
@@ -77,17 +93,19 @@ export function useChatSession() {
     }
 
     try {
-      const { ok, data } = await sendChatMessage(
-        { message: text, model: primaryModel, providerId, history, projectId },
+      const { ok, status, data } = await sendChatMessage(
+        { message: text, model: primaryModel, providerId, history, projectId, threadId },
         ctrl.signal,
       );
       if (!isCurrent()) return;
 
       if (!ok) {
+        if (status === 404 && threadId) threads.detach(); // the saved chat was deleted elsewhere
         dispatch({ type: "fail", message: `⚠ ${data.error ?? "Something went wrong."}` });
         return;
       }
 
+      threads.noteTurn(data.threadId);
       dispatch({
         type: "reply",
         text: data.reply as string,
@@ -108,5 +126,5 @@ export function useChatSession() {
     return text ? sendText(text, false) : Promise.resolve();
   };
 
-  return { messages, pending, input, setInput, send, retry, resetChat, projectName: project?.name ?? null, primaryModel };
+  return { messages, pending, input, setInput, send, retry, resetChat, threads, projectName: project?.name ?? null, primaryModel };
 }

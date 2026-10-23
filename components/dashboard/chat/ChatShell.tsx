@@ -11,12 +11,15 @@ export default function ChatShell({
   onToggle,
   title,
   onNewChat,
+  historyControl,
   children,
 }: {
   open: boolean;
   onToggle: () => void;
   title: string;
   onNewChat: () => void;
+  /** History menu (ThreadHistoryMenu); omitted when the server keeps no chat history. */
+  historyControl?: ReactNode;
   children: ReactNode;
 }) {
   if (!open) {
@@ -42,6 +45,7 @@ export default function ChatShell({
         </h2>
         <div className="flex shrink-0 items-center gap-3 text-ui-subtle">
           <span className="h-1.5 w-1.5 rounded-full bg-[#00ab92]" />
+          {historyControl}
           <button title="New chat" aria-label="New chat" onClick={onNewChat} className="hover:text-gray-700">
             <Plus size={14} />
           </button>

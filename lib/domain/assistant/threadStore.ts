@@ -55,7 +55,7 @@ export interface ThreadStore {
   purgeOlderThan(days: number, now?: Date): Promise<number>;
 }
 
-const CONTROL_CHARS = /[\u0000-\u001f\u007f  ]+/g;
+const CONTROL_CHARS = new RegExp(`[${String.fromCharCode(0)}-${String.fromCharCode(31)}${String.fromCharCode(127)}]+`, "g"); // whitespace-class characters (incl. line breaks) are collapsed in the next step
 
 /** Single line, no control characters, at most 60 characters. Falls back to "New chat". */
 export function deriveThreadTitle(text: unknown): string {

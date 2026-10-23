@@ -24,6 +24,7 @@ export type ChatSessionAction =
   | { type: "send"; text: string }
   | { type: "reply"; text: string; lookedAt?: string[] }
   | { type: "fail"; message: string }
+  | { type: "load"; messages: ChatMsg[] }
   | { type: "reset" };
 
 export const initialChatSessionState: ChatSessionState = { messages: [], pending: false };
@@ -42,6 +43,8 @@ export function chatSessionReducer(state: ChatSessionState, action: ChatSessionA
         messages: [...state.messages, { role: "assistant", text: action.message, error: true }],
         pending: false,
       };
+    case "load":
+      return { messages: action.messages, pending: false };
     case "reset":
       return initialChatSessionState;
   }

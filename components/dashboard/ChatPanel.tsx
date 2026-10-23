@@ -7,6 +7,7 @@ import ChatShell from "./chat/ChatShell";
 import MessageList from "./chat/MessageList";
 import EmptyState from "./chat/EmptyState";
 import Composer from "./chat/Composer";
+import ThreadHistoryMenu from "./chat/ThreadHistoryMenu";
 import { useChatSession } from "./chat/useChatSession";
 
 export default function ChatPanel({
@@ -16,12 +17,12 @@ export default function ChatPanel({
   open: boolean;
   onToggle: () => void;
 }) {
-  const { messages, pending, input, setInput, send, resetChat, projectName, primaryModel } = useChatSession();
+  const { messages, pending, input, setInput, send, threads, projectName, primaryModel } = useChatSession();
   const inputRef = useRef<HTMLInputElement>(null);
   const dataNotice = limitedDataNotice(primaryModel ? findProviderForModel(primaryModel) : null);
 
   return (
-    <ChatShell open={open} onToggle={onToggle} title={projectName ?? "Chat"} onNewChat={resetChat}>
+    <ChatShell open={open} onToggle={onToggle} title={projectName ?? "Chat"} onNewChat={threads.startNew} historyControl={<ThreadHistoryMenu threads={threads} />}>
       <MessageList
         messages={messages}
         pending={pending}
