@@ -14,7 +14,7 @@ export type NotificationConfig = {
 };
 
 /** The app's public address, for links in emails. */
-function appUrlFrom(env: Env): string | null {
+export function appUrlFrom(env: Env): string | null {
   const explicit = env.NEXT_PUBLIC_APP_URL?.trim();
   if (explicit) return explicit.replace(/\/+$/, "");
   const vercel = env.VERCEL_PROJECT_PRODUCTION_URL?.trim();

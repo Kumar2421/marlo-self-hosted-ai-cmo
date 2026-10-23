@@ -1,6 +1,7 @@
 import { getValidGmailAccessToken } from "@/lib/domain/shared/gmailOAuth";
+import { plainTextFromGmailPayload } from "./replyStop";
 
-export type GmailReply = { snippet: string; from: string; internalDate: string };
+export type GmailReply = { snippet: string; from: string; internalDate: string; /** Plain-text body, used only to spot "stop" requests. */ text?: string };
 
 function getHeader(headers: { name: string; value: string }[], name: string): string {
   return headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? "";
@@ -18,7 +19,7 @@ export async function listReplies(threadId: string, ourMessageId: string): Promi
   const accessToken = await getValidGmailAccessToken();
 
   const res = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}?format=metadata&metadataHeaders=From&metadataHeaders=Date`,
+    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}?format=full`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
 
@@ -31,7 +32,7 @@ export async function listReplies(threadId: string, ourMessageId: string): Promi
   }
 
   const data = await res.json();
-  const messages: { id: string; snippet: string; payload?: { headers?: { name: string; value: string }[] } }[] = data.messages ?? [];
+  const messages: { id: string; snippet: string; payload?: { headers?: { name: string; value: string }[]; mimeType?: string; body?: { data?: string }; parts?: unknown[] } }[] = data.messages ?? [];
 
   return messages
     .filter((m) => m.id !== ourMessageId)
@@ -39,5 +40,6 @@ export async function listReplies(threadId: string, ourMessageId: string): Promi
       snippet: m.snippet ?? "",
       from: getHeader(m.payload?.headers ?? [], "From"),
       internalDate: getHeader(m.payload?.headers ?? [], "Date"),
+      text: plainTextFromGmailPayload(m.payload as Parameters<typeof plainTextFromGmailPayload>[0]),
     }));
 }

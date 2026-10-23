@@ -31,3 +31,23 @@ export async function sendGmail(to: string, fromEmail: string, subject: string, 
   const data = await res.json();
   return { threadId: data.threadId, messageId: data.id };
 }
+
+/** POSTs an already-built message (base64url RFC 5322) to Gmail's send endpoint. Used by outreach, which builds its own MIME. */
+export async function postGmailRaw(accessToken: string, rawBase64Url: string): Promise<{ threadId: string; messageId: string }> {
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ raw: rawBase64Url }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Gmail send failed: HTTP ${res.status}${detail ? ` — ${detail.slice(0, 200)}` : ""}`);
+  }
+  const data = await res.json();
+  return { threadId: data.threadId, messageId: data.id };
+}
+
+/** Self-host variant of postGmailRaw: resolves the stored OAuth token first. */
+export async function sendGmailRaw(rawBase64Url: string): Promise<{ threadId: string; messageId: string }> {
+  return postGmailRaw(await getValidGmailAccessToken(), rawBase64Url);
+}
