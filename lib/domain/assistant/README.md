@@ -18,3 +18,6 @@ Flow in `assistantService.ts`: validate -> model plan (422/501) -> authenticate 
 
 Persistence PR: add a `threadStore` port to `AssistantPorts` and call it in `runAssistantTurn`.
 `TurnObserver` events carry metadata only (model, tools, duration, error kind), never message content or secrets.
+
+## Streaming
+`POST /api/chat/stream` (SSE) wraps the SAME `runAssistantTurn` via `runAssistantTurnStream` (`assistantStream.ts`) using optional `TurnHooks` (`onToolStart`, `onDelta`, `signal`, `hasStreamed`); `POST /api/chat` stays as the JSON fallback. Wire format and decoder: `sse.ts`. Real token streaming happens only on a driver's no-tools path (no project data, or Anthropic/Google context path); the tool path (OpenAI-compatible drivers) shows live tool status and then types the finished answer out in chunks. Once text has streamed, `hasStreamed()` blocks model fallback (it would duplicate text). Credit timing is whatever `attemptWithCandidate` does; the stream layer adds none.

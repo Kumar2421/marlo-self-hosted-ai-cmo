@@ -32,9 +32,9 @@ function harness(route: Route) {
   return { urls, fetchImpl, events, onEvent: (e: StreamEvent) => { events.push(e); } };
 }
 
-const status = { type: "status", phase: "thinking", label: "Thinking..." } as const;
-const delta = (text: string) => ({ type: "delta", text }) as const;
-const done = { type: "done", toolsUsed: [], lookedAt: ["site audit"] } as const;
+const status: StreamEvent = { type: "status", phase: "thinking", label: "Thinking..." };
+const delta = (text: string): StreamEvent => ({ type: "delta", text });
+const done: StreamEvent = { type: "done", toolsUsed: [], lookedAt: ["site audit"] };
 
 test("stream: events arrive in order across awkward chunk boundaries", async () => {
   const wire = [status, delta("Hel"), delta("lo 😀"), done].map(encodeSseEvent).join("");
@@ -46,7 +46,7 @@ test("stream: events arrive in order across awkward chunk boundaries", async () 
 });
 
 test("stream: in-stream error event is delivered once, no fallback", async () => {
-  const err = { type: "error", message: "Out of credits.", code: "402" } as const;
+  const err: StreamEvent = { type: "error", message: "Out of credits.", code: "402" };
   const h = harness(() => sseResponse([encodeSseEvent(status), encodeSseEvent(err)]));
   await streamChatMessage(req, h.onEvent, undefined, h.fetchImpl);
   assert.deepEqual(h.events, [status, err]);
