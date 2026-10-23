@@ -47,7 +47,7 @@ export default function AgentsFeedPanel({
             key={agent.id}
             icon={
               <span
-                className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold text-white"
                 style={{ backgroundColor: agent.color }}
               >
                 {ICONS[agent.icon]}
@@ -71,7 +71,7 @@ export default function AgentsFeedPanel({
           Agents Feed
           <span className="h-1.5 w-1.5 rounded-full bg-[#00ab92]" />
         </div>
-        <div className="flex items-center gap-3 text-gray-400">
+        <div className="flex items-center gap-3 text-ui-subtle">
           <button
             title="Archived"
             className="hover:text-gray-700"
@@ -107,7 +107,7 @@ export default function AgentsFeedPanel({
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {agent.locked && (
-                    <span className="flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-600">
+                    <span className="flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">
                       <Lock size={10} /> Upgrade
                     </span>
                   )}
@@ -171,7 +171,7 @@ export default function AgentsFeedPanel({
           );
         })}
         {visibleAgents.length === 0 && (
-          <div className="p-6 text-center text-[13px] text-gray-400">
+          <div className="p-6 text-center text-[13px] text-ui-subtle">
             All agents archived.{" "}
             <button className="text-gray-700 underline" onClick={() => setArchived([])}>
               Restore

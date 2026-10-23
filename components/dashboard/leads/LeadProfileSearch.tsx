@@ -8,7 +8,7 @@ function Pick({ label, options, value, onChange }: { label: string; options: str
   if (options.length === 0) return null;
   return (
     <label className="block">
-      <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</span>
+      <span className="mb-0.5 block text-xs font-semibold uppercase tracking-wide text-ui-subtle">{label}</span>
       {options.length === 1 ? (
         <span className="block rounded-lg border border-gray-100 bg-gray-50 px-2.5 py-1.5 text-[12px] text-gray-800">{options[0]}</span>
       ) : (
@@ -65,10 +65,10 @@ export default function LeadProfileSearch({
           title="Show the lead profile"
           className="flex min-h-9 min-w-0 flex-1 items-center gap-1.5 text-left text-[12px] text-gray-700"
         >
-          <Target size={13} className="shrink-0 text-gray-400" />
+          <Target size={13} className="shrink-0 text-ui-faint" />
           <span className="min-w-0 line-clamp-2 break-words font-medium leading-4 text-gray-900">
             {summary ?? describeProfile(profile)}
-            <span className="font-normal text-gray-400"> · </span>
+            <span className="font-normal text-ui-subtle"> · </span>
             <span className="font-normal text-gray-500 hover:text-gray-900 hover:underline">Edit</span>
           </span>
         </button>
@@ -89,18 +89,18 @@ export default function LeadProfileSearch({
     <div className="rounded-xl border border-gray-200 bg-white p-3">
       <div className="mb-2 flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-2">
-          <Target size={14} className="mt-0.5 shrink-0 text-gray-400" />
+          <Target size={14} className="mt-0.5 shrink-0 text-ui-faint" />
           <div className="min-w-0">
             <div className="text-[12px] font-semibold text-gray-900">Your lead profile</div>
-            <p className="mt-0.5 text-[11px] leading-4 text-gray-500">{describeProfile(profile)}</p>
+            <p className="mt-0.5 text-xs leading-4 text-gray-500">{describeProfile(profile)}</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <button type="button" onClick={onEdit} className="text-[11px] font-medium text-gray-500 hover:text-gray-900 hover:underline">
+          <button type="button" onClick={onEdit} className="text-xs font-medium text-gray-500 hover:text-gray-900 hover:underline">
             Edit
           </button>
           {onToggle && (
-            <button type="button" onClick={onToggle} aria-expanded title="Collapse" className="flex h-7 w-7 items-center justify-center text-gray-400 hover:text-gray-700">
+            <button type="button" onClick={onToggle} aria-expanded title="Collapse" className="flex h-7 w-7 items-center justify-center text-ui-subtle hover:text-gray-700">
               <ChevronDown size={14} className="rotate-180" />
             </button>
           )}

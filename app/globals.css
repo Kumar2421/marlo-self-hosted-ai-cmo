@@ -105,16 +105,16 @@ body {
   line-height: 20px;
 }
 .dash-meta {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
 }
 .dash-section-label {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #9ca3af;
+  color: var(--ui-text-subtle);
 }
 .dash-focus:focus-visible {
   outline: 2px solid #111111;
@@ -150,8 +150,11 @@ body {
 
   /* text */
   --ui-text: #111827;
-  --ui-text-muted: #6b7280;
-  --ui-text-subtle: #9ca3af;
+  /* Secondary text. 4.5:1+ on white, gray-50, gray-100 and accent-soft (gray-500 is 4.39:1 on gray-100). */
+  --ui-text-muted: #646b78;
+  --ui-text-subtle: #646b78;
+  /* Decorative only (icons, dots, borders). Below 4.5:1: never use for text. */
+  --ui-text-faint: #9ca3af;
   --ui-text-inverse: #ffffff;
 
   /* brand */
@@ -204,6 +207,7 @@ body {
   --color-ui-text: var(--ui-text);
   --color-ui-muted: var(--ui-text-muted);
   --color-ui-subtle: var(--ui-text-subtle);
+  --color-ui-faint: var(--ui-text-faint);
   --color-ui-inverse: var(--ui-text-inverse);
   --color-ui-primary: var(--ui-primary);
   --color-ui-primary-hover: var(--ui-primary-hover);

@@ -52,13 +52,13 @@ export default function SidePanel({ open, onClose, title, subtitle, width = "lg"
             <h2 id={titleId} className="truncate text-[15px] font-semibold text-gray-900">
               {title}
             </h2>
-            {subtitle && <p className="mt-0.5 text-[11px] text-gray-500">{subtitle}</p>}
+            {subtitle && <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>}
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close panel"
-            className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+            className="rounded-md p-1.5 text-ui-subtle transition-colors hover:bg-gray-100 hover:text-gray-700"
           >
             <X size={16} />
           </button>

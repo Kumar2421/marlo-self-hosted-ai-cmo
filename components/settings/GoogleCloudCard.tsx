@@ -159,7 +159,7 @@ export default function GoogleCloudCard() {
             <div className="text-[13px] font-semibold text-gray-900">Google Cloud Services</div>
             <div className="mt-1 text-[12px] text-gray-500">Places, Custom Search, and Knowledge Graph access are managed by the hosted platform. No Google Cloud API key or project configuration is required.</div>
           </div>
-          <span className="ml-auto rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">Managed by Marlo</span>
+          <span className="ml-auto rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">Managed by Marlo</span>
         </div>
       </div>
     );
@@ -174,7 +174,7 @@ export default function GoogleCloudCard() {
             <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
               Google Cloud API Key
               {connected && (
-                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">
+                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">
                   <Check size={10} /> Connected
                 </span>
               )}
@@ -190,7 +190,7 @@ export default function GoogleCloudCard() {
           href="https://console.cloud.google.com/apis/credentials"
           target="_blank"
           rel="noreferrer"
-          className="flex shrink-0 items-center gap-1 text-[11px] text-gray-400 hover:text-gray-700"
+          className="flex shrink-0 items-center gap-1 text-xs text-ui-subtle hover:text-gray-700"
         >
           Get key <ExternalLink size={11} />
         </a>
@@ -226,9 +226,9 @@ export default function GoogleCloudCard() {
       {!loaded ? null : !connected && (
         <div className="mt-3 rounded-lg border border-dashed border-gray-200 p-3">
           <div className="mb-1 flex items-center gap-1.5 text-[12px] font-medium text-gray-700">
-            <Sparkles size={12} className="text-gray-400" /> Or create one automatically
+            <Sparkles size={12} className="text-ui-faint" /> Or create one automatically
           </div>
-          <p className="mb-2 text-[11px] text-gray-500">
+          <p className="mb-2 text-xs text-gray-500">
             Connects your Google account with the Cloud Platform scope (broad — full access to whatever
             project you point it at, not narrower to just API keys; that&apos;s Google&apos;s API, not
             ours), then creates a real key on your project, restricted to exactly Places, Custom Search,
@@ -266,7 +266,7 @@ export default function GoogleCloudCard() {
                   {creatingKey ? "Creating..." : "Create key"}
                 </button>
               </div>
-              <p className="text-[11px] text-gray-400">
+              <p className="text-xs text-ui-subtle">
                 An existing Google Cloud project — this doesn&apos;t create the project itself, only the key on it.
               </p>
             </div>
@@ -281,12 +281,12 @@ export default function GoogleCloudCard() {
             href="https://programmablesearchengine.google.com/controlpanel/all"
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-1 text-gray-400 hover:text-gray-700"
+            className="flex items-center gap-1 text-ui-subtle hover:text-gray-700"
           >
             Create one <ExternalLink size={10} />
           </a>
         </div>
-        <p className="mb-2 text-[11px] text-gray-500">
+        <p className="mb-2 text-xs text-gray-500">
           Required separately for Custom Search — set it to search the entire web, not one site.
         </p>
         <div className="flex gap-2">

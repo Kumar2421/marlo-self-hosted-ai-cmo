@@ -101,7 +101,7 @@ export default function LinkedInAgentModal({ onClose }: { onClose: () => void })
               <p className="text-[12px] text-gray-500">Draft long-form posts for B2B positioning</p>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100">
+          <button onClick={onClose} className="rounded-lg p-2 text-ui-muted hover:bg-gray-100">
             <X size={18} />
           </button>
         </div>

@@ -129,7 +129,7 @@ export default function GmailCard() {
             <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
               Gmail
               {connectedEmail && (
-                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">
+                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">
                   <Check size={10} /> Connected
                 </span>
               )}
@@ -144,7 +144,7 @@ export default function GmailCard() {
             href="https://console.cloud.google.com/apis/credentials"
             target="_blank"
             rel="noreferrer"
-            className="flex shrink-0 items-center gap-1 text-[11px] text-gray-400 hover:text-gray-700"
+            className="flex shrink-0 items-center gap-1 text-xs text-ui-subtle hover:text-gray-700"
           >
             Create OAuth client <ExternalLink size={11} />
           </a>
@@ -161,7 +161,7 @@ export default function GmailCard() {
           </div>
         ) : (
           <div className="space-y-2">
-            <p className="text-[11px] text-gray-500">
+            <p className="text-xs text-gray-500">
               Connect Gmail through your Google sign-in. No Client ID, Client Secret, or .env configuration is required for hosted users.
             </p>
             <button
@@ -178,12 +178,12 @@ export default function GmailCard() {
           {!clientCredsActive ? (
             <div className="rounded-lg bg-gray-50 p-3">
               {savedButNotActive && (
-                <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800">
+                <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
                   <AlertTriangle size={12} className="mt-0.5 shrink-0" />
                   Saved to .env.local, but not active yet — restart the server, then reload this page.
                 </div>
               )}
-              <p className="mb-2 text-[11px] text-gray-500">
+              <p className="mb-2 text-xs text-gray-500">
                 Redirect URI to register on the OAuth client:{" "}
                 <code className="rounded bg-gray-100 px-1 py-0.5">
                   {typeof window !== "undefined" ? window.location.origin : ""}/api/auth/gmail/callback

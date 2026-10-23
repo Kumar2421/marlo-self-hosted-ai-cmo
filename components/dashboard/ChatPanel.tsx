@@ -47,9 +47,9 @@ function ModelSelector() {
     <div className="relative min-w-0">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50"
+        className="flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
       >
-        <Cpu size={12} className="shrink-0 text-gray-400" />
+        <Cpu size={12} className="shrink-0 text-ui-faint" />
         <span className="min-w-0 truncate">{active ?? (connectedModels.length ? "Select model" : "No model connected")}</span>
         <ChevronDown size={11} className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
@@ -77,7 +77,7 @@ function ModelSelector() {
                 }`}
               >
                 <span>{m.model}</span>
-                <span className="text-[11px] text-gray-400">{m.providerName}</span>
+                <span className="text-xs text-ui-subtle">{m.providerName}</span>
               </button>
             ))
           )}
@@ -207,11 +207,11 @@ export default function ChatPanel({
     <div className="flex h-full min-h-0 flex-col bg-white">
 
       <div className="dash-panel-header">
-        <div className="dash-title">
-          <Search size={13} className="shrink-0 text-gray-400" />
+        <h2 className="dash-title">
+          <Search size={13} className="shrink-0 text-ui-faint" />
           <span className="min-w-0 truncate">{project?.name ?? "Chat"}</span>
-        </div>
-        <div className="flex shrink-0 items-center gap-3 text-gray-400">
+        </h2>
+        <div className="flex shrink-0 items-center gap-3 text-ui-subtle">
           <span className="h-1.5 w-1.5 rounded-full bg-[#00ab92]" />
           <button title="New chat" aria-label="New chat" onClick={resetChat} className="hover:text-gray-700">
             <Plus size={14} />
@@ -234,7 +234,7 @@ export default function ChatPanel({
             <div key={i} className="space-y-3 text-[13px] leading-relaxed text-gray-700">
               <p>{msg.text}</p>
               {msg.lookedAt && msg.lookedAt.length > 0 && (
-                <p className="text-[11px] text-gray-400">Looked at: {msg.lookedAt.join(", ")}</p>
+                <p className="text-xs text-ui-subtle">Looked at: {msg.lookedAt.join(", ")}</p>
               )}
               {msg.list && (
                 <ol className="list-decimal space-y-1.5 pl-5">
@@ -255,7 +255,7 @@ export default function ChatPanel({
               )}
               {msg.footer && <p>{msg.footer}</p>}
               {i === messages.length - 1 && (
-                <div className="flex items-center gap-3 pt-1 text-gray-400">
+                <div className="flex items-center gap-3 pt-1 text-ui-subtle">
                   <Copy
                     size={13}
                     className="cursor-pointer hover:text-gray-600"
@@ -270,7 +270,7 @@ export default function ChatPanel({
           <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
             <div className="space-y-1">
               <p className="dash-title justify-center">How can I help today?</p>
-              <p className="dash-meta text-gray-400">Ask about your site, your data or your content.</p>
+              <p className="dash-meta text-ui-subtle">Ask about your site, your data or your content.</p>
             </div>
             <div className="flex w-full max-w-[260px] flex-col gap-1.5">
               {SUGGESTED_PROMPTS.map((p) => (
@@ -289,7 +289,7 @@ export default function ChatPanel({
           </div>
         )}
         {sending && (
-          <div className="flex items-center gap-1.5 text-[13px] text-gray-400">
+          <div className="flex items-center gap-1.5 text-[13px] text-ui-subtle">
             <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.3s]" />
             <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.15s]" />
             <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" />
@@ -298,7 +298,7 @@ export default function ChatPanel({
       </div>
 
       <div className="shrink-0 border-t border-gray-200 bg-[#f9fafb] p-3">
-        {dataNotice && <p className="mb-2 px-1 text-[11px] text-amber-600">{dataNotice}</p>}
+        {dataNotice && <p className="mb-2 px-1 text-xs text-amber-600">{dataNotice}</p>}
         <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm focus-within:border-gray-400">
           <input
             ref={inputRef}
@@ -318,7 +318,7 @@ export default function ChatPanel({
             className="mb-3 w-full bg-transparent text-[13px] text-gray-800 placeholder:text-gray-400 focus:outline-none"
           />
           <div className="flex items-center justify-between">
-            <div className="flex min-w-0 items-center gap-3 text-gray-400">
+            <div className="flex min-w-0 items-center gap-3 text-ui-subtle">
               <ModelSelector />
               <button type="button" disabled title="Coming soon" aria-label="Attach file (coming soon)" className="cursor-not-allowed opacity-40">
                 <Paperclip size={15} />
@@ -331,7 +331,7 @@ export default function ChatPanel({
               onClick={send}
               disabled={!input.trim() || sending}
               aria-label="Send message"
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 text-gray-500 enabled:hover:bg-gray-200 disabled:opacity-40"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 text-ui-muted enabled:hover:bg-gray-200 disabled:opacity-40"
             >
               <ArrowUp size={14} />
             </button>

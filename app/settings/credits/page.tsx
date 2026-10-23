@@ -74,7 +74,7 @@ export default function CreditsPage() {
   const pctRemaining = granted > 0 ? balance / granted : 1;
   const status = !billingEnabled ? "Beta" : pctRemaining > 0.2 ? "Healthy" : pctRemaining > 0 ? "Low" : "Out";
   const statusColor =
-    status === "Out" ? "bg-red-50 text-red-700" : status === "Low" ? "bg-amber-50 text-amber-700" : "bg-[#e6f7f4] text-[#00846f]";
+    status === "Out" ? "bg-red-50 text-red-700" : status === "Low" ? "bg-amber-50 text-amber-700" : "bg-[#e6f7f4] text-ui-accent-strong";
 
   return (
     <div className="min-w-0 max-w-3xl">
@@ -87,10 +87,10 @@ export default function CreditsPage() {
       <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
-            <div className="text-[11px] uppercase tracking-wide text-gray-400">Credits used</div>
+            <div className="text-xs uppercase tracking-wide text-ui-subtle">Credits used</div>
             <div className="flex items-baseline gap-1.5">
               <span className="text-2xl font-semibold text-gray-900">{view.usedLabel}</span>
-              {view.allowanceLabel && <span className="text-[13px] text-gray-400">/ {view.allowanceLabel}</span>}
+              {view.allowanceLabel && <span className="text-[13px] text-ui-subtle">/ {view.allowanceLabel}</span>}
             </div>
           </div>
           <span className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium ${statusColor}`}>
@@ -106,13 +106,13 @@ export default function CreditsPage() {
 
         <div className="grid grid-cols-2 divide-x divide-gray-100 border-t border-gray-100 pt-3">
           <div>
-            <div className="text-[11px] text-gray-400">Credits remaining</div>
+            <div className="text-xs text-ui-subtle">Credits remaining</div>
             <div className="text-[15px] font-semibold text-gray-900">
               {view.remainingLabel}
             </div>
           </div>
           <div className="pl-4">
-            <div className="text-[11px] text-gray-400">Resets</div>
+            <div className="text-xs text-ui-subtle">Resets</div>
             <div className="text-[15px] font-semibold text-gray-900">No refill</div>
           </div>
         </div>
@@ -120,14 +120,14 @@ export default function CreditsPage() {
 
       {!billingEnabled && (
         <div className="mb-6 flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-[13px] text-gray-600">
-          <Zap size={14} className="shrink-0 text-gray-400" />
+          <Zap size={14} className="shrink-0 text-ui-faint" />
           Beta — every action below is still tracked in real time, none of them charge you yet.
         </div>
       )}
 
       <h2 className="mb-1 text-[13px] font-semibold text-gray-900">Monthly estimate</h2>
       <p className="mb-3 text-[12px] text-gray-500">Automated monthly tasks — available on paid plans.</p>
-      <div className="mb-6 flex items-center gap-2 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-[13px] text-gray-400">
+      <div className="mb-6 flex items-center gap-2 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-[13px] text-ui-subtle">
         <Lock size={14} className="shrink-0" />
         Per-agent monthly credit estimates land with paid plans — not available during the credits beta.
       </div>
@@ -139,7 +139,7 @@ export default function CreditsPage() {
         </div>
       ) : (
         <div className="mb-6 overflow-hidden rounded-xl border border-gray-200">
-          <div className="grid grid-cols-[1fr_100px_80px] gap-2 border-b border-gray-100 bg-gray-50 px-3 py-2 text-[11px] font-semibold uppercase text-gray-500">
+          <div className="grid grid-cols-[1fr_100px_80px] gap-2 border-b border-gray-100 bg-gray-50 px-3 py-2 text-xs font-semibold uppercase text-gray-500">
             <span>Action</span>
             <span className="text-right">Credits</span>
             <span className="text-right">When</span>
@@ -148,12 +148,12 @@ export default function CreditsPage() {
             <div key={e.id} className="grid grid-cols-[1fr_100px_80px] gap-2 border-t border-gray-100 px-3 py-2.5 text-[13px] first:border-t-0">
               <div className="min-w-0">
                 <div className="truncate text-gray-800">{formatAgentType(e.agent_type)}</div>
-                {e.model && <div className="truncate text-[11px] text-gray-400">{e.model}</div>}
+                {e.model && <div className="truncate text-xs text-ui-subtle">{e.model}</div>}
               </div>
               <span className={`text-right font-medium ${e.status === "failed" ? "text-red-500" : "text-gray-900"}`}>
                 {e.status === "failed" ? "—" : e.credits_charged}
               </span>
-              <span className="text-right text-[11px] text-gray-400">
+              <span className="text-right text-xs text-ui-subtle">
                 {new Date(e.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
               </span>
             </div>
@@ -163,7 +163,7 @@ export default function CreditsPage() {
 
       <h2 className="mb-2 text-[13px] font-semibold text-gray-900">What things cost</h2>
       <div className="overflow-hidden rounded-xl border border-gray-200">
-        <div className="grid grid-cols-[1fr_70px] gap-2 border-b border-gray-100 bg-gray-50 px-3 py-2 text-[11px] font-semibold uppercase text-gray-500">
+        <div className="grid grid-cols-[1fr_70px] gap-2 border-b border-gray-100 bg-gray-50 px-3 py-2 text-xs font-semibold uppercase text-gray-500">
           <span>Action</span>
           <span className="text-right">Credits</span>
         </div>
@@ -171,13 +171,13 @@ export default function CreditsPage() {
           <div key={c.agent_type} className="grid grid-cols-[1fr_70px] gap-2 border-t border-gray-100 px-3 py-2.5 text-[13px] first:border-t-0">
             <div className="min-w-0">
               <div className="text-gray-800">{formatAgentType(c.agent_type)}</div>
-              {c.description && <div className="truncate text-[11px] text-gray-400">{c.description}</div>}
+              {c.description && <div className="truncate text-xs text-ui-subtle">{c.description}</div>}
             </div>
             <span className="text-right font-medium text-gray-900">{c.credits}</span>
           </div>
         ))}
       </div>
-      <p className="mt-2 text-[11px] text-gray-400">
+      <p className="mt-2 text-xs text-ui-subtle">
         Using your own connected LLM key (Settings → LLM Providers) skips credit charges entirely for that action —
         this pricing only applies to platform-provided models.
       </p>

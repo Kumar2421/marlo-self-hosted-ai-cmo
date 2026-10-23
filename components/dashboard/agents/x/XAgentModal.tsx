@@ -103,7 +103,7 @@ export default function XAgentModal({ onClose }: { onClose: () => void }) {
               <p className="text-[12px] text-gray-500">Draft engaging threads and tweets</p>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 hover:bg-gray-100 text-gray-500">
+          <button onClick={onClose} className="rounded-lg p-2 hover:bg-gray-100 text-ui-muted">
             <X size={18} />
           </button>
         </div>

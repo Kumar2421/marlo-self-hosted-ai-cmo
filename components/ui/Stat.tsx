@@ -13,9 +13,9 @@ export type StatProps = {
 export function Stat({ label, value, hint, className }: StatProps) {
   return (
     <div className={cn("min-w-0", className)}>
-      <div className="truncate text-[11px] leading-4 text-ui-muted">{label}</div>
+      <div className="truncate text-xs leading-4 text-ui-muted">{label}</div>
       <div className="truncate text-[16px] leading-6 font-semibold text-ui-text tabular-nums">{value}</div>
-      {hint ? <div className="truncate text-[11px] leading-4 text-ui-subtle">{hint}</div> : null}
+      {hint ? <div className="truncate text-xs leading-4 text-ui-subtle">{hint}</div> : null}
     </div>
   );
 }

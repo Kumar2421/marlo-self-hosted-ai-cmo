@@ -55,7 +55,7 @@ function FeatureCompare({
           ) : (
             <span className="text-gray-300">−</span>
           )}
-          <span className={ourFeatures.includes(feature) ? "text-gray-700" : "text-gray-400"}>
+          <span className={ourFeatures.includes(feature) ? "text-gray-700" : "text-ui-subtle"}>
             {feature}
           </span>
         </div>
@@ -185,7 +185,7 @@ export default function CompetitorComparisonPanel({ onClose }: { onClose: () => 
         {/* Header */}
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-200 px-4">
           <div id={titleId} className="text-[14px] font-semibold text-gray-900">Competitor Comparison</div>
-          <div className="flex items-center gap-3 text-gray-400">
+          <div className="flex items-center gap-3 text-ui-subtle">
             {competitors.length > 0 && (
               <button
                 onClick={handleRefresh}

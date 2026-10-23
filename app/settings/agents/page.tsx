@@ -62,7 +62,7 @@ function ChipField({
     <div>
       <div className="mb-1 flex items-center justify-between text-[12px] text-gray-600">
         {label}
-        <span className="text-gray-400">
+        <span className="text-ui-subtle">
           {items.length}/{max}
         </span>
       </div>
@@ -80,7 +80,7 @@ function ChipField({
                     aria-label={`Remove ${item}`}
                     disabled={disabled}
                     onClick={() => void commit({ ok: true, list: items.filter((x) => x !== item) }, false)}
-                    className="rounded-full p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700 disabled:opacity-50"
+                    className="rounded-full p-0.5 text-ui-subtle hover:bg-gray-200 hover:text-gray-700 disabled:opacity-50"
                   >
                     <X size={11} />
                   </button>
@@ -106,7 +106,7 @@ function ChipField({
         </>
       )}
       {error && (
-        <p role="alert" className="mt-1 text-[11px] text-red-600">
+        <p role="alert" className="mt-1 text-xs text-red-600">
           {error}
         </p>
       )}
@@ -197,7 +197,7 @@ export default function AgentsSettingsPage() {
         <button
           onClick={handleSave}
           disabled={saving || !loaded}
-          className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-[13px] font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-[13px] font-medium text-ui-muted hover:bg-gray-100 disabled:opacity-50"
         >
           {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
           {saving ? "Saving..." : "Save"}
@@ -226,7 +226,7 @@ export default function AgentsSettingsPage() {
           <option>India (English)</option>
           <option>Germany (German)</option>
         </select>
-        <p className="mt-2 text-[11px] text-gray-400">
+        <p className="mt-2 text-xs text-ui-subtle">
           Applies on the next run. Past data from other markets is kept; ChatGPT data stays US-only.
         </p>
       </div>
@@ -234,7 +234,7 @@ export default function AgentsSettingsPage() {
       <div className="mb-4 rounded-xl border border-gray-200 p-4">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#ff4500] text-[11px] text-white">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#ff4500] text-xs text-white">
               🤖
             </span>
             <div>
@@ -286,8 +286,8 @@ export default function AgentsSettingsPage() {
           add={addKeyword}
           onChange={(keywords) => saveReddit({ keywords })}
         />
-        {reddit.isError && <p className="mt-2 text-[11px] text-red-600">Could not load your saved Reddit settings. Refresh to try again.</p>}
-        <p className="mt-2 text-[11px] text-gray-400">Priority subreddits, keywords and region save as you change them and focus the next Reddit run.</p>
+        {reddit.isError && <p className="mt-2 text-xs text-red-600">Could not load your saved Reddit settings. Refresh to try again.</p>}
+        <p className="mt-2 text-xs text-ui-subtle">Priority subreddits, keywords and region save as you change them and focus the next Reddit run.</p>
       </div>
 
       {PLATFORM_AGENTS.filter((a) => a.id !== "articles").map((agent) => (
@@ -295,7 +295,7 @@ export default function AgentsSettingsPage() {
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2">
               <span
-                className="flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold text-white"
+                className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold text-white"
                 style={{ backgroundColor: agent.iconBg }}
               >
                 {agent.icon}
@@ -310,7 +310,7 @@ export default function AgentsSettingsPage() {
           <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
             <div>
               <div className="text-[12px] text-gray-600">Brand voice</div>
-              <div className="text-[11px] text-gray-400">Used when the agent writes for this platform.</div>
+              <div className="text-xs text-ui-subtle">Used when the agent writes for this platform.</div>
             </div>
             <div className="flex items-center gap-3 text-[12px]">
               <button onClick={() => show("Write your own — coming soon.")} className="text-gray-600 hover:text-gray-900">

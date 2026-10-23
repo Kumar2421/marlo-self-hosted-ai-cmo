@@ -72,13 +72,13 @@ export default function BusinessResults({
         ) : null
       ) : (
         <section className="space-y-2">
-          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Results ({results.length})</h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-ui-subtle">Results ({results.length})</h3>
           {results.map((lead) => (
             <BusinessLeadCard key={lead.id} lead={lead} {...cardProps} />
           ))}
           <div className="flex flex-col items-center gap-1.5 pt-1 text-center">
             {duplicates > 0 && (
-              <p className="text-[11px] text-gray-400">
+              <p className="text-xs text-ui-subtle">
                 {duplicates} already saved {duplicates === 1 ? "was" : "were"} skipped
               </p>
             )}
@@ -93,7 +93,7 @@ export default function BusinessResults({
                 {loadingMore ? "Loading..." : "Load more"}
               </button>
             ) : (
-              <p className="text-[11px] text-gray-400">No more results</p>
+              <p className="text-xs text-ui-subtle">No more results</p>
             )}
           </div>
         </section>
@@ -101,7 +101,7 @@ export default function BusinessResults({
 
       {saved.length > 0 && (
         <section className="space-y-2">
-          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Saved businesses ({saved.length})</h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-ui-subtle">Saved businesses ({saved.length})</h3>
           {saved.map((lead) => (
             <BusinessLeadCard key={lead.id} lead={lead} {...cardProps} />
           ))}

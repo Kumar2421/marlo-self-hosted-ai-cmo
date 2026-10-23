@@ -82,7 +82,7 @@ export default function PageSpeedCard() {
             <div className="text-[13px] font-semibold text-gray-900">Google PageSpeed Insights</div>
             <div className="mt-1 text-[12px] text-gray-500">Lighthouse and Core Web Vitals are provided by the hosted platform and managed by Marlo. No API key is required.</div>
           </div>
-          <span className="ml-auto rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">Managed by Marlo</span>
+          <span className="ml-auto rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">Managed by Marlo</span>
         </div>
       </div>
     );
@@ -97,7 +97,7 @@ export default function PageSpeedCard() {
             <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
               Google PageSpeed Insights API
               {connected && (
-                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">
+                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">
                   <Check size={10} /> Connected
                 </span>
               )}
@@ -112,7 +112,7 @@ export default function PageSpeedCard() {
           href="https://developers.google.com/speed/docs/insights/v5/get-started"
           target="_blank"
           rel="noreferrer"
-          className="flex shrink-0 items-center gap-1 text-[11px] text-gray-400 hover:text-gray-700"
+          className="flex shrink-0 items-center gap-1 text-xs text-ui-subtle hover:text-gray-700"
         >
           Get key <ExternalLink size={11} />
         </a>

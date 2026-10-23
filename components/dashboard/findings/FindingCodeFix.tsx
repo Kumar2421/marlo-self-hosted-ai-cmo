@@ -83,7 +83,7 @@ function RepoPicker({ returnTo, reconnectHref }: { returnTo: string; reconnectHr
     return (
       <div className={box} data-testid="codefix-repo-empty">
         <p className="text-[12px] text-gray-700">GitHub doesn&apos;t share any repositories with Marlo yet. Add one in GitHub, then check again.</p>
-        <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] font-medium">
+        <div className="mt-2 flex flex-wrap items-center gap-3 text-xs font-medium">
           <button type="button" onClick={() => repos.refetch()} className="text-blue-600 hover:underline">
             Check again
           </button>
@@ -119,8 +119,8 @@ function RepoPicker({ returnTo, reconnectHref }: { returnTo: string; reconnectHr
           {save.isPending ? "Saving..." : "Save repository"}
         </button>
       </div>
-      {save.error && <FriendlyError error={save.error} reconnectHref={reconnectHref} className="mt-2 text-[11px] text-red-600" />}
-      <a href={`/settings/integrations?returnTo=${encodeURIComponent(returnTo)}`} className="mt-2 inline-block text-[11px] font-medium text-blue-600 hover:underline">
+      {save.error && <FriendlyError error={save.error} reconnectHref={reconnectHref} className="mt-2 text-xs text-red-600" />}
+      <a href={`/settings/integrations?returnTo=${encodeURIComponent(returnTo)}`} className="mt-2 inline-block text-xs font-medium text-blue-600 hover:underline">
         Choose repository in settings
       </a>
     </div>
@@ -134,18 +134,18 @@ function ChangeEditor({ change, onChange }: { change: FixChange; onChange: (next
       <div className="flex items-center gap-2 border-b border-gray-100 bg-gray-50 px-3 py-2 text-[12px]">
         <span className="min-w-0 truncate font-mono font-medium text-gray-800">{change.path}</span>
         {change.type === "create" && (
-          <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-emerald-700">New file</span>
+          <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-xs font-semibold uppercase text-emerald-700">New file</span>
         )}
       </div>
       <div className="space-y-2 p-3">
         {change.type === "edit" ? (
           <>
             <div>
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Current text</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-ui-subtle">Current text</div>
               <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded-lg border border-red-100 bg-red-50 px-2.5 py-2 font-mono text-[12px] leading-5 text-red-800">{change.oldSnippet}</pre>
             </div>
             <label className="block">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">New text (you can edit)</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-ui-subtle">New text (you can edit)</span>
               <textarea
                 value={change.newSnippet}
                 onChange={(e) => onChange({ ...change, newSnippet: e.target.value })}
@@ -157,7 +157,7 @@ function ChangeEditor({ change, onChange }: { change: FixChange; onChange: (next
           </>
         ) : (
           <label className="block">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">File content (you can edit)</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-ui-subtle">File content (you can edit)</span>
             <textarea
               value={change.content}
               onChange={(e) => onChange({ ...change, content: e.target.value })}
@@ -220,7 +220,7 @@ function PreviewPanel({
               <FriendlyError error={approve.error} reconnectHref={reconnectHref} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700" />
             )}
             <div className="flex items-center justify-between gap-3">
-              <p className="text-[11px] leading-4 text-gray-500">Opens a pull request. Marlo never merges: you review and merge it on GitHub.</p>
+              <p className="text-xs leading-4 text-gray-500">Opens a pull request. Marlo never merges: you review and merge it on GitHub.</p>
               <div className="flex shrink-0 gap-2">
                 <button type="button" onClick={onClose} disabled={approve.isPending} className="rounded-lg border border-gray-200 px-3 py-2 text-[12px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
                   Cancel
@@ -268,12 +268,12 @@ export default function FindingCodeFix({ finding, actions }: { finding: Finding;
     return (
       <div className={`${box} bg-gray-50`} data-testid="codefix-manual">
         <div className="text-[12px] font-semibold text-gray-900">This needs a manual change</div>
-        <p className="mt-1 text-[11px] leading-4 text-gray-600">{verdict.reason}</p>
+        <p className="mt-1 text-xs leading-4 text-gray-600">{verdict.reason}</p>
         <p className="mt-2 text-[12px] leading-5 text-gray-700">{finding.recommendation}</p>
         {/* The API only allows "fixing" to move to "fixed", so the button appears only in that state. */}
         {finding.status === "fixing" && (
           <div className="mt-3 flex items-center justify-between gap-3 border-t border-gray-200 pt-3">
-            <p className="text-[11px] text-gray-500">Made the change yourself?</p>
+            <p className="text-xs text-gray-500">Made the change yourself?</p>
             <button
               type="button"
               onClick={() => setFindingStatus.mutate({ id: finding.id, body: { status: "fixed" } })}
@@ -284,7 +284,7 @@ export default function FindingCodeFix({ finding, actions }: { finding: Finding;
             </button>
           </div>
         )}
-        {setFindingStatus.error && <p className="mt-2 text-[11px] text-red-600">{friendlyGithubError(setFindingStatus.error.message).message}</p>}
+        {setFindingStatus.error && <p className="mt-2 text-xs text-red-600">{friendlyGithubError(setFindingStatus.error.message).message}</p>}
       </div>
     );
   }
@@ -299,13 +299,13 @@ export default function FindingCodeFix({ finding, actions }: { finding: Finding;
           <div className="flex items-center gap-2 text-[12px] font-semibold text-gray-900">
             <GitPullRequest size={13} />
             {merged ? "Pull request merged" : "Pull request open"}
-            <span className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase ${merged ? "border-violet-200 bg-violet-50 text-violet-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
+            <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold uppercase ${merged ? "border-violet-200 bg-violet-50 text-violet-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
               {merged ? "Merged" : "Open"}
             </span>
           </div>
-          <p className="mt-1 text-[11px] text-gray-500">{merged ? mergedPullRequestNote(finding) : "Review and merge it on GitHub. Marlo never merges for you."}</p>
+          <p className="mt-1 text-xs text-gray-500">{merged ? mergedPullRequestNote(finding) : "Review and merge it on GitHub. Marlo never merges for you."}</p>
         </div>
-        <a href={prUrl} target="_blank" rel="noreferrer" className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-blue-600 hover:underline">
+        <a href={prUrl} target="_blank" rel="noreferrer" className="flex shrink-0 items-center gap-1 text-xs font-medium text-blue-600 hover:underline">
           View <ExternalLink size={11} />
         </a>
       </div>
@@ -320,11 +320,11 @@ export default function FindingCodeFix({ finding, actions }: { finding: Finding;
         <div className="flex items-center gap-2 text-[12px] font-semibold text-gray-900">
           <GitPullRequest size={13} />
           Pull request closed without merging
-          <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[9px] font-semibold uppercase text-red-700">Closed</span>
+          <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-semibold uppercase text-red-700">Closed</span>
         </div>
-        <p className="mt-1 text-[11px] text-gray-500">Nothing was merged. Prepare a new fix when you are ready.</p>
+        <p className="mt-1 text-xs text-gray-500">Nothing was merged. Prepare a new fix when you are ready.</p>
       </div>
-      <a href={closedPr.url} target="_blank" rel="noreferrer" className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-blue-600 hover:underline">
+      <a href={closedPr.url} target="_blank" rel="noreferrer" className="flex shrink-0 items-center gap-1 text-xs font-medium text-blue-600 hover:underline">
         View <ExternalLink size={11} />
       </a>
     </div>
@@ -407,7 +407,7 @@ export default function FindingCodeFix({ finding, actions }: { finding: Finding;
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[12px] font-semibold text-gray-900">Fix in code: {verdict.label}</div>
-          <p className="mt-0.5 text-[11px] leading-4 text-gray-500">
+          <p className="mt-0.5 text-xs leading-4 text-gray-500">
             Marlo drafts the change for <span className="font-mono">{gh.repoFullName}</span> and shows it to you first.
           </p>
         </div>
@@ -423,7 +423,7 @@ export default function FindingCodeFix({ finding, actions }: { finding: Finding;
         </button>
       </div>
       {!hasModel && (
-        <p className="mt-2 text-[11px] text-amber-700">
+        <p className="mt-2 text-xs text-amber-700">
           Select a model in{" "}
           <a href="/settings/llm-providers" className="font-medium underline">
             LLM Providers
@@ -431,7 +431,7 @@ export default function FindingCodeFix({ finding, actions }: { finding: Finding;
           settings to prepare fixes.
         </p>
       )}
-      {prepare.error && <FriendlyError error={prepare.error} reconnectHref={reconnectHref} className="mt-2 text-[11px] text-red-600" />}
+      {prepare.error && <FriendlyError error={prepare.error} reconnectHref={reconnectHref} className="mt-2 text-xs text-red-600" />}
       {fix && (
         <PreviewPanel
           finding={finding}
