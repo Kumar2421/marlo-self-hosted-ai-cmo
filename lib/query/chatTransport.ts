@@ -1,7 +1,5 @@
 export type ChatRequest = {
   message: string;
-  model: string;
-  providerId: string;
   history: { role: "user" | "assistant"; content: string }[];
   projectId: string | null;
   /** Server-side chat to continue (history is then read from the server, not from `history`). */
@@ -21,8 +19,6 @@ export async function sendChatMessage(
     signal,
     body: JSON.stringify({
       message: req.message,
-      model: req.model,
-      providerId: req.providerId,
       history: req.history,
       projectId: req.projectId,
       threadId: req.threadId ?? undefined,

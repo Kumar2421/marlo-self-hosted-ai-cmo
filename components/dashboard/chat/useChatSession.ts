@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useReducer } from "react";
-import { useToast } from "../Toast";
-import { useProviders, findProviderForModel } from "@/lib/providers-store";
+import { useProviders } from "@/lib/providers-store";
 import { useProject } from "@/lib/project-store";
 import {
   chatSessionReducer,
@@ -18,7 +17,7 @@ import { useChatThreads } from "./useChatThreads";
 export function useChatSession() {
   const [{ messages, pending }, dispatch] = useReducer(chatSessionReducer, initialChatSessionState);
   const [input, setInputState] = useState("");
-  const { show } = useToast();
+  // Display-only (limited-data notice); sending never depends on it - the server picks the model.
   const { primaryModel } = useProviders();
   const { project } = useProject();
   const projectId = project?.id ?? null;
@@ -68,12 +67,6 @@ export function useChatSession() {
     const text = raw.trim();
     if (!text || pending) return;
 
-    const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
-    if (!primaryModel || !providerId) {
-      show("Select a model first — connect a provider in Settings → LLM Providers.");
-      return;
-    }
-
     // With a saved chat the server owns the history; otherwise (history unavailable) the client sends it as before.
     const threadId = threads.activeId;
     const history = threadId ? [] : historyForRequest(messages);
@@ -94,7 +87,7 @@ export function useChatSession() {
 
     try {
       const { ok, status, data } = await sendChatMessage(
-        { message: text, model: primaryModel, providerId, history, projectId, threadId },
+        { message: text, history, projectId, threadId },
         ctrl.signal,
       );
       if (!isCurrent()) return;

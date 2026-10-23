@@ -12,8 +12,8 @@ export type AssistantTurnInput = {
   projectId: unknown;
   /** Server-side chat thread to continue; absent on the first message of a chat. */
   threadId?: unknown;
-  requestedProvider?: string;
-  requestedModel?: string;
+  // The client no longer picks provider/model: the server decides (modelSelection.ts). Legacy
+  // `providerId`/`model` body fields are never read by the route, so they cannot steer which key is used.
 };
 
 /** Successful turn: the JSON body the chat API returns. */

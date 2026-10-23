@@ -21,8 +21,12 @@ function setup(opts: { userId?: string; threads?: ThreadStore | undefined; activ
       getDriver: () => async (req) => { seen.push({ messages: (req as unknown as { messages: { role: string; content: string }[] }).messages }); return { text: opts.reply ?? "answer" }; },
       supportsTools: () => false,
     },
-    credentials: { resolve: async () => ({ kind: "byok", apiKey: "k", baseUrl: undefined }) },
-    credits: { chargeBeforeAnswer: async () => ({ ok: true }) },
+    credentials: {
+      resolve: async () => ({ kind: "byok", apiKey: "k", baseUrl: undefined }),
+      preferredModel: async () => ({ providerId: "anthropic", model: "m" }),
+      platformAvailable: () => false,
+    },
+    credits: { canAfford: async () => ({ ok: true }), charge: async () => ({ ok: true }) },
     prompts: { build: async () => "SYS" },
     data: { create: () => null },
     threads: "threads" in opts ? opts.threads : memoryThreadStore(),
@@ -31,7 +35,7 @@ function setup(opts: { userId?: string; threads?: ThreadStore | undefined; activ
 }
 
 const input = (over: Record<string, unknown> = {}) => ({
-  message: "hello", history: [], projectId: "p1", requestedProvider: "anthropic", requestedModel: "m", ...over,
+  message: "hello", history: [], projectId: "p1", ...over,
 });
 
 test("first message creates a thread titled from the message and stores both turns", async () => {
