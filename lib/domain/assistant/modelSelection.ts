@@ -28,6 +28,7 @@ export function resolveModelPlan(ctx: TurnContext, input: AssistantTurnInput, de
 }
 
 /** Should the next candidate be tried after this failure? Stub: never, until the model-policy PR. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function shouldFallback(_error: unknown): boolean {
   return false;
 }
