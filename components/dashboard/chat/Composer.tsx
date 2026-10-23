@@ -3,6 +3,7 @@
 import type { Ref } from "react";
 import { Paperclip, AtSign, ArrowUp } from "lucide-react";
 import ModelPicker from "./ModelPicker";
+import ChatUsageMeter from "./ChatUsageMeter";
 
 export default function Composer({
   value,
@@ -58,6 +59,7 @@ export default function Composer({
           </button>
         </div>
       </div>
+      <ChatUsageMeter />
     </div>
   );
 }
