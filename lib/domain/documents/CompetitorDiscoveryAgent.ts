@@ -31,6 +31,10 @@ export type DiscoveredCandidate = { domain: string; reason: string };
 
 const MAX_CANDIDATES = 12;
 
+function productTextOf(req: CompetitorDiscoveryRequest): string {
+  return [req.description, req.metaTitle, req.metaDescription, req.productInfo?.slice(0, 1500)].filter(Boolean).join(" ");
+}
+
 function ownHost(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "").toLowerCase();
@@ -106,17 +110,15 @@ export class CompetitorDiscoveryAgent {
     if (tavilyKey) {
       const queries = buildDiscoveryQueries(req.projectName, req.metaTitle, req.description || req.metaDescription);
       const resultSets = await Promise.all(queries.map((q) => tavilySearchRaw(tavilyKey, q, 10).catch(() => [])));
-      fromSearch = extractCompetitorCandidates(resultSets, ownDomain);
+      fromSearch = extractCompetitorCandidates(resultSets, ownDomain, productTextOf(req));
     }
 
     // No usable model: the search-derived candidates stand on their own.
     if (!this.driver || !req.model) {
       if (fromSearch.length === 0) {
-        throw new Error(
-          tavilyKey
-            ? "Web search found no confident competitors for this product yet."
-            : "Connect a Tavily key (or a model) in Settings to discover competitors.",
-        );
+        // Searched but nothing confident: an honest empty result, not an error and not padding.
+        if (tavilyKey) return { candidates: [], usedWebSearch: true, llmUsed: false };
+        throw new Error("Connect a Tavily key (or a model) in Settings to discover competitors.");
       }
       return { candidates: fromSearch, usedWebSearch: true, llmUsed: false };
     }
