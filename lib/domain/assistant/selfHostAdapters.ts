@@ -5,11 +5,13 @@ import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import { getActiveProjectContext } from "@/lib/domain/shared/getActiveProject";
 import { buildProjectContextBlock } from "@/lib/domain/shared/projectContextPrompt";
 import { buildTrafficContextBlock } from "@/lib/domain/shared/trafficContextPrompt";
-import { selfHostChatPorts } from "@/lib/domain/chat/chatPorts";
+import { getFindingRecommendations } from "@/lib/domain/recommendations/recommendationService";
 import type { AssistantPorts } from "./assistantService";
 import { pickPreferredModel } from "./credentialResolver";
 import { buildChatSystemPrompt } from "./promptBuilder";
 import { createDataPorts } from "./toolRegistry";
+import { createSqliteGateway } from "./gateway/sqliteGateway";
+import { gatewayChatPorts } from "./gateway/gatewayPorts";
 
 /** Real self-host (local SQLite) ports. No auth, no credits. */
 export function createSelfHostPorts(): AssistantPorts {
@@ -49,7 +51,8 @@ export function createSelfHostPorts(): AssistantPorts {
       create: (ctx) =>
         createDataPorts(ctx, {
           platform: () => { throw new Error("platform data ports requested in self-host mode"); },
-          selfHost: (projectId) => selfHostChatPorts(projectId),
+          selfHost: (projectId) =>
+            gatewayChatPorts(createSqliteGateway(getDb()), { userId: null, projectId }, { recommendationsFor: getFindingRecommendations }),
         }),
     },
   };

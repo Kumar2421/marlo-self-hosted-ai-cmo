@@ -126,7 +126,7 @@ ${policy.note}` : built;
       const driver = ports.llm.getDriver(providerId)!;
       return answer({
         driver, supportsTools: ports.llm.supportsTools(providerId), apiKey, model, baseUrl, system,
-        messages, ports: ports.data.create(ctx), lockedTools: policy.lockedTools,
+        messages, ports: await ports.data.create(ctx), lockedTools: policy.lockedTools,
       });
     }, budgetMs).catch((e) => { throw e instanceof DeadlineExceededError ? new Error("request timed out") : e; });
     if (!result.reply || !result.reply.trim()) throw new EmptyReplyError();

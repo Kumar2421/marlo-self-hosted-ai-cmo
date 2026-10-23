@@ -7,6 +7,8 @@ import type { SearchSnapshotPayload } from "../search/searchSnapshot.ts";
 import { summaryTotals } from "../search/summaryTotals.ts";
 import { weekChanges } from "../search/weekChanges.ts";
 import { rankFindingsForChat } from "./rankedFindings.ts";
+import { isFindingId, validateArgs, type ArgSchema } from "./toolSchema.ts";
+import { wrapResult } from "./untrusted.ts";
 
 /**
  * Read-only tools the chat model can call to fetch facts about the ACTIVE
@@ -65,7 +67,12 @@ export type ChatPorts = {
   /** Competitor site URLs the user tracks (empty when none). */
   listCompetitors(): Promise<string[]>;
   now(): Date;
+  /** Optional per-call audit hook (metadata only: no arguments, no content). */
+  audit?: (entry: ToolAuditEntry) => void;
 };
+
+/** What the audit trail records about one tool call. argsHash is a hash, never the arguments. */
+export type ToolAuditEntry = { tool: string; argsHash: string; ok: boolean; durationMs: number };
 
 export type ToolSpec = {
   name: string;
@@ -79,6 +86,22 @@ export const MAX_RESULT_CHARS = 3500;
 const MAX_ROWS = 10;
 
 const noArgs = { type: "object" as const, properties: {} };
+const limitProp = { type: "integer", minimum: 1, maximum: MAX_ROWS, description: "Optional: how many rows (default 10, max 10)." };
+const OPPORTUNITY_TYPES = ["ranking", "ctr", "declining", "new_query", "lost_query"] as const;
+
+/** Server-side argument validation for every tool. Unknown keys are dropped; see toolSchema.ts. */
+const limitField = { kind: "int", min: 1, max: MAX_ROWS, default: MAX_ROWS } as const;
+export const TOOL_ARG_SCHEMAS: Record<string, ArgSchema> = {
+  get_search_summary: {},
+  list_opportunities: { type: { kind: "enum", values: OPPORTUNITY_TYPES }, limit: limitField },
+  list_findings: { status: { kind: "enum", values: FINDING_STATUSES }, limit: limitField },
+  get_finding: { id: { kind: "id", test: isFindingId, required: true } },
+  list_actions_and_outcomes: {},
+  list_leads: { limit: limitField },
+  get_geo_status: {},
+  get_audit_summary: {},
+  list_competitors: {},
+};
 
 export const CHAT_TOOLS: ToolSpec[] = [
   {
@@ -93,7 +116,7 @@ export const CHAT_TOOLS: ToolSpec[] = [
     description: "Search opportunities found from the latest snapshot: ranking (almost page one), ctr (weak snippets), declining, new and lost queries.",
     parameters: {
       type: "object",
-      properties: { type: { type: "string", enum: ["ranking", "ctr", "declining", "new_query", "lost_query"], description: "Optional: only this kind." } },
+      properties: { type: { type: "string", enum: [...OPPORTUNITY_TYPES], description: "Optional: only this kind." }, limit: limitProp },
     },
   },
   {
@@ -102,14 +125,14 @@ export const CHAT_TOOLS: ToolSpec[] = [
     description: "Issues Marlo has found on the site (SEO problems, search opportunities), most important first. Optional status filter.",
     parameters: {
       type: "object",
-      properties: { status: { type: "string", enum: [...FINDING_STATUSES], description: "Optional status filter." } },
+      properties: { status: { type: "string", enum: [...FINDING_STATUSES], description: "Optional status filter." }, limit: limitProp },
     },
   },
   {
     name: "get_finding",
     label: "a finding",
     description: "One finding in detail: evidence, recommended fixes, and the actions and measured outcomes tied to it. Needs an id from list_findings.",
-    parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+    parameters: { type: "object", properties: { id: { type: "string", maxLength: 80, description: "A finding id returned by list_findings." } }, required: ["id"] },
   },
   {
     name: "list_actions_and_outcomes",
@@ -121,7 +144,7 @@ export const CHAT_TOOLS: ToolSpec[] = [
     name: "list_leads",
     label: "leads",
     description: "Lead counts (total, with email, emailed, replied) and the most recent leads. Emails are not shown.",
-    parameters: noArgs,
+    parameters: { type: "object", properties: { limit: limitProp } },
   },
   {
     name: "get_geo_status",
@@ -166,7 +189,7 @@ export function sanitize(value: unknown, depth = 0): unknown {
 }
 
 function pack(data: unknown): ToolResult {
-  let text = JSON.stringify(data);
+  let text = JSON.stringify(wrapResult(data));
   if (text.length > MAX_RESULT_CHARS) text = `${text.slice(0, MAX_RESULT_CHARS - 40)}...[truncated]`;
   return { ok: true, content: text };
 }
@@ -194,7 +217,13 @@ function outcomeRow(a: ActionWithOutcomeLite) {
 const noData = (what: string, hint: string): ToolResult => ({ ok: true, content: JSON.stringify({ available: false, what, note: hint }) });
 
 /** Run one read-only tool. Never throws: errors come back as `{ok:false}` text for the model. */
-export async function runTool(ports: ChatPorts, name: string, args: Record<string, unknown> = {}): Promise<ToolResult> {
+export async function runTool(ports: ChatPorts, name: string, rawArgs: unknown = {}): Promise<ToolResult> {
+  const schema = Object.prototype.hasOwnProperty.call(TOOL_ARG_SCHEMAS, name) ? TOOL_ARG_SCHEMAS[name] : null;
+  if (!schema) return { ok: false, content: `Unknown tool: ${name}` };
+  const checked = validateArgs(schema, rawArgs);
+  if (!checked.ok) return { ok: false, content: checked.error };
+  const args = checked.value;
+  const limit = typeof args.limit === "number" ? args.limit : MAX_ROWS;
   try {
     switch (name) {
       case "get_search_summary": {
@@ -218,12 +247,11 @@ export async function runTool(ports: ChatPorts, name: string, args: Record<strin
         const g = buildOpportunities(snap.payload);
         const only = typeof args.type === "string" ? (args.type as OpportunityType) : null;
         const all = [...g.ranking, ...g.ctr, ...g.declining, ...g.newQueries, ...g.lostQueries];
-        const rows = (only ? all.filter((o) => o.type === only) : all).slice(0, MAX_ROWS).map(oppRow);
+        const rows = (only ? all.filter((o) => o.type === only) : all).slice(0, limit).map(oppRow);
         return pack({ dataDate: snap.snapshotDate, changeCounts: g.changes, opportunities: rows });
       }
       case "list_findings": {
         const status = typeof args.status === "string" ? args.status : null;
-        if (status && !(FINDING_STATUSES as readonly string[]).includes(status)) return { ok: false, content: `Unknown status "${status}".` };
         const all = await ports.listFindings();
         if (all.length === 0) {
           // Zero rows is ambiguous: never audited vs audited and clean. Say which.
@@ -244,7 +272,7 @@ export async function runTool(ports: ChatPorts, name: string, args: Record<strin
         const rows = ranked.map((r) => r.finding);
         const byStatus: Record<string, number> = {};
         for (const f of all) byStatus[f.status] = (byStatus[f.status] ?? 0) + 1;
-        return pack({ asOf: ports.now().toISOString().slice(0, 10), totalFindings: all.length, byStatus, shown: Math.min(rows.length, MAX_ROWS), order: "Findings are listed in priority order (rank 1 = fix first), the same order as the dashboard's Fix-first list. Keep this order.", findings: ranked.slice(0, MAX_ROWS).map((r) => findingRow(r.finding, r.rank, r.issue)) });
+        return pack({ asOf: ports.now().toISOString().slice(0, 10), totalFindings: all.length, byStatus, shown: Math.min(rows.length, limit), order: "Findings are listed in priority order (rank 1 = fix first), the same order as the dashboard's Fix-first list. Keep this order.", findings: ranked.slice(0, limit).map((r) => findingRow(r.finding, r.rank, r.issue)) });
       }
       case "get_audit_summary": {
         const a = await ports.getAuditSummary();
@@ -257,8 +285,7 @@ export async function runTool(ports: ChatPorts, name: string, args: Record<strin
         return pack({ total: urls.length, competitors: urls.slice(0, MAX_ROWS) });
       }
       case "get_finding": {
-        const id = typeof args.id === "string" ? args.id : "";
-        if (!id) return { ok: false, content: "id is required." };
+        const id = args.id as string;
         const f = await ports.getFinding(id);
         if (!f) return { ok: false, content: "No finding with that id in this project." };
         const actions = await ports.listActionsWithOutcomes(f.id);
@@ -280,12 +307,12 @@ export async function runTool(ports: ChatPorts, name: string, args: Record<strin
         return pack({ asOf: ports.now().toISOString().slice(0, 10), totalActions: actions.length, counts, actions: actions.slice(0, MAX_ROWS).map(outcomeRow) });
       }
       case "list_leads": {
-        const s = await ports.getLeadSummary(MAX_ROWS);
+        const s = await ports.getLeadSummary(limit);
         if (s.total === 0) return noData("leads", "No leads yet for this project.");
         return pack({
           ...s,
           ...(s.truncated ? { totalDisplay: `${s.total}+`, note: "Counts cover only the most recent leads scanned; the real totals are higher." } : {}),
-          recent: s.recent.slice(0, MAX_ROWS),
+          recent: s.recent.slice(0, limit),
         });
       }
       case "get_geo_status": {
