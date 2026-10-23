@@ -9,58 +9,45 @@ import { useToast } from "@/components/dashboard/Toast";
 import { useTerminalLog } from "@/lib/terminal-log-store";
 import { WebsiteIcon } from "@/components/shared/WebsiteIcon";
 import { useDialog } from "@/components/shared/useDialog";
+import { useProject } from "@/lib/project-store";
+import {
+  buildComparisonView,
+  parseComparisonMarkdown,
+  type StoredComparison,
+} from "@/lib/domain/documents/comparisonView";
 import { CloseButton } from "@/components/shared/CloseButton";
-
-type Competitor = {
-  id: string;
-  url: string;
-  name: string;
-  startingPrice: string;
-  features: string[];
-};
-
-type ComparisonData = {
-  ourProduct: Competitor;
-  competitors: Competitor[];
-};
-
-const OUR_PRODUCT: Competitor = {
-  id: "marlo",
-  url: "https://github.com/Kumar2421/marlo",
-  name: "Marlo",
-  startingPrice: "$0 (self-hosted)",
-  features: [
-    "SEO audit & crawling",
-    "Competitor analysis",
-    "Real-time lead tracking",
-    "GitHub code fixes",
-    "Gmail reply automation",
-  ],
-};
 
 function FeatureCompare({
   ourFeatures,
   competitorFeatures,
+  compareToOurs,
 }: {
   ourFeatures: string[];
   competitorFeatures: string[];
+  /** false when we have no real data about the user's own product: list features without tick/dash claims. */
+  compareToOurs: boolean;
 }) {
-  const allFeatures = Array.from(new Set([...ourFeatures, ...competitorFeatures]));
+  const norm = (f: string) => f.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const ours = new Set(ourFeatures.map(norm));
+  const all = compareToOurs ? Array.from(new Set([...ourFeatures, ...competitorFeatures])) : competitorFeatures;
+
+  if (all.length === 0) return <p className="text-[12px] text-gray-400">No features found on the site.</p>;
 
   return (
     <div className="space-y-1.5">
-      {allFeatures.map((feature) => (
-        <div key={feature} className="flex items-center gap-2 text-[12px]">
-          {ourFeatures.includes(feature) ? (
-            <span className="text-green-600">✓</span>
-          ) : (
-            <span className="text-gray-300">−</span>
-          )}
-          <span className={ourFeatures.includes(feature) ? "text-gray-700" : "text-ui-subtle"}>
-            {feature}
-          </span>
-        </div>
-      ))}
+      {all.map((feature) => {
+        const has = ours.has(norm(feature));
+        return (
+          <div key={feature} className="flex items-center gap-2 text-[12px]">
+            {compareToOurs ? (
+              has ? <span className="text-green-600">✓</span> : <span className="text-gray-300">−</span>
+            ) : (
+              <span className="text-gray-300">•</span>
+            )}
+            <span className={!compareToOurs || has ? "text-gray-700" : "text-ui-subtle"}>{feature}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -69,13 +56,20 @@ export default function CompetitorComparisonPanel({ onClose }: { onClose: () => 
   const router = useRouter();
   const titleId = useId();
   const panelRef = useDialog<HTMLDivElement>(true, onClose);
-  const [competitors, setCompetitors] = useState<Competitor[]>([]);
+  const { project } = useProject();
+  const [stored, setStored] = useState<StoredComparison>({ ownProduct: null, competitors: [] });
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const { primaryModel } = useProviders();
   const { show } = useToast();
   const { log, logDone } = useTerminalLog();
+  const view = buildComparisonView(
+    { name: project?.name ?? "Your product", url: project?.url ?? "" },
+    stored,
+  );
+  const competitors = view.competitors;
+  const ownReady = view.own.status === "ready";
 
   useEffect(() => {
     loadComparison();
@@ -86,29 +80,15 @@ export default function CompetitorComparisonPanel({ onClose }: { onClose: () => 
     try {
       const res = await fetch(`/api/project/documents/competitor-comparison?ts=${Date.now()}`);
       const data = await res.json();
-      console.log("Competitor comparison GET response:", data);
 
       if (data.document?.content) {
-        const markdown = data.document.content;
-        // Parse markdown content to extract competitor data
-        console.log("[loader] Raw markdown length:", markdown.length);
-        console.log("[loader] First 800 chars:", markdown.substring(0, 800));
-        console.log("[loader] Markdown contains ###:", markdown.includes("###"));
-        console.log("[loader] Number of ### sections:", (markdown.match(/###/g) || []).length);
-        console.log("[loader] Markdown contains **URL:**:", markdown.includes("**URL:**"));
-        console.log("[loader] Markdown contains **Key Features:**:", markdown.includes("**Key Features:**"));
-
-        const parsed = parseComparisonMarkdown(markdown);
-        console.log("[loader] Parsed result length:", parsed.length);
-        console.log("[loader] First parsed competitor:", parsed[0]);
-        setCompetitors(parsed);
+        setStored(parseComparisonMarkdown(data.document.content));
       } else {
-        console.log("No document content found");
-        setCompetitors([]);
+        setStored({ ownProduct: null, competitors: [] });
       }
     } catch (err) {
       console.error("Error loading comparison:", err);
-      setCompetitors([]);
+      setStored({ ownProduct: null, competitors: [] });
     } finally {
       setLoading(false);
     }
@@ -245,23 +225,41 @@ export default function CompetitorComparisonPanel({ onClose }: { onClose: () => 
                 <div>
                   <h2 className="mb-2 text-[14px] font-semibold text-gray-900">How you stack up</h2>
                   <p className="text-[13px] text-gray-600">
-                    Side-by-side comparison of pricing and core features. Green checkmarks show features you
-                    have; dashes show gaps.
+                    {ownReady
+                      ? "Side-by-side comparison of pricing and core features, read from each website. Green checkmarks show features your site also lists; dashes show gaps."
+                      : "Pricing and core features read from each competitor's website."}
                   </p>
                 </div>
 
                 {/* Comparison Grid */}
                 <div className="space-y-4">
-                  {/* Our Product (Highlighted) */}
-                  <div className="rounded-lg border-2 border-blue-500 bg-blue-50 p-4">
+                  {/* Your product (highlighted) */}
+                  <div className="rounded-lg border-2 border-blue-500 bg-blue-50 p-4" data-testid="own-product-card">
                     <div className="mb-3">
-                      <h3 className="text-[13px] font-semibold text-blue-900">{OUR_PRODUCT.name}</h3>
-                      <p className="text-[12px] font-semibold text-green-700">{OUR_PRODUCT.startingPrice}</p>
+                      <h3 className="text-[13px] font-semibold text-blue-900">{view.own.name}</h3>
+                      {ownReady ? (
+                        <p className="text-[12px] font-semibold text-green-700">{view.own.startingPrice}</p>
+                      ) : null}
                     </div>
-                    <FeatureCompare
-                      ourFeatures={OUR_PRODUCT.features}
-                      competitorFeatures={competitors.flatMap((c) => c.features)}
-                    />
+                    {ownReady ? (
+                      view.own.features.length > 0 ? (
+                        <FeatureCompare
+                          ourFeatures={view.own.features}
+                          competitorFeatures={competitors.flatMap((c) => c.features)}
+                          compareToOurs
+                        />
+                      ) : (
+                        <p className="text-[12px] text-gray-500">No features found on your site.</p>
+                      )
+                    ) : view.own.status === "not_extracted" ? (
+                      <p className="text-[12px] text-gray-600">
+                        Not extracted yet — we could not read pricing or features from your site. Refresh to try again.
+                      </p>
+                    ) : (
+                      <p className="text-[12px] text-gray-600">
+                        Regenerate to compare your own product. This comparison was saved before your own site was included.
+                      </p>
+                    )}
                   </div>
 
                   {/* Competitors */}
@@ -275,32 +273,38 @@ export default function CompetitorComparisonPanel({ onClose }: { onClose: () => 
                         </div>
                       </div>
                       <FeatureCompare
-                        ourFeatures={OUR_PRODUCT.features}
+                        ourFeatures={ownReady ? view.own.features : []}
                         competitorFeatures={competitor.features}
+                        compareToOurs={ownReady}
                       />
                     </div>
                   ))}
                 </div>
 
-                {/* Insights */}
-                <div className="rounded-lg bg-gray-50 p-4">
-                  <h3 className="mb-2 text-[13px] font-semibold text-gray-900">Why Marlo wins</h3>
-                  <ul className="space-y-1.5 text-[12px] text-gray-700">
-                    <li>
-                      <strong>Cheaper or free</strong> — Free tier + affordable plans vs $99-120/month
-                      competitors
-                    </li>
-                    <li>
-                      <strong>Lead generation + email automation</strong> — Competitors focus on SEO only
-                    </li>
-                    <li>
-                      <strong>Code-first fixes</strong> — Auto-generate GitHub PRs for SEO issues (unique)
-                    </li>
-                    <li>
-                      <strong>All-in-one</strong> — SEO + leads + email vs juggling 3+ tools
-                    </li>
-                  </ul>
-                </div>
+                {/* Where you stand: derived only from the extracted data, no claims */}
+                {ownReady && (view.gaps.length > 0 || view.differentiators.length > 0) && (
+                  <div className="rounded-lg bg-gray-50 p-4" data-testid="where-you-stand">
+                    <h3 className="mb-2 text-[13px] font-semibold text-gray-900">Where you stand</h3>
+                    <div className="space-y-3 text-[12px] text-gray-700">
+                      {view.gaps.length > 0 && (
+                        <div>
+                          <p className="mb-1 font-medium">Listed by competitors, not found on your site</p>
+                          <ul className="list-disc space-y-1 pl-4">
+                            {view.gaps.map((f) => <li key={f}>{f}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      {view.differentiators.length > 0 && (
+                        <div>
+                          <p className="mb-1 font-medium">Listed on your site only</p>
+                          <ul className="list-disc space-y-1 pl-4">
+                            {view.differentiators.map((f) => <li key={f}>{f}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -313,7 +317,7 @@ export default function CompetitorComparisonPanel({ onClose }: { onClose: () => 
 function SkeletonComparison() {
   return (
     <div className="space-y-4">
-      {/* Skeleton Marlo Card */}
+      {/* Skeleton card for your product */}
       <div className="rounded-lg border-2 border-blue-500 bg-blue-50 p-4 animate-pulse">
         <div className="mb-3">
           <div className="mb-2 h-4 w-24 bg-blue-200 rounded"></div>
@@ -351,51 +355,4 @@ function SkeletonComparison() {
       ))}
     </div>
   );
-}
-
-function parseComparisonMarkdown(markdown: string): Competitor[] {
-  const competitors: Competitor[] = [];
-  const sections = markdown.split("###").slice(1);
-  console.log("[parser] Sections:", sections.length, "First 300 chars:", sections[0]?.substring(0, 300));
-
-  for (let i = 0; i < sections.length; i++) {
-    const section = sections[i];
-    const lines = section.split("\n").filter((l) => l.trim());
-    if (lines.length < 1) continue;
-
-    const name = lines[0].trim();
-    if (!name) continue;
-    console.log(`[parser] ${i}: "${name}"`);
-
-    const urlMatch = section.match(/\*\*URL:\*\* ([^\n]+)/);
-    let url = urlMatch ? urlMatch[1].trim() : "";
-    if (!url) {
-      url = `https://${name.toLowerCase().replace(/\s+/g, "")}.com`;
-    }
-    console.log(`[parser]   URL: ${url} (matched=${!!urlMatch})`);
-
-    const priceMatch = section.match(/\*\*Starting Price:\*\* ([^\n]+)/);
-    const startingPrice = priceMatch ? priceMatch[1].trim() : "pricing not found";
-    console.log(`[parser]   Price: ${startingPrice}`);
-
-    // Extract features from lines that start with "- "
-    const featureLines = section.split("\n").filter((l) => l.trim().startsWith("-"));
-    const features = featureLines.map((l) => l.replace(/^-\s*/, "").trim()).filter((f) => f.length > 0);
-    console.log(`[parser]   Features: ${features.length} (${featureLines.length} raw lines)`);
-    console.log(`[parser]   Extracted features:`, features);
-
-    const competitor = {
-      id: name.toLowerCase().replace(/\s+/g, "-"),
-      url,
-      name,
-      startingPrice,
-      features: features.slice(0, 4),
-    };
-    competitors.push(competitor);
-    console.log(`[parser] Added competitor:`, competitor);
-  }
-
-  console.log("[parser] Final result:", competitors.length, "competitors");
-  console.log("[parser] Full result:", JSON.stringify(competitors, null, 2));
-  return competitors;
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getDriver } from "@/lib/llm";
 import { generateCompetitorComparison } from "@/lib/domain/documents/CompetitorComparisonGenerator";
+import { comparisonToMarkdown } from "@/lib/domain/documents/comparisonView";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
@@ -61,7 +62,7 @@ export async function GET() {
     return NextResponse.json({
       document: row ? { content: row.content } : null,
     });
-  } catch (err) {
+  } catch {
     return NextResponse.json({ error: "Failed to fetch comparison" }, { status: 500 });
   }
 }
@@ -113,6 +114,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `${providerId} isn't wired yet.` }, { status: 400 });
     }
 
+    const { data: proj } = await db.from("projects").select("name, url").eq("id", activeId).eq("owner_id", user.id).maybeSingle();
+    const own = proj?.url ? { name: proj.name as string, url: proj.url as string } : undefined;
+
     // BYOK first — user's own key, no credit charge.
     const { data: conn } = await db
       .from("provider_connections")
@@ -150,7 +154,7 @@ export async function POST(req: NextRequest) {
     // Refund the charge if generation throws or ends in an error response.
     return await withRefund(ticket, async () => {
       try {
-        const result = await generateCompetitorComparison(competitors, model, driver, apiKey, baseUrl);
+        const result = await generateCompetitorComparison(competitors, model, driver, apiKey, baseUrl, own);
         const markdown = comparisonToMarkdown(result);
 
         const now = new Date().toISOString();
@@ -235,13 +239,17 @@ export async function POST(req: NextRequest) {
 
 
 
+    const projRow = db.prepare("SELECT name, url FROM projects WHERE id = ?").get(projectId) as { name: string; url: string | null } | undefined;
+    const own = projRow?.url ? { name: projRow.name, url: projRow.url } : undefined;
+
     // Generate comparison data
     const result = await generateCompetitorComparison(
       competitors,
       model,
       driver,
       keyRow.api_key || "",
-      keyRow.base_url || undefined
+      keyRow.base_url || undefined,
+      own
     );
 
     // Convert to markdown for display
@@ -284,35 +292,4 @@ export async function POST(req: NextRequest) {
     const message = err instanceof Error ? err.message : "Failed to generate comparison";
     return NextResponse.json({ error: message }, { status: 500 });
   }
-}
-
-function comparisonToMarkdown(result: {
-  competitors: Array<{ url: string; name: string; startingPrice: string; features: string[] }>;
-  generatedAt: string;
-}): string {
-  const lines: string[] = [
-    "# Competitor Comparison",
-    `Generated: ${result.generatedAt}`,
-    "",
-    "## Competitors at a Glance",
-    "",
-  ];
-
-  for (const comp of result.competitors) {
-    lines.push(`### ${comp.name}`);
-    lines.push(`**URL:** ${comp.url}`);
-    lines.push(`**Starting Price:** ${comp.startingPrice}`);
-    lines.push("**Key Features:**");
-    for (const feature of comp.features) {
-      lines.push(`- ${feature}`);
-    }
-    lines.push("");
-  }
-
-  lines.push("## Analysis");
-  lines.push(
-    "Pricing and features extracted from competitor websites. Regenerate anytime to refresh."
-  );
-
-  return lines.join("\n");
 }
