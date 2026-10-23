@@ -89,7 +89,7 @@ export async function attemptWithCandidate(
     const driver = ports.llm.getDriver(providerId)!;
     return await answer({
       driver, supportsTools: ports.llm.supportsTools(providerId), apiKey, model, baseUrl, system,
-      messages, ports: ports.data.create(ctx),
+      messages, ports: await ports.data.create(ctx),
     });
   } catch (err) {
     throw new AssistantError(502, friendlyProviderError(providerId, err), err);
