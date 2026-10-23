@@ -14,6 +14,7 @@ export const qk = {
   providers: (userId: string | null) => [...account, "providers", userId ?? "anonymous"] as const,
   gmailStatus: () => [...account, "gmail-status"] as const,
   plan: () => [...account, "plan"] as const,
+  usage: () => [...account, "usage"] as const,
   notifications: () => [...account, "notifications"] as const,
   notificationPrefs: () => [...account, "notification-prefs"] as const,
   project: scope,

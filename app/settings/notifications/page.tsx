@@ -82,6 +82,10 @@ export default function NotificationsSettingsPage() {
   if (query.isPending) {
     return (
       <div className="min-w-0 max-w-2xl">
+        <h1 className="text-[15px] font-semibold text-gray-900">Notifications</h1>
+        <p className="mb-5 text-[13px] text-gray-500">
+          Choose what Marlo tells you about. Everything shows in the bell at the top of your dashboard; email is optional on top of that.
+        </p>
         <SkeletonCard rows={5} />
       </div>
     );
