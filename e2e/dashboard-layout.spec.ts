@@ -164,12 +164,15 @@ for (const vp of VIEWPORTS) {
       expect(leads.lastInside).toBe(true);
     });
 
-    test("idle header is quiet: one 48px bar, no status text, nothing announced", async ({ page }) => {
+    test("idle header is quiet: one 48px bar, numbers instead of status text, nothing announced", async ({ page }) => {
       await openDashboard(page);
       const bar = page.getByTestId("terminal-bar");
       await expect(bar).not.toContainText("No activity");
       await expect(bar).not.toContainText("Status Log");
-      await expect(statusToggle(page)).toHaveCount(0);
+      // The Status Log stays one click away behind an icon button, closed, and the idle bar shows the numbers.
+      await expect(statusToggle(page)).toHaveAttribute("aria-expanded", "false");
+      await expect(page.getByTestId("header-status")).toHaveCount(0);
+      await expect(page.getByTestId("header-stats")).toBeVisible();
       await expectBarSilent(page);
       await expect(page.getByRole("log")).toHaveCount(0);
       expect((await measure(page)).headerBar).toBe(48);

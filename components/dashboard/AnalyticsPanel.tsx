@@ -278,6 +278,13 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
     }
   };
 
+  // The top bar's "Connect Google" link asks for the Traffic tab this way.
+  useEffect(() => {
+    const show = () => chooseTab("Traffic");
+    window.addEventListener("marlo:open-traffic-tab", show);
+    return () => window.removeEventListener("marlo:open-traffic-tab", show);
+  }, []);
+
   // First load: the last tab the user chose, else Findings when something is open, else SEO.
   const openFindingCount = storedFindings.data ? countFindings(storedFindings.data).needsAttention : null;
   useEffect(() => {

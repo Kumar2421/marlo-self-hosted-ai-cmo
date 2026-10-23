@@ -37,6 +37,8 @@ export const qk = {
     [...scope(projectId), "findings", findingId, "recommendations"] as const,
   findingActions: (projectId: string | undefined, findingId: string) =>
     [...scope(projectId), "findings", findingId, "actions"] as const,
+  /** How many leads the Leads panel last loaded; the top bar reads it without fetching. */
+  leadsCount: (projectId: string | undefined) => [...scope(projectId), "leads-count"] as const,
   leadProfile: (projectId: string | undefined) => [...scope(projectId), "lead-profile"] as const,
   redditSettings: (projectId: string | undefined) => [...scope(projectId), "reddit-settings"] as const,
   socialDailySettings: (projectId: string | undefined) => [...scope(projectId), "social-daily-settings"] as const,

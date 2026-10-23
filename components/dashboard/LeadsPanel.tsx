@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { qk } from "@/lib/query/keys";
 import { Users, ChevronLeft, Loader2, RefreshCw, X, ExternalLink, Mail, MailCheck, MailMinus, Search, Phone, Building2, Reply, AlertTriangle } from "lucide-react";
 import CollapsedRail, { RailButton } from "./CollapsedRail";
 import { useToast } from "./Toast";
@@ -165,18 +167,29 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
   const bizResults = bizResultIds.map((id) => businessById.get(id)).filter((l): l is Lead => Boolean(l));
   const bizSaved = sortByFitScore(businessLeads.filter((l) => !resultIdSet.has(l.id)));
 
+  // The top bar shows the lead count from this cache entry (no extra request). Only a successful load for the
+  // active project is published, so a failed load or the previous project's list never shows as a count.
+  const queryClient = useQueryClient();
+  const loadedFor = useRef<string | null>(null);
+  const pid = project?.id ?? null;
+  useEffect(() => {
+    if (loading || !pid || loadedFor.current !== pid) return;
+    queryClient.setQueryData(qk.leadsCount(pid), leads.length);
+  }, [leads, loading, pid, queryClient]);
+
   const loadLeads = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/agents/leads/search");
       const data = await res.json();
       setLeads(arrangeLeads(data.leads ?? []));
+      if (res.ok) loadedFor.current = pid;
     } catch {
       // route unreachable - list just stays empty
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pid]);
 
   useEffect(() => {
     // Deferred a tick so the fetch's own setLoading(true) doesn't run
