@@ -18,7 +18,7 @@ async function githubFetch(token: string, path: string, init?: RequestInit): Pro
   return res;
 }
 
-export type GitHubRepo = { defaultBranch: string; fullName: string };
+export type GitHubRepo = { defaultBranch: string; fullName: string; description: string | null; homepage: string | null };
 
 /** Validates the token + repo are real and accessible — used both by the
  * Settings card (save-time check) and the fix agent (before touching files). */
@@ -30,7 +30,12 @@ export async function getRepo(token: string, repoFullName: string): Promise<GitH
     throw new Error(`GitHub repo check failed: HTTP ${res.status}`);
   }
   const data = await res.json();
-  return { defaultBranch: data.default_branch, fullName: data.full_name };
+  return {
+    defaultBranch: data.default_branch,
+    fullName: data.full_name,
+    description: typeof data.description === "string" ? data.description : null,
+    homepage: typeof data.homepage === "string" ? data.homepage : null,
+  };
 }
 
 export type CodeSearchResult = { path: string };
@@ -54,11 +59,21 @@ export async function getFileContent(token: string, repoFullName: string, path: 
   const suffix = ref ? `?ref=${encodeURIComponent(ref)}` : "";
   const res = await githubFetch(token, `/repos/${repoFullName}/contents/${path}${suffix}`);
   if (!res.ok) {
-    throw new Error(`Couldn't read ${path} from ${repoFullName}: HTTP ${res.status}`);
+    throw new GitHubHttpError(`Couldn't read ${path} from ${repoFullName}: HTTP ${res.status}`, res.status);
   }
   const data = await res.json();
   if (data.encoding !== "base64") throw new Error(`Unexpected encoding for ${path}: ${data.encoding}`);
   return { content: Buffer.from(data.content, "base64").toString("utf8"), sha: data.sha };
+}
+
+/** File text, or null when the file doesn't exist (404). Any other failure throws, so callers fail closed. */
+export async function getFileContentOrNull(token: string, repoFullName: string, path: string, ref?: string): Promise<FileContent | null> {
+  try {
+    return await getFileContent(token, repoFullName, path, ref);
+  } catch (err) {
+    if (err instanceof GitHubHttpError && err.status === 404) return null;
+    throw err;
+  }
 }
 
 /** True when a file or folder exists at `path` on `ref` (404 means no; anything else unexpected throws). */

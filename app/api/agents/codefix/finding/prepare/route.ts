@@ -5,6 +5,11 @@ import { classifyFinding } from "@/lib/domain/codefix/fixCatalog";
 import { getCodeFixProvider } from "@/lib/domain/codefix/getCodeFixProvider";
 import { prepareCatalogFix } from "@/lib/domain/codefix/prepareCatalogFix";
 import { issueTicket } from "@/lib/domain/codefix/ticket";
+import { FixBlockedError } from "@/lib/domain/codefix/grounding";
+import { memoryRateLimiter } from "@/lib/domain/net/rateLimit";
+
+// Each prepare reads from GitHub (and may call a model), so a project may only start a few a minute.
+const prepareLimiter = memoryRateLimiter();
 
 // LLM + GitHub reads can run past the default timeout.
 export const maxDuration = 60;
@@ -23,6 +28,7 @@ export async function POST(req: NextRequest) {
   if (!findingId) return NextResponse.json({ error: "findingId is required" }, { status: 400 });
   const model = typeof body?.model === "string" ? body.model : "";
   const providerId = typeof body?.providerId === "string" ? body.providerId : "";
+  const confirmRepoMismatch = body?.confirmRepoMismatch === true;
 
   const classification = await (async () => {
     const early = await resolveFixRequest({ findingId, providerId, needLlm: false });
@@ -41,6 +47,9 @@ export async function POST(req: NextRequest) {
   const llm = resolved.llm;
   if (!llm) return NextResponse.json({ error: "No model available." }, { status: 422 });
 
+  const limit = await prepareLimiter.hit(`codefix-prepare:${resolved.projectId}`, 60, 8);
+  if (!limit.allowed) return NextResponse.json({ error: "Too many fix attempts. Try again in a minute." }, { status: 429 });
+
   try {
     const secret = ticketSecret(); // fail closed before any LLM call
     const provider = getCodeFixProvider("contents-api", llm.driver, llm.apiKey, model, llm.baseUrl);
@@ -56,6 +65,7 @@ export async function POST(req: NextRequest) {
             recommendation: resolved.finding.recommendation,
             evidence: resolved.finding.evidence,
             pageUrl: resolved.finding.url,
+            confirmRepoMismatch,
           },
           resolved.ctx,
         ),
@@ -74,9 +84,12 @@ export async function POST(req: NextRequest) {
       repoFullName: resolved.ctx.repoFullName,
       explanation: proposal.explanation,
       changes: proposal.changes,
+      grounding: proposal.grounding ?? null,
       ticket,
     });
   } catch (err) {
+    // Not an error: an honest state (text not found, wrong repo, unsafe draft). No ticket exists, so nothing can be applied.
+    if (err instanceof FixBlockedError) return NextResponse.json({ mode: "blocked", ...err.blocked });
     return NextResponse.json({ error: err instanceof Error ? err.message : "Couldn't prepare a fix." }, { status: 500 });
   }
 }

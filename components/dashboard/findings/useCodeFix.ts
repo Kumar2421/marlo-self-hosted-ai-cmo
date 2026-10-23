@@ -6,13 +6,16 @@ import { qk } from "@/lib/query/keys";
 import { useProject } from "@/lib/project-store";
 import { findProviderForModel, useProviders } from "@/lib/providers-store";
 import type { FixChange } from "@/lib/domain/codefix/catalogFix";
+import type { BlockedFix } from "@/lib/domain/codefix/grounding";
 import type { GithubStatus } from "@/app/api/github/app/status/route";
 
 export type { GithubStatus };
 
 export type PreparedFix =
   | { mode: "manual"; reason: string; recommendation: string }
-  | { mode: "auto"; label: string; repoFullName: string; explanation: string; changes: FixChange[]; ticket: string };
+  | { mode: "auto"; label: string; repoFullName: string; explanation: string; changes: FixChange[]; ticket: string }
+  /** Nothing is offered: the text wasn't found, the repo looks wrong, or the draft would break the build. */
+  | ({ mode: "blocked" } & BlockedFix);
 
 /** Whether GitHub is connected for the active project (hosted App, or the self-host token). */
 export function useGithubStatus(enabled = true, withRepos = false) {
@@ -48,12 +51,12 @@ export function useCodeFix(findingId: string) {
   const { primaryModel } = useProviders();
 
   const prepare = useMutation({
-    mutationFn: () => {
+    mutationFn: (opts?: { confirmRepoMismatch?: boolean }) => {
       const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
       return fetchJson<PreparedFix>("/api/agents/codefix/finding/prepare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ findingId, model: primaryModel ?? undefined, providerId: providerId ?? undefined }),
+        body: JSON.stringify({ findingId, model: primaryModel ?? undefined, providerId: providerId ?? undefined, confirmRepoMismatch: opts?.confirmRepoMismatch === true }),
       });
     },
   });
