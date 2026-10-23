@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import { listReplies, type GmailReply } from "@/lib/domain/leads/gmailInbox";
+import { outreachStoreForDeployment } from "@/lib/domain/leads/outreachRuntime";
+import { recordReplyStops } from "@/lib/domain/leads/outreachUnsubscribe";
+import { plainTextFromGmailPayload } from "@/lib/domain/leads/replyStop";
+import { LOCAL_USER_ID } from "@/lib/domain/notifications/notificationStore";
 import { FEATURES } from "@/lib/features";
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/serviceClient";
@@ -75,7 +79,7 @@ async function getValidGmailAccessTokenSupabase(db: SupabaseClient, userId: stri
  * (that helper is SQLite-only and out of scope for this route). */
 async function listRepliesSupabase(accessToken: string, threadId: string, ourMessageId: string): Promise<GmailReply[]> {
   const res = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}?format=metadata&metadataHeaders=From&metadataHeaders=Date`,
+    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}?format=full`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   if (!res.ok) {
@@ -86,13 +90,14 @@ async function listRepliesSupabase(accessToken: string, threadId: string, ourMes
     throw new Error(`Gmail thread read failed: HTTP ${res.status}${detail ? ` — ${detail.slice(0, 200)}` : ""}`);
   }
   const data = await res.json();
-  const messages: { id: string; snippet: string; payload?: { headers?: { name: string; value: string }[] } }[] = data.messages ?? [];
+  const messages: { id: string; snippet: string; payload?: { headers?: { name: string; value: string }[]; mimeType?: string; body?: { data?: string }; parts?: unknown[] } }[] = data.messages ?? [];
   return messages
     .filter((m) => m.id !== ourMessageId)
     .map((m) => ({
       snippet: m.snippet ?? "",
       from: m.payload?.headers?.find((h) => h.name.toLowerCase() === "from")?.value ?? "",
       internalDate: m.payload?.headers?.find((h) => h.name.toLowerCase() === "date")?.value ?? "",
+      text: plainTextFromGmailPayload(m.payload as Parameters<typeof plainTextFromGmailPayload>[0]),
     }));
 }
 
@@ -119,7 +124,7 @@ export async function POST() {
 
     const { data: leads, error } = await db
       .from("leads")
-      .select("id, gmail_thread_id, gmail_message_id, last_reply_snippet")
+      .select("id, email, gmail_thread_id, gmail_message_id, last_reply_snippet")
       .eq("user_id", user.id)
       .eq("project_id", activeId)
       .eq("email_status", "sent")
@@ -144,6 +149,7 @@ export async function POST() {
             try {
               const replies = await listRepliesSupabase(accessToken, lead.gmail_thread_id, lead.gmail_message_id);
               if (replies.length === 0) return;
+              await recordReplyStops(outreachStoreForDeployment(), user.id, lead.email, replies.map((r) => r.text || r.snippet)).catch(() => false);
               const latest = replies[replies.length - 1];
               if (latest.snippet && latest.snippet !== lead.last_reply_snippet) {
                 await db
@@ -175,10 +181,10 @@ export async function POST() {
   const db = getDb();
   const leads = db
     .prepare(
-      `SELECT id, gmail_thread_id, gmail_message_id, last_reply_snippet FROM leads
+      `SELECT id, email, gmail_thread_id, gmail_message_id, last_reply_snippet FROM leads
        WHERE project_id = ? AND email_status = 'sent' AND gmail_thread_id IS NOT NULL`
     )
-    .all(activeId) as { id: string; gmail_thread_id: string; gmail_message_id: string; last_reply_snippet: string | null }[];
+    .all(activeId) as { id: string; email: string | null; gmail_thread_id: string; gmail_message_id: string; last_reply_snippet: string | null }[];
 
   if (leads.length === 0) {
     return NextResponse.json({ checked: 0, newReplies: 0 });
@@ -195,6 +201,7 @@ export async function POST() {
         try {
           const replies = await listReplies(lead.gmail_thread_id, lead.gmail_message_id);
           if (replies.length === 0) return;
+          await recordReplyStops(outreachStoreForDeployment(), LOCAL_USER_ID, lead.email, replies.map((r) => r.text || r.snippet)).catch(() => false);
           const latest = replies[replies.length - 1];
           // internalDate here is the real RFC 2822 Date header string — string
           // compare is enough to detect "changed since last check", exact

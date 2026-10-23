@@ -277,6 +277,27 @@ function init(): Database.Database {
 
     -- Marlo's own notifications (single local user, so user_id is always
     -- 'local'; kept so the shape matches the platform tables).
+    -- Outreach safeguards (self-host twin of supabase/migrations/20261023000100_outreach_safeguards.sql).
+    CREATE TABLE IF NOT EXISTS outreach_optouts (
+      user_id    TEXT NOT NULL,
+      email      TEXT NOT NULL,
+      reason     TEXT NOT NULL CHECK (reason IN ('unsubscribed', 'reply_stop')),
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, email)
+    );
+
+    CREATE TABLE IF NOT EXISTS outreach_sends (
+      id         TEXT PRIMARY KEY,
+      user_id    TEXT NOT NULL,
+      project_id TEXT,
+      lead_id    TEXT,
+      email      TEXT NOT NULL,
+      sent_at    TEXT NOT NULL,
+      message_id TEXT
+    );
+    CREATE INDEX IF NOT EXISTS outreach_sends_user_sent_idx ON outreach_sends(user_id, sent_at DESC);
+    CREATE INDEX IF NOT EXISTS outreach_sends_user_email_idx ON outreach_sends(user_id, email, sent_at DESC);
+
     CREATE TABLE IF NOT EXISTS notification_preferences (
       user_id          TEXT PRIMARY KEY,
       prefs            TEXT NOT NULL DEFAULT '{}',
