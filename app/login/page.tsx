@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Lock, KeyRound, ArrowLeft } from "lucide-react";
 import GhostLoader from "@/components/shared/GhostLoader";
 import { createClient } from "@/utils/supabase/client";
+import { sessionMarkerCookie } from "@/utils/supabase/sessionPersistence";
 import { FEATURES } from "@/lib/features";
 import { scopesFor } from "@/lib/googleOAuthScopes";
 import type { AuditFunnelPayload } from "@/lib/analytics/auditFunnel";
@@ -82,14 +83,6 @@ function GoogleIcon() {
   );
 }
 
-function AppleIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M17.05 12.54c-.03-3.02 2.47-4.47 2.58-4.54-1.41-2.06-3.6-2.34-4.38-2.37-1.86-.19-3.64 1.1-4.58 1.1-.95 0-2.42-1.07-3.98-1.04-2.05.03-3.94 1.19-4.99 3.02-2.13 3.69-.54 9.16 1.53 12.15 1.01 1.46 2.22 3.1 3.81 3.04 1.53-.06 2.11-.99 3.96-.99s2.37.99 3.99.96c1.65-.03 2.69-1.49 3.69-2.96 1.16-1.69 1.64-3.33 1.66-3.41-.04-.02-3.2-1.23-3.24-4.87ZM14.03 3.66c.84-1.02 1.41-2.43 1.25-3.84-1.21.05-2.68.81-3.55 1.83-.78.9-1.46 2.34-1.28 3.72 1.35.1 2.73-.69 3.58-1.71Z" />
-    </svg>
-  );
-}
-
 function trackSignupCompleted() {
   if (typeof window === "undefined") return;
   const sessionId = window.localStorage.getItem("marlo:audit-session-id");
@@ -131,6 +124,11 @@ export default function LoginPage() {
     setMode(searchParams.get("mode") === "signup" ? "signup" : "signin");
   }, [searchParams]);
 
+  // Default on: persistent session. Off: session cookies only (see sessionPersistence.ts).
+  const [rememberMe, setRememberMe] = useState(true);
+  const applyRememberChoice = () => {
+    document.cookie = sessionMarkerCookie(rememberMe);
+  };
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otpCode, setOtpCode] = useState("");
@@ -192,6 +190,7 @@ export default function LoginPage() {
     setIsLoading(true);
     setError(null);
     setNotice(null);
+    applyRememberChoice();
 
     if (isSignUp) {
       const pendingAuditUrl = getPendingAuditUrl();
@@ -244,6 +243,7 @@ export default function LoginPage() {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
+    applyRememberChoice();
     const supabase = createClient();
     const { error: otpError } = await supabase.auth.verifyOtp({ email, token: otpCode, type: "signup" });
     if (otpError) {
@@ -318,17 +318,17 @@ export default function LoginPage() {
     setNotice(null);
   };
 
-  // Enable once Google/Apple are turned on in the Supabase project's Auth
+  // Enable once Google is turned on in the Supabase project's Auth
   // provider settings — this route alone doesn't grant that. Google is
   // wired for production (FEATURES.PLATFORM_MODE); flip
   // NEXT_PUBLIC_GOOGLE_AUTH_ENABLED once the Supabase provider is live.
   const oauthAvailable = {
     google: FEATURES.PLATFORM_MODE && process.env.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED === "true",
-    apple: false,
   };
 
-  const handleOAuth = async (provider: "google" | "apple") => {
+  const handleOAuth = async (provider: "google") => {
     setError(null);
+    applyRememberChoice();
     persistPendingAuditUrl();
     const supabase = createClient();
     await supabase.auth.signInWithOAuth({
@@ -489,7 +489,7 @@ export default function LoginPage() {
                   Your AI CMO — SEO, leads, and outreach on autopilot.
                 </p>
 
-                <div className="mt-5 grid gap-2.5 sm:grid-cols-2">
+                <div className="mt-5 grid gap-2.5">
                   <button
                     type="button"
                     onClick={() => handleOAuth("google")}
@@ -499,16 +499,6 @@ export default function LoginPage() {
                   >
                     <GoogleIcon />
                     Google
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleOAuth("apple")}
-                    disabled={!oauthAvailable.apple}
-                    title="Coming soon"
-                    className="flex h-9 items-center justify-center gap-2 rounded-lg border border-gray-200 text-sm font-medium hover:bg-gray-50 disabled:opacity-40"
-                  >
-                    <AppleIcon />
-                    Apple
                   </button>
                 </div>
 
@@ -572,7 +562,12 @@ export default function LoginPage() {
                   ) : (
                     <div className="flex items-center justify-between">
                       <label className="flex items-center gap-2 text-sm font-normal text-black/60">
-                        <input type="checkbox" className="h-4 w-4 rounded border-gray-300" />
+                        <input
+                          type="checkbox"
+                          checked={rememberMe}
+                          onChange={(e) => setRememberMe(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
                         Remember me
                       </label>
                       <button
