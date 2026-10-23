@@ -611,7 +611,7 @@ export default function LoginPage() {
         </div>
 
         {/* Right: brand panel */}
-        <div className="relative hidden items-center justify-center overflow-hidden rounded-md bg-[#0b0b0d] lg:flex">
+        <div className="theme-island relative hidden items-center justify-center overflow-hidden rounded-md bg-[#0b0b0d] lg:flex">
           <div
             className="absolute inset-0"
             style={{

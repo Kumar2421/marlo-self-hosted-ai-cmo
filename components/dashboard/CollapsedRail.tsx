@@ -44,7 +44,7 @@ export default function CollapsedRail({
   return (
     <div
       className={`flex h-full min-h-0 flex-col items-center border-r py-3 ${
-        dark ? "border-white/10 bg-[#110f0e]" : "border-gray-200 bg-white"
+        dark ? "theme-island border-white/10 bg-[#110f0e]" : "border-gray-200 bg-white"
       }`}
     >
       <button

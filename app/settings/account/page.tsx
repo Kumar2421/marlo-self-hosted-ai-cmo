@@ -5,6 +5,7 @@ import { useAuthUser } from "@/lib/useAuthUser";
 import { createClient } from "@/utils/supabase/client";
 import { useToast } from "@/components/dashboard/Toast";
 import { Loader2 } from "lucide-react";
+import AppearanceSetting from "@/components/settings/AppearanceSetting";
 
 export default function AccountPage() {
   const { show } = useToast();
@@ -62,6 +63,8 @@ export default function AccountPage() {
     <div className="min-w-0 max-w-2xl">
       <h1 className="text-[15px] font-semibold text-gray-900">Account & Security</h1>
       <p className="mb-4 text-[13px] text-gray-500">Manage your login and account protection.</p>
+
+      <AppearanceSetting />
 
       <div className="mb-4 rounded-xl border border-gray-200 bg-white px-4 py-3">
         <div className="mb-1 text-[13px] font-semibold text-gray-900">Email</div>

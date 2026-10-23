@@ -40,7 +40,7 @@ export function PricingClient() {
           items={INTERVAL_ITEMS}
           aria-label="Billing interval"
           // Inactive tab text: the primitive's muted gray is 4.4:1 on the track; this is 6.9:1.
-          className="min-w-0 flex-1 [&_[role=tab][data-state=inactive]]:text-[#4b5563]"
+          className="min-w-0 flex-1 [&_[role=tab][data-state=inactive]]:text-[var(--ui-text-muted-strong)]"
         />
         <span className="shrink-0 text-[13px] font-medium text-ui-accent-strong">2 months free</span>
       </div>
@@ -76,7 +76,7 @@ function PlanCard({ card, interval, featured }: { card: PlanCardView; interval: 
         "rounded-ui-lg border p-5 sm:p-6",
         featured
           ? // Dark card: white focus ring (the default ring is near-black) and light text.
-            "border-ui-primary bg-ui-primary text-ui-inverse [--focus-ring-color:#ffffff]"
+            "theme-island border-ui-primary bg-ui-primary text-ui-inverse ring-1 ring-white/20 [--focus-ring-color:#ffffff]"
           : "border-ui-border bg-ui-surface text-ui-text shadow-ui-xs",
       )}
     >
