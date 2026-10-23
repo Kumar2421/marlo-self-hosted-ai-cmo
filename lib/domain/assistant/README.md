@@ -18,3 +18,11 @@ Flow in `assistantService.ts`: validate -> model plan (422/501) -> authenticate 
 
 Persistence PR: add a `threadStore` port to `AssistantPorts` and call it in `runAssistantTurn`.
 `TurnObserver` events carry metadata only (model, tools, duration, error kind), never message content or secrets.
+
+## Chat history (threads)
+
+`threadStore.ts` is the `ThreadStore` port (memory, SQLite) and `threadStoreSupabase.ts` the hosted twin. Tables: `chat_threads`, `chat_messages`
+(Supabase migration `20261023000200_chat_threads.sql`, SQLite DDL in `threadSchema.ts` run from `lib/db.ts`). Every call is scoped to {userId, projectId}.
+- History is SERVER-OWNED: `threadPersistence.ts` loads the last 20 stored messages for a valid `threadId` and ignores client `history`; after a successful turn it stores user + reply (creating the thread, title = first 60 chars). Content is never logged.
+- Missing tables (42P01 / PGRST205 / "no such table") -> `ThreadsUnavailableError`: the service falls back to client history, the list route answers `available:false`, the UI hides History.
+- Routes: `app/api/chat/threads` (GET list, POST create, DELETE all with `{confirm:true}`) and `[id]` (GET, PATCH, DELETE); logic in `threadRoutes.ts`. Retention: daily cron `purgeOlderThan(90)`.

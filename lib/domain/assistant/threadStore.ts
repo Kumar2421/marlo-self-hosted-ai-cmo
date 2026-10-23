@@ -101,7 +101,7 @@ export function memoryThreadStore(opts: { now?: () => Date } = {}): ThreadStore 
     const last = msgsOf(t.id).at(-1);
     return { id: t.id, title: t.title, createdAt: t.createdAt, updatedAt: t.updatedAt, preview: last ? previewOf(last.content) : "" };
   };
-  const strip = ({ threadId: _t, ...m }: MemMessage): ThreadMessage => m;
+  const strip = (m: MemMessage): ThreadMessage => ({ id: m.id, role: m.role, content: m.content, toolsUsed: m.toolsUsed, lookedAt: m.lookedAt, createdAt: m.createdAt });
   const dropThreads = (ids: string[]) => {
     for (const id of ids) threads.delete(id);
     messages = messages.filter((m) => !ids.includes(m.threadId));
