@@ -380,3 +380,15 @@ test("normalizePrivateKey accepts a key pasted without BEGIN/END lines", () => {
   assert.equal(createAppJwt({ appId: "1", privateKey: fixed }).split(".").length, 3);
   assert.equal(normalizePrivateKey("not a key"), "not a key");
 });
+
+test("repos shared on GitHub after connecting are flagged stale, not silently hidden", async () => {
+  // Marlo saved the repos visible at connect time; the user then switched the installation to a different repo.
+  const { port } = memoryStore({ p1: { installationId: 42, allowedRepos: ["acme/old-a", "acme/old-b"], repoFullName: null, connectedAt: "t" } });
+  const { f } = githubFake({ repos: ["acme/new"] });
+  const listed = await listSelectableRepos({ cfg, store: port, fetch: f }, "p1");
+  assert.equal(listed.ok && listed.repos.length, 0);
+  assert.equal(listed.ok && listed.stale, true);
+  const fresh = memoryStore({ p1: { installationId: 42, allowedRepos: ["acme/new"], repoFullName: null, connectedAt: "t" } });
+  const again = await listSelectableRepos({ cfg, store: fresh.port, fetch: f }, "p1");
+  assert.equal(again.ok && again.stale, false);
+});

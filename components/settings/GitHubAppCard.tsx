@@ -125,6 +125,18 @@ export default function GitHubAppCard() {
               </button>
             </div>
           )}
+          {gh?.staleAccess && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-2 text-[12px] text-amber-800" data-testid="github-stale-access">
+              <span>
+                {(gh.repos ?? []).length === 0
+                  ? "You changed which repositories Marlo can use on GitHub, and Marlo hasn't re-checked your access yet."
+                  : "Some repositories you added on GitHub aren't listed until Marlo re-checks your access."}
+              </span>
+              <a href={connectHref} className="shrink-0 font-medium underline">
+                Refresh GitHub access
+              </a>
+            </div>
+          )}
           {gh?.connected && (
             <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
               <span className="min-w-0 break-all font-mono">{gh.repoFullName}</span>

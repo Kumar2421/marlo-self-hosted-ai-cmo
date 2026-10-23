@@ -156,7 +156,8 @@ export async function resolveGithubAccess(deps: GithubAppDeps, projectId: string
   }
 }
 
-export type RepoList = { ok: true; repos: InstallationRepo[] } | { ok: false; disconnected: true } ;
+/** `stale`: GitHub shares repos that Marlo's saved "repos you can access" list does not include (access changed on GitHub after connecting). Re-authorizing refreshes it. */
+export type RepoList = { ok: true; repos: InstallationRepo[]; stale: boolean } | { ok: false; disconnected: true } ;
 
 export async function listSelectableRepos(deps: GithubAppDeps, projectId: string): Promise<RepoList> {
   const link = await deps.store.get(projectId);
@@ -168,7 +169,7 @@ export async function listSelectableRepos(deps: GithubAppDeps, projectId: string
     const repos = shared.filter((r) => inList(link.allowedRepos, r.fullName));
     // Counts only (no names, no tokens): tells "GitHub shares nothing" from "Marlo's filter removed everything".
     if (repos.length === 0) console.warn(`[github] empty repository list: installation shares ${shared.length}, user-visible ${link.allowedRepos.length}`);
-    return { ok: true, repos };
+    return { ok: true, repos, stale: shared.some((r) => !inList(link.allowedRepos, r.fullName)) };
   } catch (err) {
     if (err instanceof InstallationGoneError) {
       await deps.store.clear(projectId);
