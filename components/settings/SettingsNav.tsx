@@ -8,7 +8,6 @@ import {
   Cpu,
   SlidersHorizontal,
   Plug,
-  Users,
   UserCircle,
   Shield,
   KeyRound,
@@ -26,17 +25,16 @@ const AI_CMO_ITEMS: NavItem[] = [
   { href: "/settings/api-credentials", label: "API Credentials", icon: KeyRound },
   { href: "/settings/agents", label: "Agents", icon: SlidersHorizontal },
   { href: "/settings/integrations", label: "Integrations", icon: Plug, dot: true },
-  { href: "/settings/team", label: "Team", icon: Users, dot: true },
 ];
 
 // API Credentials is a self-host-only concern -- platform mode manages its
 // own keys (see resolvePlatformApiKey.ts), so the entry is noise there.
-// Devices and Skills & MCP routes still exist but are intentionally unlinked.
+// Team, Devices and Skills & MCP were placeholders; their routes redirect to Websites.
 export const VISIBLE_AI_CMO_ITEMS = FEATURES.PLATFORM_MODE
   ? AI_CMO_ITEMS.filter((item) => item.href !== "/settings/api-credentials")
   : AI_CMO_ITEMS;
 
-export const CHAT_ITEMS: NavItem[] = [{ href: "/settings/personalization", label: "Personalization", icon: UserCircle }];
+export const CHAT_ITEMS: NavItem[] = [{ href: "/settings/personalization", label: "Profile", icon: UserCircle }];
 
 export const GENERAL_ITEMS: NavItem[] = [
   { href: "/settings/account", label: "Account & Security", icon: Shield },

@@ -3,8 +3,6 @@ import {
   type Frequency, type Notification, type NotificationCategory,
 } from "./types.ts";
 
-export type QuietHours = { startHour: number; endHour: number };
-
 export type NotificationPrefs = {
   /** Per category. "off" means nothing at all (no email, no in-app item). */
   categories: Record<NotificationCategory, Frequency>;
@@ -12,8 +10,6 @@ export type NotificationPrefs = {
   paused: boolean;
   /** IANA name (e.g. "Europe/Berlin"), saved from the browser; UTC when unknown. */
   timezone: string | null;
-  /** Local hours when instant emails wait. Optional. */
-  quietHours: QuietHours | null;
 };
 
 /**
@@ -26,7 +22,6 @@ export const DEFAULT_PREFS: NotificationPrefs = {
   categories: { digest: "weekly", outcomes: "instant", credits: "instant", approvals: "daily", integrations: "instant", content: "daily" },
   paused: false,
   timezone: null,
-  quietHours: null,
 };
 
 export function defaultPrefs(): NotificationPrefs {
@@ -43,8 +38,6 @@ export function isValidTimezone(value: unknown): value is string {
   }
 }
 
-const isHour = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 23;
-
 /** Read saved or user-submitted prefs, falling back to defaults for anything missing or malformed. Never throws. */
 export function normalizePrefs(raw: unknown): NotificationPrefs {
   const out = defaultPrefs();
@@ -57,8 +50,6 @@ export function normalizePrefs(raw: unknown): NotificationPrefs {
   }
   out.paused = r.paused === true;
   out.timezone = isValidTimezone(r.timezone) ? r.timezone : null;
-  const q = r.quietHours as Partial<QuietHours> | null | undefined;
-  out.quietHours = q && isHour(q.startHour) && isHour(q.endHour) && q.startHour !== q.endHour ? { startHour: q.startHour, endHour: q.endHour } : null;
   return out;
 }
 
@@ -77,24 +68,17 @@ export function localParts(now: Date, timezone: string | null): { hour: number; 
   };
 }
 
-export function inQuietHours(prefs: NotificationPrefs, now: Date): boolean {
-  const q = prefs.quietHours;
-  if (!q) return false;
-  const { hour } = localParts(now, prefs.timezone);
-  return q.startHour < q.endHour ? hour >= q.startHour && hour < q.endHour : hour >= q.startHour || hour < q.endHour;
-}
-
-export type EmailDecision = "send" | "defer" | "skip";
+export type EmailDecision = "send" | "skip";
 
 /**
  * Whether this notification should go out as its own email right now.
  * "skip": never (paused, unsubscribed, category off, or left for the digest).
- * "defer": wanted but not now (quiet hours); retried on the next run.
+ * There are no quiet hours: the job runs once a day (03:00 UTC on the hosted app) and
+ * cannot target a user's local hour, so a quiet-hours window could only ever block mail.
  */
 export function emailDecision(
   notification: Pick<Notification, "kind" | "payload">,
   state: { prefs: NotificationPrefs; unsubscribedAll: boolean },
-  now: Date,
 ): EmailDecision {
   const { prefs, unsubscribedAll } = state;
   if (unsubscribedAll || prefs.paused) return "skip";
@@ -110,7 +94,7 @@ export function emailDecision(
   } else if (notification.kind !== "weekly_digest" && frequency !== "instant") {
     return "skip";
   }
-  return inQuietHours(prefs, now) ? "defer" : "send";
+  return "send";
 }
 
 /** Whether an in-app item should be recorded at all. */

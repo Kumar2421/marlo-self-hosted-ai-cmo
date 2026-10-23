@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { normalizePrefs } from "@/lib/domain/notifications/preferences";
-import { notificationConfig } from "@/lib/domain/notifications/runtime";
+import { emailReady, notificationConfig } from "@/lib/domain/notifications/runtime";
 import { notificationContext } from "@/lib/domain/notifications/serverContext";
 
 async function respond(ctx: NonNullable<Awaited<ReturnType<typeof notificationContext>>>) {
@@ -10,7 +10,9 @@ async function respond(ctx: NonNullable<Awaited<ReturnType<typeof notificationCo
     prefs,
     unsubscribedAll,
     // Whether the server can send email at all, and where it would go (for the "send me a test" button).
-    emailConfigured: config.emailConfigured,
+    // True only when emails can really be sent: a provider key and sender, plus the signing
+    // secret and app URL the job needs for the unsubscribe links (without them it sends nothing).
+    emailConfigured: emailReady(config),
     email: ctx.email,
   });
 }

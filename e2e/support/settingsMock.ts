@@ -63,7 +63,6 @@ export async function mockSettingsApi(page: Page) {
           categories: { digest: "weekly", outcomes: "instant", credits: "instant", approvals: "daily", integrations: "instant", content: "daily" },
           paused: false,
           timezone: "Europe/Berlin",
-          quietHours: { startHour: 22, endHour: 7 },
         },
         unsubscribedAll: false,
         emailConfigured: true,

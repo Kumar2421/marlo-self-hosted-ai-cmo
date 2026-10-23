@@ -12,7 +12,7 @@ import type { Frequency, NotificationCategory } from "@/lib/domain/notifications
 type Option = { value: Frequency; label: string };
 
 const EMAIL_OR_APP: Option[] = [
-  { value: "instant", label: "Email me right away" },
+  { value: "instant", label: "Email me" },
   { value: "daily", label: "In the app and weekly summary only" },
   { value: "off", label: "Off" },
 ];
@@ -21,9 +21,9 @@ const ROWS: Array<{ category: NotificationCategory; title: string; description: 
   {
     category: "digest",
     title: "Summary",
-    description: "What happened on your site: fixes measured, changes made, search movement. Skipped when nothing happened.",
+    description: "What happened on your site: fixes measured, changes made, search movement. Skipped when nothing happened. If a Monday summary is missed, it goes out on the next daily check.",
     options: [
-      { value: "weekly", label: "Weekly, on Mondays" },
+      { value: "weekly", label: "Weekly (Mondays)" },
       { value: "daily", label: "Daily" },
       { value: "off", label: "Off" },
     ],
@@ -31,7 +31,7 @@ const ROWS: Array<{ category: NotificationCategory; title: string; description: 
   {
     category: "outcomes",
     title: "Fix results",
-    description: "When a fix you made has been measured. Only clear wins are emailed right away; the rest go in your summary.",
+    description: "When a fix you made has been measured. Only clear wins get their own email; the rest go in your summary.",
     options: EMAIL_OR_APP,
   },
   { category: "credits", title: "Credits", description: "When your credits are running low or have run out.", options: EMAIL_OR_APP },
@@ -52,9 +52,6 @@ const ROWS: Array<{ category: NotificationCategory; title: string; description: 
 function shownValue(category: NotificationCategory, value: Frequency): Frequency {
   return displayedFrequency(category, value);
 }
-
-const HOURS = Array.from({ length: 24 }, (_, h) => h);
-const hourLabel = (h: number) => `${String(h).padStart(2, "0")}:00`;
 
 function browserTimezone(): string | null {
   try {
@@ -115,14 +112,6 @@ export default function NotificationsSettingsPage() {
     update({ ...prefs, categories: { ...prefs.categories, [category]: value } });
   }
 
-  function setQuiet(patch: { startHour?: number; endHour?: number } | null) {
-    if (patch === null) return update({ ...prefs, quietHours: null });
-    const current = prefs.quietHours ?? { startHour: 22, endHour: 7 };
-    const next = { ...current, ...patch };
-    if (next.startHour === next.endHour) return;
-    update({ ...prefs, quietHours: next });
-  }
-
   function onTest() {
     sendTest.mutate(undefined, {
       onSuccess: (r) => show(`Test email sent to ${r.to}.`),
@@ -144,6 +133,10 @@ export default function NotificationsSettingsPage() {
             <h2 id="email-status" className="text-[13px] font-semibold text-gray-900">
               Email
             </h2>
+            <p className="mt-1 text-[12px] leading-relaxed text-gray-500">
+              Emails go out during a daily check ({FEATURES.PLATFORM_MODE ? "around 03:00 UTC" : "this app checks every few hours while it is open"}), not the moment something happens.
+              Everything also appears in the app straight away.
+            </p>
             {!emailConfigured ? (
               FEATURES.PLATFORM_MODE ? (
                 <p className="mt-1 text-[13px] leading-relaxed text-gray-600">
@@ -152,7 +145,7 @@ export default function NotificationsSettingsPage() {
               ) : (
                 <p className="mt-1 text-[13px] leading-relaxed text-gray-600">
                   Email isn&apos;t set up on this server, so notifications stay in the app. To turn email on, the server needs a Resend API key and a sender address
-                  (<code className="rounded bg-gray-100 px-1 text-[12px]">RESEND_API_KEY</code>, <code className="rounded bg-gray-100 px-1 text-[12px]">NOTIFY_FROM_EMAIL</code>).
+                  (<code className="rounded bg-gray-100 px-1 text-[12px]">RESEND_API_KEY</code>, <code className="rounded bg-gray-100 px-1 text-[12px]">NOTIFY_FROM_EMAIL</code>), plus <code className="rounded bg-gray-100 px-1 text-[12px]">NOTIFY_SIGNING_SECRET</code> and <code className="rounded bg-gray-100 px-1 text-[12px]">NEXT_PUBLIC_APP_URL</code> for the unsubscribe links.
                 </p>
               )
             ) : unsubscribedAll ? (
@@ -241,40 +234,6 @@ export default function NotificationsSettingsPage() {
             );
           })}
         </ul>
-      </section>
-
-      <section className="mt-5 rounded-xl border border-gray-200 p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-[13px] font-semibold text-gray-900">Quiet hours</h2>
-            <p className="mt-1 text-[12px] leading-relaxed text-gray-500">
-              Emails that would arrive in this window wait until it ends. Uses your timezone{prefs.timezone ? ` (${prefs.timezone})` : ""}.
-            </p>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={prefs.quietHours !== null}
-            aria-label="Use quiet hours"
-            disabled={save.isPending}
-            onClick={() => setQuiet(prefs.quietHours ? null : {})}
-            className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-60 ${prefs.quietHours ? "bg-[#00ab92]" : "bg-gray-300"}`}
-          >
-            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${prefs.quietHours ? "left-[18px]" : "left-0.5"}`} />
-          </button>
-        </div>
-        {prefs.quietHours && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px] text-gray-700">
-            <label htmlFor="quiet-start">From</label>
-            <select id="quiet-start" value={prefs.quietHours.startHour} onChange={(e) => setQuiet({ startHour: Number(e.target.value) })} className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 outline-none focus:border-black">
-              {HOURS.map((h) => <option key={h} value={h}>{hourLabel(h)}</option>)}
-            </select>
-            <label htmlFor="quiet-end">to</label>
-            <select id="quiet-end" value={prefs.quietHours.endHour} onChange={(e) => setQuiet({ endHour: Number(e.target.value) })} className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 outline-none focus:border-black">
-              {HOURS.map((h) => <option key={h} value={h}>{hourLabel(h)}</option>)}
-            </select>
-          </div>
-        )}
       </section>
 
       {!emailOn && emailConfigured && !unsubscribedAll && prefs.paused && (

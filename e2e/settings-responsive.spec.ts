@@ -10,13 +10,10 @@ const ROUTES = [
   "agents",
   "api-credentials",
   "credits",
-  "devices",
   "integrations",
   "llm-providers",
   "notifications",
   "personalization",
-  "skills-mcp",
-  "team",
   "websites",
 ].map((r) => `/settings/${r}`);
 
@@ -93,13 +90,11 @@ for (const vp of VIEWPORTS) {
           expect(box!.height, `nav link ${i} height`).toBeGreaterThanOrEqual(36);
         }
         // The current page may be hidden by the optional platform filter only for api-credentials.
-        if (!route.endsWith("devices") && !route.endsWith("skills-mcp")) {
-          if ((await active.count()) > 0) {
-            await active.scrollIntoViewIfNeeded();
-            await expect(active).toBeVisible();
-          } else {
-            expect(route).toMatch(/api-credentials/);
-          }
+        if ((await active.count()) > 0) {
+          await active.scrollIntoViewIfNeeded();
+          await expect(active).toBeVisible();
+        } else {
+          expect(route).toMatch(/api-credentials/);
         }
       });
     }

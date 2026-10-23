@@ -135,20 +135,6 @@ export default function AccountPage() {
           </div>
         )}
       </div>
-
-      <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3">
-        <div>
-          <div className="text-[13px] font-semibold text-gray-900">Two-factor authentication</div>
-          <div className="text-[12px] text-gray-500">Add an extra layer of security to your account.</div>
-        </div>
-        <button
-          disabled
-          title="Coming soon"
-          className="rounded-lg bg-[#111111] px-3 py-1.5 text-[13px] font-medium text-white opacity-40"
-        >
-          Coming soon
-        </button>
-      </div>
     </div>
   );
 }

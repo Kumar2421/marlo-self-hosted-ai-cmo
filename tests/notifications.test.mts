@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildDigest, type ProjectActivity, type SnapshotLike } from "../lib/domain/notifications/digest.ts";
 import { approvalsKey, creditsKey, creditsThreshold, digestKey, dropDuplicates, integrationKey, isBigWin, withinEmailCap } from "../lib/domain/notifications/caps.ts";
-import { DEFAULT_PREFS, defaultPrefs, emailDecision, inQuietHours, normalizePrefs } from "../lib/domain/notifications/preferences.ts";
+import { DEFAULT_PREFS, defaultPrefs, emailDecision, normalizePrefs } from "../lib/domain/notifications/preferences.ts";
 import { signToken, verifyToken } from "../lib/domain/notifications/tokens.ts";
 import { renderDigestEmail, renderNotificationEmail } from "../lib/domain/notifications/render.ts";
 import { resendSender } from "../lib/domain/notifications/resendSender.ts";
@@ -95,32 +95,30 @@ test("preferences default on, tolerate junk, and pause stops email", () => {
   for (const frequency of Object.values(d.categories)) assert.notEqual(frequency, "off");
   assert.equal(d.paused, false);
 
-  const junk = normalizePrefs({ categories: { digest: "hourly", credits: "off" }, paused: "yes", timezone: "Not/AZone", quietHours: { startHour: 99, endHour: 1 } });
+  const junk = normalizePrefs({ categories: { digest: "hourly", credits: "off" }, paused: "yes", timezone: "Not/AZone" });
   assert.equal(junk.categories.digest, DEFAULT_PREFS.categories.digest);
   assert.equal(junk.categories.credits, "off");
   assert.equal(junk.paused, false);
   assert.equal(junk.timezone, null);
-  assert.equal(junk.quietHours, null);
   assert.deepEqual(normalizePrefs(null), defaultPrefs());
 
   const credits = { kind: "credits_low" as const, payload: {} };
-  assert.equal(emailDecision(credits, { prefs: d, unsubscribedAll: false }, MONDAY), "send");
-  assert.equal(emailDecision(credits, { prefs: { ...d, paused: true }, unsubscribedAll: false }, MONDAY), "skip");
-  assert.equal(emailDecision(credits, { prefs: d, unsubscribedAll: true }, MONDAY), "skip");
-  assert.equal(emailDecision(credits, { prefs: { ...d, categories: { ...d.categories, credits: "off" } }, unsubscribedAll: false }, MONDAY), "skip");
+  assert.equal(emailDecision(credits, { prefs: d, unsubscribedAll: false } ), "send");
+  assert.equal(emailDecision(credits, { prefs: { ...d, paused: true }, unsubscribedAll: false } ), "skip");
+  assert.equal(emailDecision(credits, { prefs: d, unsubscribedAll: true } ), "skip");
+  assert.equal(emailDecision(credits, { prefs: { ...d, categories: { ...d.categories, credits: "off" } }, unsubscribedAll: false } ), "skip");
   // Approvals default to daily: in-app and digest only.
-  assert.equal(emailDecision({ kind: "approval_needed", payload: {} }, { prefs: d, unsubscribedAll: false }, MONDAY), "skip");
+  assert.equal(emailDecision({ kind: "approval_needed", payload: {} }, { prefs: d, unsubscribedAll: false } ), "skip");
   // Only a big win interrupts.
-  assert.equal(emailDecision({ kind: "outcome_measured", payload: { bigWin: false } }, { prefs: d, unsubscribedAll: false }, MONDAY), "skip");
-  assert.equal(emailDecision({ kind: "outcome_measured", payload: { bigWin: true } }, { prefs: d, unsubscribedAll: false }, MONDAY), "send");
+  assert.equal(emailDecision({ kind: "outcome_measured", payload: { bigWin: false } }, { prefs: d, unsubscribedAll: false } ), "skip");
+  assert.equal(emailDecision({ kind: "outcome_measured", payload: { bigWin: true } }, { prefs: d, unsubscribedAll: false } ), "send");
 });
 
-test("quiet hours defer, including across midnight and in the user's timezone", () => {
+test("quiet hours no longer exist: stored values are ignored and never delay an email", () => {
   const prefs = normalizePrefs({ timezone: "America/New_York", quietHours: { startHour: 22, endHour: 7 } });
-  // 06:00 UTC is 02:00 in New York (EDT): quiet.
-  assert.equal(inQuietHours(prefs, MONDAY), true);
-  assert.equal(inQuietHours(prefs, new Date("2026-10-05T16:00:00Z")), false);
-  assert.equal(emailDecision({ kind: "credits_low", payload: {} }, { prefs, unsubscribedAll: false }, MONDAY), "defer");
+  assert.equal("quietHours" in prefs, false);
+  // 06:00 UTC would have been inside the old 22:00-07:00 window; the email still goes out.
+  assert.equal(emailDecision({ kind: "credits_low", payload: {} }, { prefs, unsubscribedAll: false }), "send");
 });
 
 // ───────── tokens ─────────
