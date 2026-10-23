@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
       message: body.message,
       history: body.history,
       projectId: body.projectId,
+      threadId: body.threadId,
     });
     return NextResponse.json(out);
   } catch (err) {

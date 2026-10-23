@@ -14,6 +14,8 @@ import {
 } from "./modelSelection.ts";
 import type { PromptPort } from "./promptBuilder.ts";
 import type { DataPort } from "./toolRegistry.ts";
+import { loadHistorySource, persistTurn } from "./threadPersistence.ts";
+import type { ThreadStore } from "./threadStore.ts";
 
 /** Who is calling and which project they are on. Platform: Supabase auth; self-host: no auth. */
 export interface ScopePort {
@@ -65,6 +67,8 @@ export type AssistantPorts = {
   /** Plan limits/locks for chat. Absent = no limits (self-host, tests). */
   entitlements?: EntitlementPort;
   observer?: TurnObserver;
+  /** Server-side chat history. Absent or unavailable: client-only history, as before. */
+  threads?: ThreadStore;
 };
 
 /** One chat turn: tools when there's an active project, plain driver call otherwise. */
@@ -168,7 +172,7 @@ export async function runAssistantTurn(
   try {
     const inputCheck = validateChatInput(input.message, input.history);
     if (!inputCheck.ok) throw new AssistantError(400, inputCheck.error);
-    const messages: ChatTurnMessage[] = [...inputCheck.history, { role: "user", content: input.message as string }];
+    let messages: ChatTurnMessage[] = [...inputCheck.history, { role: "user", content: input.message as string }];
 
     const session = await ports.scope.authenticate(ctx);
     if (!session) throw new AssistantError(401, "Not authenticated");
@@ -178,6 +182,11 @@ export async function runAssistantTurn(
     turnCtx = { ...turnCtx, activeProjectId: await ports.scope.activeProjectId(turnCtx) };
     const scope = checkChatProjectScope(input.projectId, turnCtx.activeProjectId);
     if (!scope.ok) throw new AssistantError(409, scope.error);
+
+    // History is server-owned when a chat store works: the client history is ignored (see threadPersistence.ts).
+    const threadScope = turnCtx.activeProjectId ? { userId: turnCtx.userId, projectId: turnCtx.activeProjectId } : null;
+    const source = await loadHistorySource(ports.threads, threadScope, input.threadId);
+    if (source.kind === "server") messages = [...source.history, { role: "user", content: input.message as string }];
 
     // The SERVER picks the models; nothing the client sent can steer provider or key.
     const plan = await resolveModelPlan(turnCtx, {
@@ -213,7 +222,11 @@ export async function runAssistantTurn(
         if (paidWithPlatformKey) {
           try { await ports.credits.charge(turnCtx, candidate.model); } catch { /* the user already has their answer */ }
         }
-        return result;
+        const threadId = await persistTurn({
+          store: ports.threads, scope: threadScope, source, userText: input.message as string,
+          reply: result.reply, toolsUsed: result.toolsUsed, lookedAt: result.lookedAt,
+        });
+        return threadId ? { ...result, threadId } : result;
       } catch (err) {
         if (err instanceof CandidateUnavailable) {
           attempts -= 1; // never reached a model

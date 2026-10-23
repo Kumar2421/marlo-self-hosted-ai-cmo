@@ -72,3 +72,29 @@ test("platform adapter: data reads use the user client; the service client is on
   }
   assert.ok(text.includes("createSupabaseGateway(await getUserDb())"));
 });
+
+// Chat history (threads) is read and written with the USER's session client (RLS owner policies).
+// The ONE legitimate service-role use is the daily retention purge in the search-monitor cron, which deletes
+// threads of every user by age; it hands the service client to supabaseThreadStore from the cron route only.
+test("static guard: chat history code never reaches service-role, local DB or vault code", () => {
+  const files = ["threadStore.ts", "threadStoreSupabase.ts", "threadPersistence.ts", "threadRoutes.ts"].map((n) => join(root, "lib/domain/assistant", n));
+  for (const file of files) {
+    const text = readFileSync(file, "utf8");
+    for (const [re, label] of FORBIDDEN) {
+      assert.ok(!re.test(text), `${relative(root, file)} must not reference ${label}`);
+    }
+  }
+});
+
+test("static guard: only the cron route builds the thread store from the service client", () => {
+  const offenders: string[] = [];
+  for (const base of ["app", "lib", "components"]) {
+    for (const file of walk(join(root, base))) {
+      const text = readFileSync(file, "utf8");
+      for (const line of text.split(String.fromCharCode(10))) if (line.includes("supabaseThreadStore(") && /getServiceDb|createServiceClient|service/i.test(line)) offenders.push(relative(root, file));
+    }
+  }
+  assert.deepEqual(offenders, [], "the retention purge in app/api/cron/search-monitor is the only allowed service-role use");
+  const platform = readFileSync(join(root, "lib/domain/assistant/platformAdapters.ts"), "utf8");
+  assert.match(platform, /supabaseThreadStore\(getUserDb\)/);
+});

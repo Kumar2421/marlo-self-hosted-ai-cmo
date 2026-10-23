@@ -14,6 +14,7 @@ import { getEntitlement } from "@/lib/entitlements";
 import type { EntitlementPort } from "./chatEntitlements";
 import { buildChatSystemPromptSupabase } from "./promptBuilder";
 import { createDataPorts } from "./toolRegistry";
+import { supabaseThreadStore } from "./threadStoreSupabase";
 import { createSupabaseGateway } from "./gateway/supabaseGateway";
 import { gatewayChatPorts } from "./gateway/gatewayPorts";
 
@@ -71,6 +72,8 @@ export function createPlatformPorts(): AssistantPorts {
       activeProjectId: async (ctx) => activeProjectIdSupabase(await getUserDb(), ctx.userId as string),
     },
     llm: { getDriver, supportsTools: providerSupportsTools },
+    // Chat history is read and written with the user's own session, so RLS owner policies apply.
+    threads: supabaseThreadStore(getUserDb),
     credentials: {
       async resolve(ctx, providerId) {
         const db = getServiceDb();

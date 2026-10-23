@@ -87,7 +87,7 @@ export async function runAssistantTurnStream(
         if (delay > 0) await sleep(delay);
       }
     }
-    send({ type: "done", toolsUsed: out.toolsUsed, lookedAt: out.lookedAt });
+    send({ type: "done", toolsUsed: out.toolsUsed, lookedAt: out.lookedAt, ...(out.threadId ? { threadId: out.threadId } : {}) });
   } catch (err) {
     if (signal?.aborted) return;
     if (err instanceof AssistantError) send(errorEvent(err));

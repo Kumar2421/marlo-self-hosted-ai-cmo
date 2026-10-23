@@ -22,6 +22,8 @@ import { fixDeliveryGithub } from "@/lib/domain/fixes/fixDeliveryGithub";
 import { reconcileAllProjects, type ReconcileAllSummary } from "@/lib/domain/fixes/reconcileAllProjects";
 import { pruneOldMarkers } from "@/lib/domain/project/markerRetention";
 import { hostedGithubToken } from "@/lib/githubAppServer";
+import { supabaseThreadStore } from "@/lib/domain/assistant/threadStoreSupabase";
+import { THREAD_RETENTION_DAYS } from "@/lib/domain/assistant/threadStore";
 
 // Hobby caps cron functions at 60s. Stop a little short of it and resume on
 // the next run rather than being killed mid-project.
@@ -230,6 +232,7 @@ export async function GET(req: NextRequest) {
   } finally {
     await cleanupRateLimitCounters(db);
     await pruneMarkers(db);
+    await purgeOldChatThreads(db);
   }
 }
 
@@ -249,5 +252,14 @@ async function pruneMarkers(db: ReturnType<typeof createServiceClient>): Promise
     await pruneOldMarkers(db, new Date(), { budgetMs: 3_000 });
   } catch {
     console.warn("[markers] retention failed");
+  }
+}
+
+/** Chat history retention: threads untouched for 90 days are deleted (messages cascade). Idempotent; never throws. */
+async function purgeOldChatThreads(db: ReturnType<typeof createServiceClient>): Promise<void> {
+  try {
+    await supabaseThreadStore(() => db).purgeOlderThan(THREAD_RETENTION_DAYS);
+  } catch {
+    console.warn("[chat-history] retention failed");
   }
 }

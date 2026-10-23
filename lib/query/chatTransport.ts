@@ -4,10 +4,12 @@ export type ChatRequest = {
   message: string;
   history: { role: "user" | "assistant"; content: string }[];
   projectId: string | null;
+  /** Server-side chat to continue (history is then read from the server, not from `history`). */
+  threadId?: string | null;
 };
 
 export type ChatResponseBody = {
-  reply?: string; lookedAt?: unknown; error?: string;
+  reply?: string; lookedAt?: unknown; error?: string; threadId?: string;
   /** "chat_limit" when the monthly cap is reached (HTTP 402); with used/limit/resetsAt/plan. */
   code?: string; used?: number; limit?: number; resetsAt?: string | null; plan?: string;
 };
@@ -19,6 +21,7 @@ const requestBody = (req: ChatRequest) =>
     message: req.message,
     history: req.history,
     projectId: req.projectId,
+    threadId: req.threadId ?? undefined,
   });
 
 /** The JSON endpoint (also the streaming fallback). Throws on network failure or a non-JSON body, like fetch. */
@@ -26,7 +29,7 @@ export async function sendChatMessage(
   req: ChatRequest,
   signal?: AbortSignal,
   fetchImpl: FetchLike = fetch,
-): Promise<{ ok: boolean; data: ChatResponseBody }> {
+): Promise<{ ok: boolean; status: number; data: ChatResponseBody }> {
   const res = await fetchImpl("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -34,7 +37,7 @@ export async function sendChatMessage(
     body: requestBody(req),
   });
   const data = await res.json();
-  return { ok: res.ok, data };
+  return { ok: res.ok, status: res.status, data };
 }
 
 /** The stream endpoint is missing or its host cannot stream: use the JSON endpoint instead. */
@@ -65,7 +68,7 @@ async function viaJson(req: ChatRequest, onEvent: (ev: StreamEvent) => void, sig
       return;
     }
     onEvent({ type: "delta", text: data.reply });
-    onEvent({ type: "done", toolsUsed: [], lookedAt: Array.isArray(data.lookedAt) ? data.lookedAt.filter((x): x is string => typeof x === "string") : [] });
+    onEvent({ type: "done", toolsUsed: [], lookedAt: Array.isArray(data.lookedAt) ? data.lookedAt.filter((x): x is string => typeof x === "string") : [], ...(typeof data.threadId === "string" ? { threadId: data.threadId } : {}) });
   } catch {
     if (signal?.aborted) return;
     onEvent({ type: "error", message: UNREACHABLE });

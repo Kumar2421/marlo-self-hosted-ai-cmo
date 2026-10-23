@@ -35,6 +35,7 @@ export type ChatSessionAction =
   | { type: "done"; lookedAt?: string[] }
   /** Retry a failed turn: drops the trailing error bubble, keeps the user's message, goes pending. */
   | { type: "retry" }
+  | { type: "load"; messages: ChatMsg[] }
   | { type: "reset" };
 
 const lastIsStreaming = (m: ChatMsg[]) => m.length > 0 && m[m.length - 1].role === "assistant" && m[m.length - 1].streaming === true;
@@ -72,6 +73,8 @@ export function chatSessionReducer(state: ChatSessionState, action: ChatSessionA
       if (state.pending || !lastFailedUserText(state.messages)) return state;
       return { messages: state.messages.slice(0, -1), pending: true };
     }
+    case "load":
+      return { messages: action.messages, pending: false };
     case "reset":
       return initialChatSessionState;
   }

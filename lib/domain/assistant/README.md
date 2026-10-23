@@ -21,6 +21,13 @@ Model policy: the SERVER chooses. Plan = user's preferred model (BYOK + saved pr
 Persistence PR: add a `threadStore` port to `AssistantPorts` and call it in `runAssistantTurn`.
 `TurnObserver` events carry metadata only (model, tools, duration, error kind), never message content or secrets.
 
+## Chat history (threads)
+
+`threadStore.ts` is the `ThreadStore` port (memory, SQLite) and `threadStoreSupabase.ts` the hosted twin. Tables: `chat_threads`, `chat_messages`
+(Supabase migration `20261023000200_chat_threads.sql`, SQLite DDL in `threadSchema.ts` run from `lib/db.ts`). Every call is scoped to {userId, projectId}.
+- History is SERVER-OWNED: `threadPersistence.ts` loads the last 20 stored messages for a valid `threadId` and ignores client `history`; after a successful turn it stores user + reply (creating the thread, title = first 60 chars). Content is never logged.
+- Missing tables (42P01 / PGRST205 / "no such table") -> `ThreadsUnavailableError`: the service falls back to client history, the list route answers `available:false`, the UI hides History.
+- Routes: `app/api/chat/threads` (GET list, POST create, DELETE all with `{confirm:true}`) and `[id]` (GET, PATCH, DELETE); logic in `threadRoutes.ts`. Retention: daily cron `purgeOlderThan(90)`.
 ## Security model
 
 The model never has database access. The only path is:
@@ -58,3 +65,5 @@ Service-role use outside chat data: `platformEntitlementPort(getServiceDb)` (the
 
 ## Streaming
 `POST /api/chat/stream` (SSE) wraps the SAME `runAssistantTurn` via `runAssistantTurnStream` (`assistantStream.ts`) using optional `TurnHooks` (`onToolStart`, `onDelta`, `signal`, `hasStreamed`); `POST /api/chat` stays as the JSON fallback. Wire format and decoder: `sse.ts`. Real token streaming happens only on a driver's no-tools path (no project data, or Anthropic/Google context path); the tool path (OpenAI-compatible drivers) shows live tool status and then types the finished answer out in chunks. Once text has streamed, `hasStreamed()` blocks model fallback (it would duplicate text). Credit timing is whatever `attemptWithCandidate` does; the stream layer adds none.
+
+Chat history uses the user's session client in hosted mode (`supabaseThreadStore(getUserDb)`, RLS owner policies). The only service-role use is the daily retention purge in the search-monitor cron; `tests/assistantSecurityGuard.test.mts` enforces both. History works on `/api/chat` and `/api/chat/stream`: `threadId` in the body, stored after a successful turn (never on error, abort or a chat_limit denial), and returned in the JSON body / the stream `done` event.

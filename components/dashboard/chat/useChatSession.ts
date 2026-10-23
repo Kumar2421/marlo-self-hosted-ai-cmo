@@ -9,8 +9,10 @@ import {
   historyForRequest,
   retryRequest,
   describeChatFailure,
+  type ChatMsg,
 } from "@/lib/domain/chat/chatSessionState";
 import { streamChatMessage } from "@/lib/query/chatTransport";
+import { useChatThreads } from "./useChatThreads";
 import { unlockTrigger } from "@/lib/ui/unlockTrigger";
 import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/query/keys";
@@ -40,6 +42,17 @@ export function useChatSession() {
     dispatch({ type: "reset" });
   }
 
+  /** Shows a stored conversation (restore / open a saved chat); anything in flight is dropped. */
+  function showMessages(next: ChatMsg[]) {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    requestIdRef.current += 1;
+    dispatch({ type: "load", messages: next });
+  }
+
+  // Saved chats of this project (server-side history). Hidden by the panel when the server has none.
+  const threads = useChatThreads({ projectId, loadMessages: showMessages });
+
   /** Typing: also remembers the draft for the current project. */
   function setInput(value: string) {
     setInputState(value);
@@ -60,7 +73,10 @@ export function useChatSession() {
     const text = raw.trim();
     if (!text || pending) return;
 
-    const history = retryPlan ? retryPlan.history : historyForRequest(messages);
+    // With a saved chat the server owns the history; otherwise (history unavailable) the client sends it as before.
+    const threadId = threads.activeId;
+    const history = threadId ? [] : retryPlan ? retryPlan.history : historyForRequest(messages);
+    threads.touch();
 
     const reqId = requestIdRef.current + 1;
     requestIdRef.current = reqId;
@@ -78,16 +94,18 @@ export function useChatSession() {
 
     try {
       await streamChatMessage(
-        { message: text, history, projectId },
+        { message: text, history, projectId, threadId },
         (ev) => {
           if (!isCurrent()) return;
           if (ev.type === "status") dispatch({ type: "status", label: ev.label });
           else if (ev.type === "delta") dispatch({ type: "delta", text: ev.text });
           else if (ev.type === "done") {
+            threads.noteTurn(ev.threadId);
             dispatch({ type: "done", lookedAt: ev.lookedAt.length > 0 ? ev.lookedAt : undefined });
             queryClient.invalidateQueries({ queryKey: qk.chatAllowance() });
           } else {
             // Same path as the JSON endpoint: a chat_limit denial opens the unlock panel.
+            if (ev.code === "404" && threadId) threads.detach(); // the saved chat was deleted elsewhere
             const failure = describeChatFailure({ error: ev.message, code: ev.code, limit: ev.limit });
             dispatch({ type: "fail", message: failure.message });
             if (failure.limitReached) unlockTrigger.fire();
@@ -111,5 +129,5 @@ export function useChatSession() {
     return plan && !pending ? sendText(plan.text, false, { history: plan.history }) : Promise.resolve();
   };
 
-  return { messages, pending, input, setInput, send, retry, resetChat, projectName: project?.name ?? null, primaryModel };
+  return { messages, pending, input, setInput, send, retry, resetChat, threads, projectName: project?.name ?? null, primaryModel };
 }

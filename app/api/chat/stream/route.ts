@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
       try {
         await runAssistantTurnStream(
           guard.ports, ctx,
-          { message: body.message, history: body.history, projectId: body.projectId },
+          { message: body.message, history: body.history, projectId: body.projectId, threadId: body.threadId },
           (ev) => write(encodeSseEvent(ev)),
           { signal: work.signal },
         );

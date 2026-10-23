@@ -8,7 +8,7 @@
 export type StreamEvent =
   | { type: "status"; phase: "thinking" | "tool"; label: string; tool?: string }
   | { type: "delta"; text: string }
-  | { type: "done"; toolsUsed: string[]; lookedAt: string[] }
+  | { type: "done"; toolsUsed: string[]; lookedAt: string[]; threadId?: string }
   | { type: "error"; message: string; code?: string } & ChatLimitFields;
 
 /** Same fields the JSON endpoint puts in a 402 chat_limit body, so one client path handles both. */
@@ -34,7 +34,7 @@ export function parseStreamEvent(raw: unknown): StreamEvent | null {
     case "delta":
       return typeof o.text === "string" ? { type: "delta", text: o.text } : null;
     case "done":
-      return { type: "done", toolsUsed: strings(o.toolsUsed), lookedAt: strings(o.lookedAt) };
+      return { type: "done", toolsUsed: strings(o.toolsUsed), lookedAt: strings(o.lookedAt), ...(typeof o.threadId === "string" ? { threadId: o.threadId } : {}) };
     case "error":
       if (typeof o.message !== "string") return null;
       return {

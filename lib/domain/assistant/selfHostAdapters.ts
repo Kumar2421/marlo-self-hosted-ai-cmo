@@ -10,6 +10,7 @@ import type { AssistantPorts } from "./assistantService";
 import { pickPreferredModel } from "./credentialResolver";
 import { buildChatSystemPrompt } from "./promptBuilder";
 import { createDataPorts } from "./toolRegistry";
+import { sqliteThreadStore } from "./threadStore";
 import { createSqliteGateway } from "./gateway/sqliteGateway";
 import { gatewayChatPorts } from "./gateway/gatewayPorts";
 
@@ -21,6 +22,7 @@ export function createSelfHostPorts(): AssistantPorts {
       activeProjectId: async () => getActiveProjectId(),
     },
     llm: { getDriver, supportsTools: providerSupportsTools },
+    threads: sqliteThreadStore(getDb),
     credentials: {
       async resolve(_ctx, providerId) {
         const row = getDb()
