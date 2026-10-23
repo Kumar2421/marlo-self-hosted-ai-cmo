@@ -1,0 +1,30 @@
+export type ChatRequest = {
+  message: string;
+  model: string;
+  providerId: string;
+  history: { role: "user" | "assistant"; content: string }[];
+  projectId: string | null;
+};
+
+export type ChatResponseBody = { reply?: string; lookedAt?: unknown; error?: string };
+
+/** The one place the chat panel talks to the server. Throws on network failure or a non-JSON body, like fetch. */
+export async function sendChatMessage(
+  req: ChatRequest,
+  signal?: AbortSignal,
+): Promise<{ ok: boolean; data: ChatResponseBody }> {
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal,
+    body: JSON.stringify({
+      message: req.message,
+      model: req.model,
+      providerId: req.providerId,
+      history: req.history,
+      projectId: req.projectId,
+    }),
+  });
+  const data = await res.json();
+  return { ok: res.ok, data };
+}
