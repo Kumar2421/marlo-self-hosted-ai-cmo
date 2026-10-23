@@ -38,6 +38,9 @@ export type TurnLogEvent = {
   fallbackUsed?: boolean;
   durationMs: number;
   errorKind?: string | null;
+  /** Provided by assistantService; when absent the wrapper's own count is used. */
+  candidateIndex?: number | null;
+  attempts?: number;
 };
 
 /** Per-turn facts only the wrappers can see. */
@@ -73,7 +76,7 @@ export function hashUserId(id: string, salt: string | undefined = process.env.AS
 export function buildTurnLogLine(e: TurnLogEvent, probe: TurnProbe, now: Date, salt?: string): TurnLogLine {
   const provider = e.modelUsed ? safeLabel(e.modelUsed.providerId, "other") : probe.lastCandidate ? safeLabel(probe.lastCandidate.provider, "other") : null;
   const model = e.modelUsed ? safeLabel(e.modelUsed.model, "other") : probe.lastCandidate ? safeLabel(probe.lastCandidate.model, "other") : null;
-  const candidateIndex = Math.max(0, probe.candidates.length - 1);
+  const candidateIndex = typeof e.candidateIndex === "number" ? Math.max(0, e.candidateIndex) : Math.max(0, probe.candidates.length - 1);
   const errorKind = e.errorKind ? (safeLabel(e.errorKind, "other") as string) : null;
   return {
     evt: "assistant_turn",
@@ -82,7 +85,7 @@ export function buildTurnLogLine(e: TurnLogEvent, probe: TurnProbe, now: Date, s
     provider, model,
     candidateIndex,
     fallback: Boolean(e.fallbackUsed) || candidateIndex > 0,
-    attempts: count(probe.attempts, 50),
+    attempts: count(typeof e.attempts === "number" ? e.attempts : probe.attempts, 50),
     tools: (e.toolsUsed ?? []).map(safeTool).filter((x): x is string => x !== null).slice(0, 20),
     toolMs: count(probe.toolMs, 3_600_000),
     totalMs: count(e.durationMs, 3_600_000),

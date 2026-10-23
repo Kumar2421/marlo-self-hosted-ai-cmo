@@ -30,14 +30,18 @@ function ports(o: { fail?: boolean; reply?: string; tool?: boolean; failFirst?: 
         return { text: o.reply ?? `Hello ${EMAIL}, you have 4242 clicks. ${TOKEN}` };
       },
     },
-    credentials: { resolve: async () => ({ kind: "byok", apiKey: TOKEN, baseUrl: undefined }) },
-    credits: { chargeBeforeAnswer: async () => ({ ok: true }) },
+    credentials: {
+      resolve: async () => ({ kind: "byok", apiKey: TOKEN, baseUrl: undefined }),
+      preferredModel: async () => ({ providerId: "anthropic", model: "claude-x" }),
+      platformAvailable: () => false,
+    },
+    credits: { canAfford: async () => ({ ok: true }), charge: async () => ({ ok: true }) },
     prompts: { build: async () => "SYS" },
     data: { create: () => chatPorts },
   };
 }
 const ctx: TurnContext = { mode: "platform", userId: null, activeProjectId: null };
-const input = { message: MESSAGE, history: [], projectId: "p1", requestedProvider: "anthropic", requestedModel: "claude-x" };
+const input = { message: MESSAGE, history: [], projectId: "p1" };
 
 async function turn(p: AssistantPorts, plan = "free") {
   const lines: string[] = [];
@@ -106,7 +110,7 @@ test("fallback across candidates is visible via attempts/candidateIndex when mod
     const d = p.llm.getDriver("anthropic")!;
     await d({ apiKey: "k", model: "m1", messages: [{ role: "user", content: "hi" }] });
     await d({ apiKey: "k", model: "m2", messages: [{ role: "user", content: "hi" }] });
-    p.observer!.onTurn({ modelUsed: { providerId: "anthropic", model: "m2" }, toolsUsed: [], fallbackUsed: false, durationMs: 5, errorKind: null });
+    p.observer!.onTurn({ modelUsed: { providerId: "anthropic", model: "m2" }, toolsUsed: [], fallbackUsed: true, durationMs: 5, errorKind: null, candidateIndex: 1, attempts: 2, attemptFailures: ["rate_limit"] });
   });
   const line = JSON.parse(lines[0]);
   assert.equal(line.attempts, 2);

@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useReducer } from "react";
-import { useToast } from "../Toast";
-import { useProviders, findProviderForModel } from "@/lib/providers-store";
+import { useProviders } from "@/lib/providers-store";
 import { useProject } from "@/lib/project-store";
 import {
   chatSessionReducer,
@@ -16,7 +15,7 @@ import { sendChatMessage } from "@/lib/query/chatTransport";
 export function useChatSession() {
   const [{ messages, pending }, dispatch] = useReducer(chatSessionReducer, initialChatSessionState);
   const [input, setInputState] = useState("");
-  const { show } = useToast();
+  // Display-only (limited-data notice); sending never depends on it - the server picks the model.
   const { primaryModel } = useProviders();
   const { project } = useProject();
   const projectId = project?.id ?? null;
@@ -55,12 +54,6 @@ export function useChatSession() {
     const text = raw.trim();
     if (!text || pending) return;
 
-    const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
-    if (!primaryModel || !providerId) {
-      show("Select a model first — connect a provider in Settings → LLM Providers.");
-      return;
-    }
-
     const history = historyForRequest(messages);
 
     const reqId = requestIdRef.current + 1;
@@ -78,7 +71,7 @@ export function useChatSession() {
 
     try {
       const { ok, data } = await sendChatMessage(
-        { message: text, model: primaryModel, providerId, history, projectId },
+        { message: text, history, projectId },
         ctrl.signal,
       );
       if (!isCurrent()) return;

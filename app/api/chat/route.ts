@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "message is required" }, { status: 400 });
   }
 
-  const { model, providerId } = body as { model?: string; providerId?: string };
+  // Legacy clients may still send providerId/model: deliberately ignored. The server chooses the model and key.
   const platform = FEATURES.PLATFORM_MODE;
   const ctx: TurnContext = { mode: platform ? "platform" : "selfhost", userId: null, activeProjectId: null };
 
@@ -30,9 +30,7 @@ export async function POST(req: NextRequest) {
       message: body.message,
       history: body.history,
       projectId: body.projectId,
-      requestedProvider: providerId,
-      requestedModel: model,
-    }));
+    }, { log: () => {} })); // the structured turn line (turnLog.ts) replaces the legacy text line
     return NextResponse.json(out);
   } catch (err) {
     if (err instanceof AssistantError) {

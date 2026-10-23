@@ -73,15 +73,19 @@ export async function runCase(c: EvalCase, makeDriver: DriverFactory, opts: { mo
   const ports: AssistantPorts = {
     scope: { authenticate: async () => ({ userId: "eval-user" }), activeProjectId: async () => "eval-p1" },
     llm: { getDriver: () => instrumented, supportsTools: () => opts.supportsTools ?? true },
-    credentials: { resolve: async () => ({ kind: "byok", apiKey: opts.apiKey ?? "eval-key", baseUrl: opts.baseUrl }) },
-    credits: { chargeBeforeAnswer: async () => ({ ok: true }) },
+    credentials: {
+      resolve: async () => ({ kind: "byok", apiKey: opts.apiKey ?? "eval-key", baseUrl: opts.baseUrl }),
+      preferredModel: async () => ({ providerId: provider, model: opts.model ?? "eval-model" }),
+      platformAvailable: () => false,
+    },
+    credits: { canAfford: async () => ({ ok: true }), charge: async () => ({ ok: true }) },
     prompts: { build: async () => "You are Marlo, the user's AI CMO. Be concise and honest." },
     data: { create: () => STATES[c.state] },
   };
   const ctx: TurnContext = { mode: "platform", userId: null, activeProjectId: null };
   try {
     const out = await runAssistantTurn(ports, ctx, {
-      message: c.question, history: [], projectId: "eval-p1", requestedProvider: provider, requestedModel: opts.model ?? "eval-model",
+      message: c.question, history: [], projectId: "eval-p1",
     });
     reply = out.reply ?? "";
     serviceToolsUsed = out.toolsUsed;
