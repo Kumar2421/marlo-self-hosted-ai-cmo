@@ -10,6 +10,7 @@ import { platformKeyFor, resolveLlmCredential } from "@/lib/llm/platformKeys";
 import type { AssistantPorts } from "./assistantService";
 import { buildChatSystemPromptSupabase } from "./promptBuilder";
 import { createDataPorts } from "./toolRegistry";
+import { supabaseThreadStore } from "./threadStoreSupabase";
 
 async function activeProjectIdSupabase(db: SupabaseClient, userId: string): Promise<string | null> {
   const { data: setting } = await db
@@ -37,6 +38,8 @@ export function createPlatformPorts(): AssistantPorts {
       activeProjectId: (ctx) => activeProjectIdSupabase(getDbClient(), ctx.userId as string),
     },
     llm: { getDriver, supportsTools: providerSupportsTools },
+    // Chat history is read and written with the user's own session, so RLS owner policies apply.
+    threads: supabaseThreadStore(() => createClient()),
     credentials: {
       async resolve(ctx, providerId) {
         const db = getDbClient();

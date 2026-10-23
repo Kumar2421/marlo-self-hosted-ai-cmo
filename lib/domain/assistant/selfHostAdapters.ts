@@ -8,6 +8,7 @@ import { selfHostChatPorts } from "@/lib/domain/chat/chatPorts";
 import type { AssistantPorts } from "./assistantService";
 import { buildChatSystemPrompt } from "./promptBuilder";
 import { createDataPorts } from "./toolRegistry";
+import { sqliteThreadStore } from "./threadStore";
 
 /** Real self-host (local SQLite) ports. No auth, no credits. */
 export function createSelfHostPorts(): AssistantPorts {
@@ -17,6 +18,7 @@ export function createSelfHostPorts(): AssistantPorts {
       activeProjectId: async () => getActiveProjectId(),
     },
     llm: { getDriver, supportsTools: providerSupportsTools },
+    threads: sqliteThreadStore(getDb),
     credentials: {
       async resolve(_ctx, providerId) {
         const row = getDb()

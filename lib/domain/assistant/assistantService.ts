@@ -8,6 +8,8 @@ import { classifyProviderError, friendlyProviderError } from "./errorMapping.ts"
 import { resolveModelPlan, shouldFallback, type ModelCandidate } from "./modelSelection.ts";
 import type { PromptPort } from "./promptBuilder.ts";
 import type { DataPort } from "./toolRegistry.ts";
+import { loadHistorySource, persistTurn } from "./threadPersistence.ts";
+import type { ThreadStore } from "./threadStore.ts";
 
 /** Who is calling and which project they are on. Platform: Supabase auth; self-host: no auth. */
 export interface ScopePort {
@@ -43,6 +45,8 @@ export type AssistantPorts = {
   prompts: PromptPort;
   data: DataPort;
   observer?: TurnObserver;
+  /** Server-side chat history. Absent or unavailable: client-only history, as before. */
+  threads?: ThreadStore;
 };
 
 /** One chat turn: tools when there's an active project, plain driver call otherwise. */
@@ -115,7 +119,7 @@ export async function runAssistantTurn(
   try {
     const inputCheck = validateChatInput(input.message, input.history);
     if (!inputCheck.ok) throw new AssistantError(400, inputCheck.error);
-    const messages: ChatTurnMessage[] = [...inputCheck.history, { role: "user", content: input.message as string }];
+    let messages: ChatTurnMessage[] = [...inputCheck.history, { role: "user", content: input.message as string }];
 
     const plan = resolveModelPlan(ctx, input, { hasDriver: (id) => ports.llm.getDriver(id) !== null });
 
@@ -128,12 +132,22 @@ export async function runAssistantTurn(
     const scope = checkChatProjectScope(input.projectId, turnCtx.activeProjectId);
     if (!scope.ok) throw new AssistantError(409, scope.error);
 
+    // History is server-owned when a chat store works: the client history is ignored (see threadPersistence.ts).
+    const threadScope = turnCtx.activeProjectId ? { userId: turnCtx.userId, projectId: turnCtx.activeProjectId } : null;
+    const source = await loadHistorySource(ports.threads, threadScope, input.threadId);
+    if (source.kind === "server") messages = [...source.history, { role: "user", content: input.message as string }];
+
     for (let i = 0; i < plan.length; i += 1) {
       const candidate = plan[i];
       try {
         const out = await attemptWithCandidate(ports, turnCtx, candidate, messages);
         modelUsed = { providerId: candidate.providerId, model: candidate.model };
         toolsUsed = out.toolsUsed;
+        const threadId = await persistTurn({
+          store: ports.threads, scope: threadScope, source, userText: input.message as string,
+          reply: out.reply, toolsUsed: out.toolsUsed, lookedAt: out.lookedAt,
+        });
+        if (threadId) return { ...out, threadId };
         return out;
       } catch (err) {
         if (i < plan.length - 1 && shouldFallback(err)) continue;
