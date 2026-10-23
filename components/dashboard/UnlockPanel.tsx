@@ -7,6 +7,7 @@ import { Sheet, SheetContent } from "@/components/ui/Sheet";
 import { PricingClient } from "@/components/pricing/PricingClient";
 import { usePlan } from "@/components/plan/usePlan";
 import { PRICING_BETA, PRICING_BETA_NOTE } from "@/lib/domain/plans/pricingView";
+import { unlockTrigger } from "@/lib/ui/unlockTrigger";
 import { UNLOCK_DISMISS_KEY, parseDismissedAt, shouldShowUnlockPanel } from "@/lib/domain/plans/unlockPanel";
 
 function readDismissedAt(): number | null {
@@ -28,6 +29,8 @@ export default function UnlockPanel() {
   // Null until mounted: storage and the clock are read on the client only (no server/client mismatch, no impure render).
   const [now, setNow] = useState<number | null>(null);
   const [plansOpen, setPlansOpen] = useState(false);
+  // Set when the chat hits its free cap: shows the panel even after a dismissal.
+  const [forced, setForced] = useState(false);
 
   useEffect(() => {
     // Reading storage on the client only avoids a server/client mismatch.
@@ -36,10 +39,26 @@ export default function UnlockPanel() {
     setNow(Date.now());
   }, []);
 
-  if (now === null || !shouldShowUnlockPanel({ plan: plan.data?.plan, dismissedAt, now })) return null;
+  useEffect(
+    () =>
+      unlockTrigger.subscribe(() => {
+        try {
+          window.localStorage.removeItem(UNLOCK_DISMISS_KEY);
+        } catch {
+          /* storage blocked: forced still shows it for this page view */
+        }
+        setDismissedAt(null);
+        setForced(true);
+        setPlansOpen(true);
+      }),
+    [],
+  );
+
+  if (now === null || !shouldShowUnlockPanel({ plan: plan.data?.plan, dismissedAt, now, forced })) return null;
 
   function dismiss() {
     const at = Date.now();
+    setForced(false);
     setDismissedAt(at);
     setNow(at);
     try {

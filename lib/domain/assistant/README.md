@@ -53,3 +53,5 @@ What the model can do: call the nine named read-only tools with validated argume
 | `project_competitors` | yes (`project_competitors_all_own`) | |
 
 Every table the chat reads has an owner policy, so none needs the service-role fallback. Not read by the chat path any more with the service client: all of the above.
+
+Service-role use outside chat data: `platformEntitlementPort(getServiceDb)` (the plan lookup and the `usage_events` count for the chat allowance, also used by `GET /api/chat/allowance`) keeps the service client on purpose. It is billing metadata for the signed-in user, not data the model can read: tools, gateway and prompt context never touch it.

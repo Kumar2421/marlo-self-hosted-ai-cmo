@@ -16,6 +16,7 @@ export const qk = {
   outreachStatus: () => [...account, "outreach-status"] as const,
   outreachPlan: (leadIds: string[], acceptGuessed: boolean) => [...account, "outreach-plan", [...leadIds].sort().join(","), acceptGuessed] as const,
   plan: () => [...account, "plan"] as const,
+  chatAllowance: () => [...account, "chat-allowance"] as const,
   usage: () => [...account, "usage"] as const,
   notifications: () => [...account, "notifications"] as const,
   notificationPrefs: () => [...account, "notification-prefs"] as const,

@@ -4,7 +4,11 @@ export type ChatRequest = {
   projectId: string | null;
 };
 
-export type ChatResponseBody = { reply?: string; lookedAt?: unknown; error?: string };
+export type ChatResponseBody = {
+  reply?: string; lookedAt?: unknown; error?: string;
+  /** "chat_limit" when the monthly cap is reached (HTTP 402); with used/limit/resetsAt/plan. */
+  code?: string; used?: number; limit?: number; resetsAt?: string | null; plan?: string;
+};
 
 /** The one place the chat panel talks to the server. Throws on network failure or a non-JSON body, like fetch. */
 export async function sendChatMessage(
