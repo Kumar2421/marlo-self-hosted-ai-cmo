@@ -1,7 +1,7 @@
 "use client";
 
 import { plainError } from "@/lib/plainError";
-import { X, ChevronsLeft, RefreshCw, Loader2, Settings } from "lucide-react";
+import { ChevronsLeft, RefreshCw, Loader2, Settings } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useProviders, findProviderForModel } from "@/lib/providers-store";
@@ -15,6 +15,7 @@ import {
   parseComparisonMarkdown,
   type StoredComparison,
 } from "@/lib/domain/documents/comparisonView";
+import { CloseButton } from "@/components/shared/CloseButton";
 
 function FeatureCompare({
   ourFeatures,
@@ -43,7 +44,7 @@ function FeatureCompare({
             ) : (
               <span className="text-gray-300">•</span>
             )}
-            <span className={!compareToOurs || has ? "text-gray-700" : "text-gray-400"}>{feature}</span>
+            <span className={!compareToOurs || has ? "text-gray-700" : "text-ui-subtle"}>{feature}</span>
           </div>
         );
       })}
@@ -165,7 +166,7 @@ export default function CompetitorComparisonPanel({ onClose }: { onClose: () => 
         {/* Header */}
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-200 px-4">
           <div id={titleId} className="text-[14px] font-semibold text-gray-900">Competitor Comparison</div>
-          <div className="flex items-center gap-3 text-gray-400">
+          <div className="flex items-center gap-3 text-ui-subtle">
             {competitors.length > 0 && (
               <button
                 onClick={handleRefresh}
@@ -179,9 +180,7 @@ export default function CompetitorComparisonPanel({ onClose }: { onClose: () => 
             <button onClick={onClose} title="Collapse" className="hover:text-gray-700">
               <ChevronsLeft size={16} />
             </button>
-            <button onClick={onClose} title="Close" className="hover:text-gray-700">
-              <X size={16} />
-            </button>
+            <CloseButton onClick={onClose} />
           </div>
         </div>
 

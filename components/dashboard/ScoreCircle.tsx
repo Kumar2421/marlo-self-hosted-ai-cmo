@@ -48,7 +48,7 @@ export default function ScoreCircle({
           {value ?? "—"}
         </div>
       </div>
-      <span className="text-[11px] text-gray-500">{label}</span>
+      <span className="text-xs text-gray-500">{label}</span>
     </div>
   );
 }

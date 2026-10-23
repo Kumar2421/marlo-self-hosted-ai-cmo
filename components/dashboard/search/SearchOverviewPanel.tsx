@@ -128,13 +128,13 @@ export default function SearchOverviewPanel({ projectId, onOpenFinding }: { proj
             {data.nextActions.map((action, i) => (
               <div key={i} className="rounded-lg border border-blue-100 bg-blue-50 p-3">
                 <div className="font-medium text-[12px] text-blue-900">{action.title}</div>
-                <div className="mt-1 text-[11px] text-blue-700">{action.why}</div>
-                <div className="mt-1 text-[11px] font-medium text-blue-800">Expected impact: {action.expectedImpact}</div>
+                <div className="mt-1 text-xs text-blue-700">{action.why}</div>
+                <div className="mt-1 text-xs font-medium text-blue-800">Expected impact: {action.expectedImpact}</div>
                 {action.findingId && onOpenFinding && (
                   <button
                     type="button"
                     onClick={() => onOpenFinding(action.findingId!)}
-                    className="mt-2 flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
+                    className="mt-2 flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
                   >
                     See details
                     <ChevronRight size={12} />
@@ -163,7 +163,7 @@ export default function SearchOverviewPanel({ projectId, onOpenFinding }: { proj
             {data.yourFixes.map((fix) => (
               <div key={fix.id} className="rounded-lg border border-green-100 bg-green-50 p-3">
                 <div className="font-medium text-[12px] text-green-900">{fix.title}</div>
-                {fix.outcome && <div className="mt-1 text-[11px] text-green-700">{fix.outcome.verdict}</div>}
+                {fix.outcome && <div className="mt-1 text-xs text-green-700">{fix.outcome.verdict}</div>}
               </div>
             ))}
           </div>
@@ -179,10 +179,10 @@ function StatCard({ label, value, delta, isBetter }: { label: string; value: str
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-3">
-      <div className="mb-1 text-[11px] uppercase text-gray-500">{label}</div>
+      <div className="mb-1 text-xs uppercase text-gray-500">{label}</div>
       <div className="flex items-end justify-between">
         <div className="text-lg font-semibold text-gray-900">{value}</div>
-        <div className={`text-[11px] font-medium ${arrowColor}`}>
+        <div className={`text-xs font-medium ${arrowColor}`}>
           {Math.abs(delta) > 0 && (isPositive ? "↑" : "↓")} {Math.abs(delta).toLocaleString()}
         </div>
       </div>

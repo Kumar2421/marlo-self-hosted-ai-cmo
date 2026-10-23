@@ -86,7 +86,7 @@ export default function GitHubAppCard() {
             <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
               GitHub
               {gh?.connected && (
-                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">
+                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">
                   <Check size={10} /> Connected
                 </span>
               )}
@@ -96,7 +96,7 @@ export default function GitHubAppCard() {
             </div>
           </div>
         </div>
-        <span className="shrink-0 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">GitHub App</span>
+        <span className="shrink-0 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">GitHub App</span>
       </div>
 
       {status.isPending ? (
@@ -148,21 +148,21 @@ export default function GitHubAppCard() {
             </button>
           </div>
           {returnTo && saved && (
-            <a href={returnTo} className="inline-block text-[12px] font-medium text-[#00846f] hover:underline">
+            <a href={returnTo} className="inline-block text-[12px] font-medium text-ui-accent-strong hover:underline">
               Back to your finding
             </a>
           )}
           {gh && !gh.connected && (
-            <button onClick={disconnect} disabled={busy} className="text-[11px] font-medium text-red-600 hover:underline disabled:opacity-50">Disconnect</button>
+            <button onClick={disconnect} disabled={busy} className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50">Disconnect</button>
           )}
-          <p className="text-[11px] text-gray-400">
+          <p className="text-xs text-ui-subtle">
             Disconnecting only removes the link inside Marlo. To remove the app from your GitHub account, uninstall it in{" "}
             <a href="https://github.com/settings/installations" target="_blank" rel="noreferrer" className="underline">
               GitHub settings
             </a>
             .
           </p>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-400">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ui-subtle">
             {gh?.slug ? (
               <span>
                 Missing a repository?{" "}
@@ -174,7 +174,7 @@ export default function GitHubAppCard() {
             ) : (
               <span>Missing a repository? Add it in GitHub, then</span>
             )}
-            <button type="button" onClick={() => status.refetch()} disabled={status.isFetching} className="inline-flex items-center gap-1 font-medium text-[#00846f] hover:underline disabled:opacity-50">
+            <button type="button" onClick={() => status.refetch()} disabled={status.isFetching} className="inline-flex items-center gap-1 font-medium text-ui-accent-strong hover:underline disabled:opacity-50">
               {status.isFetching && <Loader2 size={11} className="animate-spin" />}
               I&apos;ve added it, refresh list
             </button>

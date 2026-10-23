@@ -94,7 +94,7 @@ export function TabsList({ items, className, ...rest }: TabsListProps) {
           ) : null}
           <span className="min-w-0 truncate">{item.label}</span>
           {typeof item.count === "number" ? (
-            <span className="shrink-0 rounded-full bg-ui-surface-sunken px-1.5 text-[11px] leading-4 text-ui-muted tabular-nums">
+            <span className="shrink-0 rounded-full bg-ui-surface-sunken px-1.5 text-xs leading-4 text-ui-muted tabular-nums">
               {item.count}
             </span>
           ) : null}

@@ -30,7 +30,7 @@ export default function ComingSoonCard({
           <div className="truncate text-[12px] text-gray-500">{desc}</div>
         </div>
       </div>
-      <div className="mb-2 flex items-center gap-1.5 text-[11px] text-gray-400">
+      <div className="mb-2 flex items-center gap-1.5 text-xs text-ui-subtle">
         <span className="h-1.5 w-1.5 rounded-full bg-gray-300" />
         Not connected
       </div>

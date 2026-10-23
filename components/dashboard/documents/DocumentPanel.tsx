@@ -2,7 +2,7 @@
 
 import { plainError } from "@/lib/plainError";
 import { useState, useEffect, useCallback, useId, useMemo } from "react";
-import { FileText, Copy, Pencil, Download, ChevronsLeft, X, Loader2, RefreshCw } from "lucide-react";
+import { FileText, Copy, Pencil, Download, ChevronsLeft, Loader2, RefreshCw } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { useProviders, findProviderForModel } from "@/lib/providers-store";
 import { useToast } from "@/components/dashboard/Toast";
@@ -10,6 +10,7 @@ import { useTerminalLog } from "@/lib/terminal-log-store";
 import { assessGeneratedDocument } from "@/lib/domain/project/setupRun";
 import { useDialog } from "@/components/shared/useDialog";
 import { splitMarkdownTables, type TableAlign } from "@/lib/markdown-tables";
+import { CloseButton } from "@/components/shared/CloseButton";
 
 // No Tailwind Typography plugin in this project (nothing else here uses
 // `prose`), so style each markdown element explicitly instead of relying on
@@ -37,7 +38,7 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   thead: ({ children }) => <thead className="bg-gray-50">{children}</thead>,
   th: ({ children }) => (
-    <th className="border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold text-gray-500">
+    <th className="border-b border-gray-200 px-3 py-2 text-left text-xs font-semibold text-gray-500">
       {children}
     </th>
   ),
@@ -63,7 +64,7 @@ function MarkdownTable({ header, align, rows }: { header: string[]; align: Table
               <th
                 key={c}
                 scope="col"
-                className={`border-b border-gray-200 px-3 py-2 text-[11px] font-semibold text-gray-500 ${alignClass(c)}`}
+                className={`border-b border-gray-200 px-3 py-2 text-xs font-semibold text-gray-500 ${alignClass(c)}`}
               >
                 <ReactMarkdown components={CELL_COMPONENTS}>{cell}</ReactMarkdown>
               </th>
@@ -323,7 +324,7 @@ export default function DocumentPanel({ title, apiPath, downloadName, onClose }:
             <FileText size={16} className="text-gray-500" />
             {title}
           </div>
-          <div className="flex items-center gap-3 text-gray-400">
+          <div className="flex items-center gap-3 text-ui-subtle">
             {content && (
               <>
                 <button onClick={handleCopy} title="Copy" className="hover:text-gray-700">
@@ -347,15 +348,13 @@ export default function DocumentPanel({ title, apiPath, downloadName, onClose }:
             <button onClick={handleClose} title="Collapse" className="hover:text-gray-700">
               <ChevronsLeft size={16} />
             </button>
-            <button onClick={handleClose} title="Close" className="hover:text-gray-700">
-              <X size={16} />
-            </button>
+            <CloseButton onClick={handleClose} />
           </div>
         </div>
 
         <div className="okara-scroll flex-1 overflow-y-auto p-6">
           {loading ? (
-            <div className="flex items-center gap-2 text-[13px] text-gray-400">
+            <div className="flex items-center gap-2 text-[13px] text-ui-subtle">
               <Loader2 size={14} className="animate-spin" /> Loading...
             </div>
           ) : editing ? (
@@ -400,7 +399,7 @@ export default function DocumentPanel({ title, apiPath, downloadName, onClose }:
           )}
 
           {generating && shown && (
-            <p className="mt-3 flex items-center gap-1.5 text-[12px] text-gray-400">
+            <p className="mt-3 flex items-center gap-1.5 text-[12px] text-ui-subtle">
               <Loader2 size={11} className="animate-spin" /> Writing...
             </p>
           )}
@@ -424,7 +423,7 @@ export default function DocumentPanel({ title, apiPath, downloadName, onClose }:
         )}
 
         {!editing && content && (
-          <div className="flex shrink-0 items-center justify-between border-t border-gray-200 px-4 py-2.5 text-[11px] text-gray-400">
+          <div className="flex shrink-0 items-center justify-between border-t border-gray-200 px-4 py-2.5 text-xs text-ui-subtle">
             <span>Generated from your crawled website — regenerate anytime.</span>
             <button
               onClick={handleGenerate}

@@ -47,7 +47,7 @@ export default function ChipInput({
                 type="button"
                 onClick={() => onChange(value.filter((v) => v !== item))}
                 aria-label={`Remove ${item}`}
-                className="rounded-full p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700"
+                className="rounded-full p-0.5 text-ui-subtle hover:bg-gray-200 hover:text-gray-700"
               >
                 <X size={11} />
               </button>
@@ -89,7 +89,7 @@ export default function ChipInput({
               key={s}
               type="button"
               onClick={() => add(s)}
-              className="rounded-full border border-dashed border-gray-300 px-2.5 py-1 text-[11px] text-gray-500 hover:border-gray-400 hover:text-gray-800"
+              className="rounded-full border border-dashed border-gray-300 px-2.5 py-1 text-xs text-gray-500 hover:border-gray-400 hover:text-gray-800"
             >
               + {s}
             </button>

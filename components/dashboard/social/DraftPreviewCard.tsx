@@ -14,7 +14,7 @@ const BTN_PRIMARY = "inline-flex items-center gap-1.5 rounded-lg bg-[#111111] px
 function CharCount({ current, max }: { current: number; max: number }) {
   const over = current > max;
   return (
-    <span className={`text-[11px] tabular-nums ${over ? "font-semibold text-red-600" : current > Math.ceil(max * 0.93) ? "text-amber-600" : "text-gray-500"}`}>
+    <span className={`text-xs tabular-nums ${over ? "font-semibold text-red-600" : current > Math.ceil(max * 0.93) ? "text-amber-600" : "text-gray-500"}`}>
       {current}/{max}
     </span>
   );
@@ -336,8 +336,8 @@ export default function DraftPreviewCard({
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">{draft.angle}</span>
-          {draft.edited && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">Edited</span>}
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">{draft.angle}</span>
+          {draft.edited && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">Edited</span>}
         </div>
         {platform === "x" && "text" in draft && <CharCount current={draft.text.length} max={config.maxBodyChars} />}
         {platform === "linkedin" && "hookLine" in draft && (

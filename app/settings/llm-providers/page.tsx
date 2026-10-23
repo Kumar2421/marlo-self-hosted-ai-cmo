@@ -69,11 +69,11 @@ function SingleKeyCard() {
             <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
               {isConnected ? "Your API key" : "Included model"}
               {isConnected ? (
-                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">
+                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">
                   <Check size={10} /> Connected
                 </span>
               ) : hasPlatformKey ? (
-                <span className="flex items-center gap-1 rounded-full bg-[#eef2ff] px-2 py-0.5 text-[10px] font-medium text-[#4338ca]">
+                <span className="flex items-center gap-1 rounded-full bg-[#eef2ff] px-2 py-0.5 text-xs font-medium text-[#4338ca]">
                   <Sparkles size={10} /> Ready to use
                 </span>
               ) : null}
@@ -89,7 +89,7 @@ function SingleKeyCard() {
           href={provider.docsUrl}
           target="_blank"
           rel="noreferrer"
-          className="flex shrink-0 items-center gap-1 text-[11px] text-gray-400 hover:text-gray-700"
+          className="flex shrink-0 items-center gap-1 text-xs text-ui-subtle hover:text-gray-700"
         >
           Get a key <ExternalLink size={11} />
         </a>
@@ -160,7 +160,7 @@ export default function LlmProvidersPage() {
       </p>
 
       <div className="mb-5 flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-[13px] text-gray-600">
-        <Info size={14} className="shrink-0 text-gray-400" />
+        <Info size={14} className="shrink-0 text-ui-faint" />
         {connectedModels.length === 0
           ? "No providers connected yet. Connect at least one to start using the chat and agents."
           : primaryModel

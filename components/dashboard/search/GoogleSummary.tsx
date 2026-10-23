@@ -1,7 +1,7 @@
 "use client";
 
-import GoogleReconnectLink from "@/components/settings/GoogleReconnectLink";
 import { RECONNECT_TEXT } from "@/lib/domain/integrations/googleHealthView";
+import { RECONNECT_IN_TRAFFIC_HINT } from "@/lib/googleOAuthScopes";
 
 type Totals = { clicks: number; impressions: number; ctr: number; position: number };
 type Ga4 = { sessions: number; activeUsers: number; screenPageViews: number } | null;
@@ -9,7 +9,7 @@ type Ga4 = { sessions: number; activeUsers: number; screenPageViews: number } | 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-3">
-      <div className="mb-1 text-[11px] uppercase text-gray-500">{label}</div>
+      <div className="mb-1 text-xs uppercase text-gray-500">{label}</div>
       <div className="text-lg font-semibold text-gray-900">{value}</div>
     </div>
   );
@@ -48,7 +48,7 @@ export default function GoogleSummary({
     return (
       <div role="alert" className="mb-5 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-800">
         <span className="min-w-0 break-words">{RECONNECT_TEXT}</span>
-        <GoogleReconnectLink returnTo="dashboard" className="shrink-0 font-medium underline" />
+        <span className="shrink-0">{RECONNECT_IN_TRAFFIC_HINT}</span>
       </div>
     );
   }
@@ -70,7 +70,7 @@ export default function GoogleSummary({
     <section className="mb-5">
       <div className="mb-2 flex items-center justify-between">
         <h4 className="text-[12px] font-semibold text-gray-700">Last 28 days on Google</h4>
-        <button type="button" onClick={onViewTraffic} className="text-[11px] text-blue-600 hover:underline">
+        <button type="button" onClick={onViewTraffic} className="text-xs text-blue-600 hover:underline">
           See full traffic →
         </button>
       </div>
