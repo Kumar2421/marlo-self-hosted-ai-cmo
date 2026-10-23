@@ -171,6 +171,22 @@
   --scrim: rgb(0 0 0 / 0.6);
   --scrollbar-thumb: #57534e;
   --skeleton-shine: rgb(255 255 255 / 0.07);
+  --tint-warning-bg: #3a1608;
+  --tint-warning-fg: #fdba74;
+  --tint-warning-border: #9a3412;
+  --tint-success-bg: #0f2a1a;
+  --tint-success-fg: #86efac;
+  --tint-success-border: #166534;
+  --tint-info-bg: #14203a;
+  --tint-info-fg: #93c5fd;
+  --tint-info-border: #1e3a8a;
+  --tint-danger-bg: #2b1618;
+  --tint-danger-fg: #fca5a5;
+  --tint-danger-border: #7f1d1d;
+  --score-good: #4ade80;
+  --score-mid: #fb923c;
+  --score-bad: #f87171;
+  --score-track: #36312f;
 }
 
 :root[data-theme="dark"] .theme-island {
@@ -323,6 +339,22 @@
   --scrim: rgb(0 0 0 / 0.5);
   --scrollbar-thumb: #d6d3d1;
   --skeleton-shine: rgb(255 255 255 / 0.7);
+  --tint-warning-bg: #fff7ed;
+  --tint-warning-fg: #9a3412;
+  --tint-warning-border: #fdba74;
+  --tint-success-bg: #f0fdf4;
+  --tint-success-fg: #166534;
+  --tint-success-border: #86efac;
+  --tint-info-bg: #eff6ff;
+  --tint-info-fg: #1e40af;
+  --tint-info-border: #bfdbfe;
+  --tint-danger-bg: #fef2f2;
+  --tint-danger-fg: #991b1b;
+  --tint-danger-border: #fca5a5;
+  --score-good: #15803d;
+  --score-mid: #c2410c;
+  --score-bad: #b91c1c;
+  --score-track: #e7e5e4;
 }
 
 /* An island or popover re-establishes the inherited text colour for its subtree. In the base layer so a

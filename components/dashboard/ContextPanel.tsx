@@ -15,6 +15,9 @@ import {
   X,
   Sparkles,
   Loader2,
+  Tag,
+  FileText,
+  Lock,
 } from "lucide-react";
 import { DOC_TYPES } from "@/lib/document-types";
 import { FEATURES } from "@/lib/features";
@@ -32,6 +35,9 @@ import CompetitorComparisonPanel from "./documents/CompetitorComparisonPanel";
 import ContentStrategyPanel from "./documents/ContentStrategyPanel";
 import DesignGuidePanel from "./documents/DesignGuidePanel";
 import { WebsiteIcon } from "@/components/shared/WebsiteIcon";
+import { StatusChip } from "@/components/ui/StatusChip";
+import { TintedNotice } from "@/components/ui/TintedNotice";
+import { statusChipClass } from "@/components/ui/premium";
 import { normalizeHostUrl } from "@/lib/domain/shared/hostLike";
 import { latestOnPageScore } from "@/lib/domain/project/setupChecklist";
 import { needsSetupAttention, setupCardRows } from "@/lib/domain/project/setupState";
@@ -281,26 +287,29 @@ export default function ContextPanel({
         ) : (
           <div key="header" className={HEADER_BLOCK}>
             <div className="mb-2.5 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded" data-testid="project-icon">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span
+                  className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-ui-border bg-ui-surface-sunken"
+                  data-testid="project-icon"
+                >
                   <WebsiteIcon url={project.url} size={6} />
                 </span>
-                <span className="text-[13px] font-semibold text-gray-900">{project.name}</span>
+                <span className="truncate text-[15px] leading-5 font-semibold text-ui-text">{project.name}</span>
               </div>
               <button
                 onClick={() => router.push("/settings/websites")}
                 title="Edit in Settings → Websites"
                 aria-label="Edit project in Settings, Websites"
-                className="text-ui-subtle hover:text-gray-700"
+                className="dash-focus flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ui-subtle hover:bg-ui-surface-sunken hover:text-ui-text md:h-7 md:w-7"
               >
                 <Pencil size={13} />
               </button>
             </div>
 
             {project.category && (
-              <span className="mb-3 inline-block rounded-full border border-gray-200 px-2.5 py-0.5 text-xs text-gray-500">
+              <StatusChip className="mb-3" icon={<Tag size={11} />}>
                 {project.category}
-              </span>
+              </StatusChip>
             )}
 
             <div className="mb-4">
@@ -321,7 +330,7 @@ export default function ContextPanel({
               <div className="mb-3 flex flex-wrap gap-2">
                 <button
                   onClick={() => router.push("/settings/websites")}
-                  className="flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                  className={`dash-focus ui-transition cursor-pointer hover:border-ui-text hover:text-ui-text max-md:min-h-11 ${statusChipClass({ dashed: true, className: "py-1" })}`}
                 >
                   <Plus size={11} /> Add category in Settings
                 </button>
@@ -335,20 +344,20 @@ export default function ContextPanel({
         )}
 
         {showSetupCard && (
-          <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3" aria-label="Finish setup">
-            <p className="mb-2 text-[12px] font-semibold text-amber-900">Finish setup</p>
+          <TintedNotice tone="warning" className="mb-5 rounded-lg p-3" aria-label="Finish setup">
+            <p className="mb-2 text-[12px] font-semibold">Finish setup</p>
             <ul className="space-y-1.5">
               {setupRows.map((row) => (
-                <li key={row.key} className="flex items-center justify-between gap-2 text-[12px] text-amber-900">
+                <li key={row.key} className="flex items-center justify-between gap-2 text-[12px]">
                   <span className="min-w-0">
                     {row.label}
                     {row.optional ? " (optional)" : ""}
-                    <span className="block truncate text-xs text-amber-700">{row.note}</span>
+                    <span className="block truncate text-xs opacity-85">{row.note}</span>
                   </span>
                   {row.canRun && (
                     <button
                       onClick={() => void retrySetupStep(row.key)}
-                      className="dash-focus flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+                      className="dash-focus ui-transition flex min-h-11 shrink-0 items-center gap-1 rounded-md border border-tint-warning-border bg-ui-surface px-2.5 text-xs font-medium text-ui-text hover:bg-ui-surface-sunken md:min-h-8"
                     >
                       {row.kind === "failed" || row.kind === "interrupted" ? "Retry" : "Run"}
                     </button>
@@ -356,20 +365,20 @@ export default function ContextPanel({
                 </li>
               ))}
             </ul>
-          </div>
+          </TintedNotice>
         )}
 
         <div className="mb-1 flex w-full items-center justify-between">
           <button
             onClick={() => setDocsExpanded((v) => !v)}
             aria-expanded={docsExpanded}
-            className="dash-focus dash-section-label flex-1 py-1 text-left"
+            className="dash-focus dash-section-label min-h-9 flex-1 py-1 text-left"
           >
             Documents
           </button>
         </div>
         {docsExpanded && (
-          <div className="mb-6 divide-y divide-gray-100">
+          <div className="mb-6 divide-y divide-ui-border">
             {DOC_TYPES.map((doc) => {
               const hasContent =
                 (doc.docType === "product_info" && documentStatus.productInfo) ||
@@ -397,16 +406,22 @@ export default function ContextPanel({
                       setOpenDoc("design");
                     }
                   }}
-                  className="dash-focus dash-body flex min-h-9 w-full items-center justify-between py-1.5 text-left text-gray-700 hover:text-gray-900"
+                  className="dash-focus dash-body ui-transition flex min-h-11 w-full items-center gap-2.5 py-1.5 text-left text-ui-text md:min-h-10"
                 >
-                  <span className="flex items-center gap-2">
-                    {doc.name}
-                    {hasContent && <span className="h-1.5 w-1.5 rounded-full bg-[#00ab92]" />}
-                  </span>
+                  <FileText size={15} aria-hidden="true" className="shrink-0 text-ui-muted" />
+                  <span className="min-w-0 flex-1 truncate">{doc.name}</span>
+                  {hasContent && (
+                    <StatusChip tone="success" dot>
+                      Ready
+                    </StatusChip>
+                  )}
                   {!doc.available ? (
-                    <span className="text-xs text-ui-subtle">Coming soon</span>
+                    <span className="flex shrink-0 items-center gap-1 text-xs text-ui-subtle">
+                      <Lock size={12} aria-hidden="true" />
+                      Coming soon
+                    </span>
                   ) : (
-                    <ChevronRight size={13} className="text-gray-300" />
+                    <ChevronRight size={14} aria-hidden="true" className="shrink-0 text-ui-faint" />
                   )}
                 </button>
               );
@@ -419,7 +434,17 @@ export default function ContextPanel({
           aria-expanded={compsExpanded}
           className="dash-focus mb-2 flex min-h-9 w-full items-center justify-between"
         >
-          <h3 className="dash-section-label">Competitors</h3>
+          <span className="flex items-center gap-2">
+            <h3 className="dash-section-label">Competitors</h3>
+            {competitors.length > 0 && (
+              <span
+                className="rounded-full bg-ui-surface-sunken px-1.5 text-xs leading-4 font-medium text-ui-muted tabular-nums"
+                aria-label={`${competitors.length} competitors`}
+              >
+                {competitors.length}
+              </span>
+            )}
+          </span>
           <span className="flex items-center gap-2.5">
             <span
               role="button"
@@ -476,7 +501,7 @@ export default function ContextPanel({
             {competitors.length > 0 && (
               <button
                 onClick={() => setOpenDoc("comparison")}
-                className="mb-3 flex w-full items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[12px] font-medium text-blue-700 hover:bg-blue-100"
+                className="dash-focus ui-transition mb-3 flex min-h-11 w-full items-center justify-center rounded-lg border border-tint-info-border bg-tint-info-bg px-3 py-2 text-[12px] font-medium text-tint-info-fg hover:brightness-95 md:min-h-9"
               >
                 View Comparison Table
               </button>
@@ -496,14 +521,16 @@ export default function ContextPanel({
             ) : (
               <div className="dash-body text-gray-700">
                 {competitors.map((c) => (
-                  <div key={c.id} className="group flex min-h-9 items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <WebsiteIcon url={c.url} size={6} />
+                  <div key={c.id} className="group flex min-h-11 items-center justify-between gap-2 border-b border-ui-border last:border-b-0 md:min-h-10">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-ui-border bg-ui-surface-sunken">
+                        <WebsiteIcon url={c.url} size={5} />
+                      </span>
                       <a
                         href={normalizeHostUrl(c.url)?.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="truncate hover:text-gray-900 hover:underline"
+                        className="truncate font-medium text-ui-text hover:underline"
                       >
                         {c.url.replace(/^https?:\/\//, "")}
                       </a>
@@ -511,7 +538,7 @@ export default function ContextPanel({
                     <button
                       onClick={() => handleRemoveCompetitor(c.id)}
                       aria-label="Remove competitor"
-                      className="dash-focus shrink-0 p-1 text-gray-300 opacity-0 hover:text-gray-600 focus-visible:opacity-100 group-hover:opacity-100"
+                      className="dash-focus flex h-9 w-9 shrink-0 items-center justify-center text-ui-faint hover:text-ui-text focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100"
                     >
                       <X size={13} />
                     </button>

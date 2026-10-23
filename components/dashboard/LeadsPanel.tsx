@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/query/keys";
-import { Users, ChevronLeft, Loader2, RefreshCw, X, ExternalLink, Mail, MailCheck, MailMinus, Search, Phone, Building2, Reply, AlertTriangle } from "lucide-react";
+import { Users, ChevronLeft, Loader2, RefreshCw, X, ExternalLink, Mail, Search, Phone, Building2, Reply, AlertTriangle } from "lucide-react";
 import CollapsedRail, { RailButton } from "./CollapsedRail";
 import { useToast } from "./Toast";
 import { useProject } from "@/lib/project-store";
@@ -21,6 +21,9 @@ import type { BusinessLead } from "./leads/BusinessLeadCard";
 import { SkeletonCard } from "@/components/shared/Skeleton";
 import { FEATURES } from "@/lib/features";
 import { nextTabIndex } from "@/lib/tabKeys";
+import { IconTile } from "@/components/ui/IconTile";
+import { StatusChip } from "@/components/ui/StatusChip";
+import { initialsOf } from "@/components/ui/premium";
 import { useLockedFeature } from "@/components/plan/usePlan";
 import { LockedLine } from "@/components/plan/LockedLine";
 import type { LeadSearchTarget } from "@/lib/domain/leads/leadProfile";
@@ -736,7 +739,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
         ) : (
           <>
             <div
-              className="@container flex items-center gap-1 overflow-x-auto border-b border-gray-100 px-3 py-2"
+              className="@container mx-3 my-2 flex items-center gap-0.5 overflow-x-auto rounded-xl border border-ui-border bg-ui-surface-sunken p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               role="tablist"
               aria-label="Filter leads by email"
               onKeyDown={onFilterKeyDown}
@@ -751,8 +754,10 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                   aria-controls="leads-filter-panel"
                   tabIndex={activeFilter === value ? 0 : -1}
                   onClick={() => setFilter(value)}
-                  className={`min-h-8 shrink-0 rounded-md px-2 text-[12px] @[19rem]:px-2.5 font-medium ${
-                    activeFilter === value ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  className={`ui-transition min-h-11 flex-1 shrink-0 whitespace-nowrap rounded-lg border px-2 text-[12px] font-medium focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring-color)] md:min-h-8 @[19rem]:px-2.5 ${
+                    activeFilter === value
+                      ? "border-ui-border bg-ui-surface text-ui-text shadow-ui-sm"
+                      : "border-transparent text-ui-muted hover:text-ui-text"
                   }`}
                 >
                   {filterLabel(value, leadCounts)}
@@ -767,23 +772,28 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                 </button>
               </p>
             ) : (
-              <div id="leads-filter-panel" role="tabpanel" aria-labelledby={`leads-filter-${activeFilter}`} className="divide-y divide-gray-100">
+              <div id="leads-filter-panel" role="tabpanel" aria-labelledby={`leads-filter-${activeFilter}`} className="divide-y divide-ui-border">
                 {visibleLeads.map((lead) => {
                   const source = websiteHref(lead.source_url);
                   const meta = [lead.title, lead.company].filter(Boolean).join(" · ") || lead.email || "";
                   return (
                     <div key={lead.id} className="group">
-                      <div className="flex min-h-9 items-center gap-2 px-3 py-0.5">
-                        <input
-                          type="checkbox"
-                          checked={selected.has(lead.id)}
-                          onChange={() => toggleSelected(lead.id)}
-                          aria-label={`Select ${lead.name}`}
-                          className="h-4 w-4 shrink-0"
-                        />
-                        <div className="flex min-w-0 flex-1 items-baseline gap-2">
-                          <span className="max-w-[55%] shrink-0 truncate text-[13px] font-semibold text-gray-900">{lead.name}</span>
-                          <span className="min-w-0 truncate text-xs text-gray-500">{meta}</span>
+                      <div className="flex min-h-14 items-center gap-2 px-3 py-1.5">
+                        <label className="flex h-11 w-6 shrink-0 cursor-pointer items-center justify-center">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(lead.id)}
+                            onChange={() => toggleSelected(lead.id)}
+                            aria-label={`Select ${lead.name}`}
+                            className="h-4 w-4 shrink-0"
+                          />
+                        </label>
+                        <IconTile round size="md" aria-hidden="true">
+                          {initialsOf(lead.name)}
+                        </IconTile>
+                        <div className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] leading-5 font-semibold text-ui-text">{lead.name}</span>
+                          {meta && <span className="block truncate text-xs leading-4 text-ui-muted">{meta}</span>}
                         </div>
                         <div className="flex shrink-0 items-center gap-1.5">
                           {lead.last_reply_snippet && (
@@ -807,16 +817,18 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                             </span>
                           )}
                           {lead.email ? (
-                            <span
+                            <StatusChip
+                              tone="success"
+                              dot
                               title={`${lead.email}${lead.email_verified ? " (guessed; the mail server accepted it, which is not a guarantee it exists)" : " (found in real search results)"}`}
-                              className="text-ui-accent-strong"
                             >
-                              <MailCheck size={14} aria-label={`Email found: ${lead.email}`} />
-                            </span>
+                              Email
+                              <span className="sr-only"> found: {lead.email}</span>
+                            </StatusChip>
                           ) : (
-                            <span title="No email found" className="text-gray-300">
-                              <MailMinus size={14} aria-label="No email found" />
-                            </span>
+                            <StatusChip tone="neutral" title="No email found">
+                              No email
+                            </StatusChip>
                           )}
                           {source && (
                             <a
@@ -825,7 +837,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                               rel="noreferrer"
                               title="Open source"
                               aria-label={`Open source for ${lead.name}`}
-                              className="flex h-9 w-6 items-center justify-center text-ui-subtle hover:text-gray-700"
+                              className="flex h-11 w-6 items-center justify-center text-ui-subtle hover:text-ui-text md:h-9"
                             >
                               <ExternalLink size={12} />
                             </a>
@@ -834,14 +846,14 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                             onClick={() => handleRemove(lead.id)}
                             title="Remove"
                             aria-label={`Remove ${lead.name}`}
-                            className="flex h-9 w-7 shrink-0 items-center justify-center text-ui-subtle hover:text-gray-700 md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100"
+                            className="flex h-11 w-9 shrink-0 items-center justify-center text-ui-subtle hover:text-ui-text md:h-9 md:w-7 md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100"
                           >
                             <X size={13} />
                           </button>
                         </div>
                       </div>
                       {lead.last_reply_snippet && (
-                        <div className="flex items-center justify-between gap-2 pb-1.5 pl-9 pr-3">
+                        <div className="flex items-center justify-between gap-2 pb-1.5 pl-[4.75rem] pr-3">
                           <p className="truncate text-xs text-blue-700">&ldquo;{lead.last_reply_snippet}&rdquo;</p>
                           <button
                             onClick={() => handleDraftFollowUp(lead)}

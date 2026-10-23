@@ -6,6 +6,9 @@ import { BarChart2, ChevronLeft, ChevronRight, Link2, X, Lock, Search, Cpu, Glob
 import CollapsedRail, { RailButton } from "./CollapsedRail";
 import { useToast } from "./Toast";
 import ScoreCircle from "./ScoreCircle";
+import { SegmentedTabs, SegmentedToggle } from "@/components/ui/SegmentedTabs";
+import { NoticeActionCard, TintedNotice } from "@/components/ui/TintedNotice";
+import { CHIP_DOT, VITAL_TEXT, vitalTone } from "@/components/ui/premium";
 import FindingsWorkspace from "./FindingsWorkspace";
 import FixFirstStrip from "./FixFirstStrip";
 import { ANALYTICS_TAB_STORAGE_KEY, buildFixFirstView, pickInitialTab } from "@/lib/domain/overview/fixFirst";
@@ -101,16 +104,22 @@ type CrawledPage = {
 function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
     <div className="mb-6">
-      <h3 className="text-[13px] font-semibold text-gray-900">{title}</h3>
-      {subtitle ? <p className="mb-3 mt-0.5 text-[12px] text-gray-500">{subtitle}</p> : <div className="mb-3" />}
+      <h3 className="text-[14px] leading-5 font-semibold text-ui-text">{title}</h3>
+      {subtitle ? <p className="mb-3 mt-0.5 text-[12px] leading-4 text-ui-muted">{subtitle}</p> : <div className="mb-3" />}
       {children}
     </div>
   );
 }
 
 function StatusDot({ status }: { status: "good" | "warn" | "bad" | "Pass" | "Warn" | "Fail" | "Unknown" }) {
-  const color = (status === "good" || status === "Pass") ? "bg-[#00ab92]" : (status === "warn" || status === "Warn") ? "bg-amber-500" : status === "Unknown" ? "bg-gray-300" : "bg-red-500";
-  return <span className={`h-1.5 w-1.5 rounded-full ${color}`} />;
+  const tone = vitalTone(status);
+  const word = tone === "success" ? "Passing" : tone === "warning" ? "Needs improvement" : tone === "danger" ? "Failing" : "Not measured";
+  return (
+    <>
+      <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${CHIP_DOT[tone]}`} />
+      <span className="sr-only">{word}: </span>
+    </>
+  );
 }
 
 /** Green = improved, red = worse — inverted for `lowerIsBetter` metrics
@@ -121,7 +130,7 @@ function DeltaBadge({ change, lowerIsBetter = false }: { change: number | null; 
   if (change === null) return null;
   const improved = lowerIsBetter ? change < 0 : change > 0;
   return (
-    <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${improved ? "text-[#00ab92]" : "text-red-500"}`}>
+    <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${improved ? "text-score-good" : "text-score-bad"}`}>
       {change > 0 ? "↑" : change < 0 ? "↓" : "•"} {Math.abs(change).toFixed(1)}%
     </span>
   );
@@ -580,27 +589,16 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
       />
 
       {/* Equal-width tabs that fit the panel; below ~300px they scroll sideways with the scrollbar hidden. */}
-      <div
-        role="tablist"
-        aria-label="Analytics sections"
-        onKeyDown={onTabKeyDown}
-        className="@container flex shrink-0 gap-0.5 overflow-x-auto border-b border-gray-200 p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        {TABS.map((t) => (
-          <button
-            key={t}
-            id={`analytics-tab-${t}`}
-            role="tab"
-            type="button"
-            aria-selected={tab === t}
-            aria-controls="analytics-tabpanel"
-            tabIndex={tab === t ? 0 : -1}
-            onClick={() => chooseTab(t)}
-            className={`min-w-fit flex-1 truncate rounded-lg px-1 py-1.5 text-center text-xs font-medium @[20rem]:px-1.5 @[20rem]:text-[12px] transition-colors ${tab === t ? "bg-gray-100 text-gray-900" : "text-ui-subtle hover:text-gray-600"}`}
-          >
-            {t}
-          </button>
-        ))}
+      <div className="shrink-0 border-b border-ui-border px-3 py-2.5">
+        <SegmentedTabs
+          items={TABS}
+          value={tab}
+          onChange={chooseTab}
+          aria-label="Analytics sections"
+          idPrefix="analytics-tab-"
+          panelId="analytics-tabpanel"
+          onKeyDown={onTabKeyDown}
+        />
       </div>
 
       <div id="analytics-tabpanel" role="tabpanel" tabIndex={0} aria-labelledby={`analytics-tab-${tab}`} className="okara-scroll flex-1 overflow-y-auto p-4">
@@ -923,21 +921,27 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                 )}
 
                 {!auditData.pageSpeed && pageSpeedAuto.state === "measuring" && (
-                  <div role="status" aria-live="polite" data-testid="pagespeed-measuring" className="mb-5 flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-[12px] text-gray-600">
-                    <Loader2 size={14} className="shrink-0 animate-spin" />
-                    <span>Measuring PageSpeed... this can take up to a minute</span>
-                  </div>
+                  <TintedNotice
+                    tone="info"
+                    role="status"
+                    aria-live="polite"
+                    data-testid="pagespeed-measuring"
+                    className="mb-5"
+                    icon={<Loader2 size={14} className="animate-spin motion-reduce:animate-none" />}
+                  >
+                    Measuring PageSpeed... this can take up to a minute
+                  </TintedNotice>
                 )}
 
                 {!auditData.pageSpeed && pageSpeedAuto.state === "no_key" && !FEATURES.PLATFORM_MODE && (
-                  <div data-testid="pagespeed-no-key" className="mb-5 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-[12px] text-gray-600">
+                  <TintedNotice tone="warning" data-testid="pagespeed-no-key" className="mb-5" icon={<AlertTriangle size={14} />}>
                     PageSpeed key not configured. Add one in <span className="font-medium">Settings → API Credentials</span>.
-                  </div>
+                    <NoticeActionCard href="/settings/api-credentials" icon={<Cpu size={16} />} title="Add a PageSpeed key" caption="Settings → API Credentials" />
+                  </TintedNotice>
                 )}
 
                 {!auditData.pageSpeed && pageSpeedAuto.state !== "measuring" && !(pageSpeedAuto.state === "no_key" && !FEATURES.PLATFORM_MODE) && (
-                  <div className="mb-5 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-800">
-                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                  <TintedNotice tone="warning" className="mb-5" icon={<AlertTriangle size={14} />}>
                     {auditData.pageSpeedUnavailable ? (
                       <span>
                         PageSpeed Insights {auditData.pageSpeedUnavailable === "timeout" ? "was too slow to answer" : "did not return a result"}{" "}
@@ -952,7 +956,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                             type="button"
                             onClick={pageSpeedAuto.retry}
                             data-testid="pagespeed-try-again"
-                            className="ml-2 rounded-md border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-100"
+                            className="ui-transition ml-2 inline-flex min-h-11 items-center md:min-h-8 rounded-md border border-tint-warning-border bg-ui-surface px-2.5 text-xs font-medium text-ui-text hover:bg-ui-surface-sunken focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring-color)]"
                           >
                             Try again
                           </button>
@@ -967,7 +971,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                         Lighthouse scores.
                       </span>
                     )}
-                  </div>
+                  </TintedNotice>
                 )}
 
                 <Section
@@ -991,7 +995,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                       lighthouse: auditData.lighthouseIssues ? auditData.lighthouseIssues.desktop.length + auditData.lighthouseIssues.mobile.length : 0,
                       onPage: onPageIssues(auditData.issues).length,
                     }).map((tile) => (
-                      <button key={tile.key} onClick={() => chooseTab("Findings")} data-testid={`overview-tile-${tile.key}`} className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-left hover:bg-gray-50">
+                      <button key={tile.key} onClick={() => chooseTab("Findings")} data-testid={`overview-tile-${tile.key}`} className="ui-transition min-w-0 rounded-xl border border-ui-border bg-ui-surface p-3 text-left hover:border-ui-border-strong hover:bg-ui-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring-color)]">
                         <div className="truncate text-xs uppercase tracking-wide text-ui-subtle">{tile.label}</div>
                         <div className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{tile.value ?? "—"}</div>
                         <div className="mt-0.5 text-xs text-gray-500">{tile.caption}</div>
@@ -1006,45 +1010,48 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                   )}
                 </Section>
 
-                <Section title={auditData.pageSpeed || lastGoodPageSpeed ? "PageSpeed Scores" : "On-page score (our own crawl)"}>
+                <Section
+                  title={auditData.pageSpeed || lastGoodPageSpeed ? "PageSpeed Scores" : "On-page score (our own crawl)"}
+                  subtitle={auditData.pageSpeed || lastGoodPageSpeed ? "Lighthouse scores from Google" : undefined}
+                >
                   {auditData.pageSpeed || lastGoodPageSpeed ? (
-                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <div className="rounded-xl border border-ui-border bg-ui-surface-muted p-4">
                       {lastGoodPageSpeed && (
-                        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800" data-testid="pagespeed-stale-note">
+                        <TintedNotice tone="warning" className="mb-3 px-2.5 py-1.5" data-testid="pagespeed-stale-note">
                           Old scores, measured {describeAge(lastGoodPageSpeed.measuredAt)}. PageSpeed did not answer this run.
-                        </div>
+                        </TintedNotice>
                       )}
-                      <div className="mb-2 text-[11px] font-semibold tracking-wide text-gray-500">DESKTOP</div>
-                      <div className="grid grid-cols-4 gap-2 mb-4">
-                        <ScoreCircle value={(auditData.pageSpeed ?? lastGoodPageSpeed!.pageSpeed).desktop.performance} label="Performance" />
-                        <ScoreCircle value={(auditData.pageSpeed ?? lastGoodPageSpeed!.pageSpeed).desktop.accessibility} label="Accessibility" />
-                        <ScoreCircle value={(auditData.pageSpeed ?? lastGoodPageSpeed!.pageSpeed).desktop.bestPractices} label="Best Practices" />
-                        <ScoreCircle value={(auditData.pageSpeed ?? lastGoodPageSpeed!.pageSpeed).desktop.seo} label="SEO" />
-                      </div>
-                      <div className="mb-2 text-xs font-semibold tracking-wide text-gray-500">MOBILE</div>
-                      <div className="grid grid-cols-4 gap-2">
-                        <ScoreCircle value={(auditData.pageSpeed ?? lastGoodPageSpeed!.pageSpeed).mobile.performance} label="Performance" />
-                        <ScoreCircle value={(auditData.pageSpeed ?? lastGoodPageSpeed!.pageSpeed).mobile.accessibility} label="Accessibility" />
-                        <ScoreCircle value={(auditData.pageSpeed ?? lastGoodPageSpeed!.pageSpeed).mobile.bestPractices} label="Best Practices" />
-                        <ScoreCircle value={(auditData.pageSpeed ?? lastGoodPageSpeed!.pageSpeed).mobile.seo} label="SEO" />
-                      </div>
+                      {(["desktop", "mobile"] as const).map((dev, i) => {
+                        const scores = (auditData.pageSpeed ?? lastGoodPageSpeed!.pageSpeed)[dev];
+                        return (
+                          <div key={dev} className={i === 0 ? "mb-4" : ""}>
+                            <div className="dash-section-label mb-3">{dev === "desktop" ? "Desktop" : "Mobile"}</div>
+                            <div className="grid grid-cols-4 gap-2">
+                              <ScoreCircle value={scores.performance} label="Performance" />
+                              <ScoreCircle value={scores.accessibility} label="Accessibility" />
+                              <ScoreCircle value={scores.bestPractices} label="Best Practices" />
+                              <ScoreCircle value={scores.seo} label="SEO" />
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <div className="rounded-xl border border-ui-border bg-ui-surface-muted p-4">
                       <div className="mb-3 flex items-center gap-4">
                         <ScoreCircle value={auditData.technical.onPageScore} label="On-Page" size={56} />
-                        <p className="text-[12px] text-gray-500">
+                        <p className="text-[12px] leading-5 text-ui-muted">
                           Real on-page checks passed, from our own crawl — not a Lighthouse Performance score.
                         </p>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="rounded-lg border border-gray-200 bg-white p-3">
-                          <div className="mb-1 text-xs uppercase text-gray-500">Page Size</div>
-                          <div className="text-lg font-semibold text-gray-900">{(auditData.technical.pageSizeBytes / 1024).toFixed(1)} KB</div>
+                        <div className="rounded-lg border border-ui-border bg-ui-surface p-3">
+                          <div className="mb-1 text-xs uppercase text-ui-muted">Page Size</div>
+                          <div className="text-lg font-semibold text-ui-text">{(auditData.technical.pageSizeBytes / 1024).toFixed(1)} KB</div>
                         </div>
-                        <div className="rounded-lg border border-gray-200 bg-white p-3">
-                          <div className="mb-1 text-xs uppercase text-gray-500">DOM Size</div>
-                          <div className="text-lg font-semibold text-gray-900">{auditData.technical.domSize} elements</div>
+                        <div className="rounded-lg border border-ui-border bg-ui-surface p-3">
+                          <div className="mb-1 text-xs uppercase text-ui-muted">DOM Size</div>
+                          <div className="text-lg font-semibold text-ui-text">{auditData.technical.domSize} elements</div>
                         </div>
                       </div>
                     </div>
@@ -1053,21 +1060,17 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
 
                 {auditData.lighthouseIssues && (
                   <Section title="Lighthouse Diagnostics" subtitle="Real Lighthouse audits behind the scores — not just the four category numbers">
-                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                      <div className="mb-3 flex rounded-lg bg-gray-200/70 p-1 text-[13px]">
-                        <button
-                          onClick={() => setDevice("desktop")}
-                          className={`flex-1 rounded-md py-1.5 font-medium ${device === "desktop" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}
-                        >
-                          Desktop
-                        </button>
-                        <button
-                          onClick={() => setDevice("mobile")}
-                          className={`flex-1 rounded-md py-1.5 font-medium ${device === "mobile" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}
-                        >
-                          Mobile
-                        </button>
-                      </div>
+                    <div className="rounded-xl border border-ui-border bg-ui-surface-muted p-4">
+                      <SegmentedToggle
+                        aria-label="Device"
+                        value={device}
+                        onChange={setDevice}
+                        items={[
+                          { value: "desktop", label: "Desktop" },
+                          { value: "mobile", label: "Mobile" },
+                        ]}
+                        className="mb-3"
+                      />
                       {auditData.lighthouseIssues[device].length === 0 ? (
                         <div className="text-[12px] text-emerald-700">No Lighthouse audits below the 90% threshold.</div>
                       ) : (
@@ -1092,28 +1095,24 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
 
                 <Section title="Core Web Vitals">
                   {auditData.coreWebVitals ? (
-                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                      <div className="mb-3 flex rounded-lg bg-gray-200/70 p-1 text-[13px]">
-                        <button
-                          onClick={() => setDevice("desktop")}
-                          className={`flex-1 rounded-md py-1.5 font-medium ${device === "desktop" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}
-                        >
-                          Desktop
-                        </button>
-                        <button
-                          onClick={() => setDevice("mobile")}
-                          className={`flex-1 rounded-md py-1.5 font-medium ${device === "mobile" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}
-                        >
-                          Mobile
-                        </button>
-                      </div>
+                    <div className="rounded-xl border border-ui-border bg-ui-surface-muted p-4">
+                      <SegmentedToggle
+                        aria-label="Device"
+                        value={device}
+                        onChange={setDevice}
+                        items={[
+                          { value: "desktop", label: "Desktop" },
+                          { value: "mobile", label: "Mobile" },
+                        ]}
+                        className="mb-3"
+                      />
                       <div className="grid grid-cols-2 gap-3">
                         {Object.entries(auditData.coreWebVitals[device]).map(([key, v]) => (
-                          <div key={key} className="rounded-lg border border-gray-200 bg-white p-3">
-                            <div className="mb-1 flex items-center gap-1.5 text-xs uppercase text-gray-500">
+                          <div key={key} className="rounded-lg border border-ui-border bg-ui-surface p-3">
+                            <div className="mb-1 flex items-center gap-1.5 text-xs uppercase text-ui-muted">
                               <StatusDot status={v.status} /> {key}
                             </div>
-                            <div className={`text-lg font-semibold ${v.status === "Pass" ? "text-[#00ab92]" : v.status === "Warn" ? "text-amber-600" : "text-red-600"}`}>
+                            <div className={`text-lg font-semibold ${VITAL_TEXT[vitalTone(v.status)]}`}>
                               {v.value}
                             </div>
                           </div>
@@ -1121,7 +1120,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                       </div>
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <div className="rounded-xl border border-ui-border bg-ui-surface-muted p-4">
                       <p className="mb-3 text-[12px] text-gray-500">
                         Not LCP/FCP/CLS (that needs a real browser render) — real connection-phase timing from our
                         own crawl instead.
@@ -1304,7 +1303,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
               <>
                 <Section title="On-Page Overview" subtitle="Server configuration and page characteristics">
                   {auditedLabel && <p className="-mt-2 mb-3 text-xs text-gray-500">{auditedLabel}</p>}
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <div className="rounded-xl border border-ui-border bg-ui-surface-muted p-4">
                     <div className="mb-4 flex items-center gap-4">
                       <ScoreCircle value={auditData.technical.onPageScore} label="On-Page" size={64} />
                       <p className="text-[12px] text-gray-500">

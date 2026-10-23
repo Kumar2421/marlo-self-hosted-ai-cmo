@@ -181,6 +181,24 @@ body {
   --ui-info-soft: #eff6ff;
   --ui-info-text: #1d4ed8;
 
+  /* tinted notices + score bands (additive; dark values in theme.css) */
+  --tint-warning-bg: #fff7ed;
+  --tint-warning-fg: #9a3412;
+  --tint-warning-border: #fdba74;
+  --tint-success-bg: #f0fdf4;
+  --tint-success-fg: #166534;
+  --tint-success-border: #86efac;
+  --tint-info-bg: #eff6ff;
+  --tint-info-fg: #1e40af;
+  --tint-info-border: #bfdbfe;
+  --tint-danger-bg: #fef2f2;
+  --tint-danger-fg: #991b1b;
+  --tint-danger-border: #fca5a5;
+  --score-good: #15803d;
+  --score-mid: #c2410c;
+  --score-bad: #b91c1c;
+  --score-track: #e7e5e4;
+
   /* theme-aware solids (see app/theme.css) */
   --solid-bg: #110f0e;
   --solid-bg-hover: #292524;
@@ -237,6 +255,22 @@ body {
   --color-ui-info: var(--ui-info);
   --color-ui-info-soft: var(--ui-info-soft);
   --color-ui-info-text: var(--ui-info-text);
+  --color-tint-warning-bg: var(--tint-warning-bg);
+  --color-tint-warning-fg: var(--tint-warning-fg);
+  --color-tint-warning-border: var(--tint-warning-border);
+  --color-tint-success-bg: var(--tint-success-bg);
+  --color-tint-success-fg: var(--tint-success-fg);
+  --color-tint-success-border: var(--tint-success-border);
+  --color-tint-info-bg: var(--tint-info-bg);
+  --color-tint-info-fg: var(--tint-info-fg);
+  --color-tint-info-border: var(--tint-info-border);
+  --color-tint-danger-bg: var(--tint-danger-bg);
+  --color-tint-danger-fg: var(--tint-danger-fg);
+  --color-tint-danger-border: var(--tint-danger-border);
+  --color-score-good: var(--score-good);
+  --color-score-mid: var(--score-mid);
+  --color-score-bad: var(--score-bad);
+  --color-score-track: var(--score-track);
   --radius-ui-sm: 6px;
   --radius-ui-md: 8px;
   --radius-ui-lg: 12px;

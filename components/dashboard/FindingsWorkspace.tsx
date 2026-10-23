@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, ChevronRight, CircleDot, Loader2, RefreshCw } from "lucide-react";
+import { AlertOctagon, AlertTriangle, Check, ChevronRight, Info, Loader2, RefreshCw } from "lucide-react";
+import { IconTile } from "@/components/ui/IconTile";
 import type { Finding, FindingStatus } from "@/lib/domain/findings/findingTypes";
 import { countFindings, explainPriority, findingCountStats, findingTitle, pagePath } from "@/lib/domain/findings/findingDisplay";
 import { friendlyGithubUrlError } from "@/lib/domain/github/friendlyGithubError";
@@ -23,8 +24,15 @@ const STATUS_ACTION: Partial<Record<FindingStatus, { next: FindingStatus; label:
 
 const CAN_RECHECK = new Set<FindingStatus>(["fixing", "fixed", "failed"]);
 
-function dotClass(severity: Finding["severity"]) {
-  return severity === "critical" ? "text-red-500" : severity === "warning" ? "text-amber-500" : "text-ui-subtle";
+/** Round severity icon: red for critical, orange for warning, neutral for anything else. Colour carries the severity only. */
+function SeverityIcon({ severity }: { severity: Finding["severity"] }) {
+  const tone = severity === "critical" ? "danger" : severity === "warning" ? "warning" : "neutral";
+  const Icon = severity === "critical" ? AlertOctagon : severity === "warning" ? AlertTriangle : Info;
+  return (
+    <IconTile tone={tone} size="md" round className="mt-0.5">
+      <Icon size={15} aria-label={severity === "critical" ? "Critical" : severity === "warning" ? "Warning" : "Info"} role="img" />
+    </IconTile>
+  );
 }
 
 function Stat({ label, value, tone }: { label: string; value: number; tone?: "bad" | "good" }) {
@@ -206,17 +214,17 @@ export default function FindingsWorkspace({
           )}
         </div>
       ) : (
-        <ul className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <ul className="overflow-hidden rounded-xl border border-ui-border bg-ui-surface">
           {findings.map((finding, index) => (
-            <li key={finding.id} className="border-t border-gray-100 first:border-t-0">
+            <li key={finding.id} className="border-t border-ui-border first:border-t-0">
               <button
                 type="button"
                 onClick={() => select(finding.id)}
-                className="flex w-full items-start gap-2 px-3 py-3 text-left transition-colors hover:bg-gray-50"
+                className="ui-transition flex min-h-11 w-full items-start gap-3 px-3 py-3 text-left hover:bg-ui-surface-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring-color)]"
               >
-                <CircleDot size={14} className={`mt-0.5 shrink-0 ${dotClass(finding.severity)}`} />
+                <SeverityIcon severity={finding.severity} />
                 <span className="min-w-0 flex-1">
-                  <span className="line-clamp-2 block text-[13px] font-medium leading-5 text-gray-900">{findingTitle(finding)}</span>
+                  <span className="line-clamp-2 block text-[13px] font-semibold leading-5 text-ui-text">{findingTitle(finding)}</span>
                   <span className="mt-1 flex items-center gap-2">
                     <span className={`rounded-full border px-1.5 py-0.5 text-xs font-medium ${statusClass(finding.status)}`}>
                       {STATUS_LABEL[finding.status]}
@@ -228,7 +236,7 @@ export default function FindingsWorkspace({
                   {vanishedNote(finding) && <span data-testid="finding-vanished" className="mt-1 block text-xs text-gray-500">{vanishedNote(finding)}</span>}
                   {index < 3 && <span className="mt-1 block text-xs text-gray-500">Why it is up here: {explainPriority(finding)}</span>}
                 </span>
-                <ChevronRight size={14} className="mt-1 shrink-0 text-gray-300" />
+                <ChevronRight size={14} aria-hidden="true" className="mt-2 shrink-0 text-ui-faint" />
               </button>
             </li>
           ))}
