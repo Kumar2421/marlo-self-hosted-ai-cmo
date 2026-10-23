@@ -30,9 +30,17 @@ export class InstallationGoneError extends Error {
   }
 }
 
-/** PEM keys often arrive from env files with literal \n sequences. */
+/**
+ * PEM keys arrive from env files and dashboards in many broken shapes: literal "\n" sequences, quotes,
+ * CRLF, or line breaks flattened to spaces (OpenSSL then fails with "DECODER routines::unsupported").
+ * Rebuild a canonical PEM from the header, footer and base64 body when they are recognisable.
+ */
 export function normalizePrivateKey(raw: string): string {
-  return raw.trim().replace(/^"|"$/g, "").replace(/\\n/g, "\n");
+  const text = raw.trim().replace(/^["']|["']$/g, "").replace(/\\r/g, "").replace(/\\n/g, "\n").replace(/\r/g, "");
+  const m = text.match(/-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/);
+  if (!m) return text;
+  const lines = m[2].replace(/\s+/g, "").match(/.{1,64}/g) ?? [];
+  return `-----BEGIN ${m[1]}-----\n${lines.join("\n")}\n-----END ${m[1]}-----`;
 }
 
 export function readGithubAppConfig(env: Record<string, string | undefined> = process.env): GithubAppConfig | null {

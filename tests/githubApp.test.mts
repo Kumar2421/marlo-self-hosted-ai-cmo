@@ -126,6 +126,18 @@ test("read-only tokens request no permissions; failures carry GitHub's reason", 
   );
 });
 
+test("normalizePrivateKey repairs flattened, quoted and CRLF keys", () => {
+  const canonical = privatePem.trim();
+  const flattened = canonical.replace(/\n/g, " ");
+  const crlf = canonical.replace(/\n/g, "\r\n");
+  const quotedEscaped = `"${canonical.replace(/\n/g, "\\n")}"`;
+  for (const variant of [flattened, crlf, quotedEscaped]) {
+    const fixed = normalizePrivateKey(variant);
+    assert.equal(fixed, canonical);
+    assert.ok(createAppJwt({ appId: "1", privateKey: fixed }).split(".").length === 3);
+  }
+});
+
 test("errors never contain secrets", async () => {
   await assert.rejects(
     mintInstallationToken(cfg, 1, { fetch: async () => json({ message: "bad" }, 401) }),
