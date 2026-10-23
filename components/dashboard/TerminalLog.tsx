@@ -22,6 +22,8 @@ import { useTerminalLog } from "@/lib/terminal-log-store";
 import { stripWarning } from "@/lib/domain/integrations/logLine";
 import { useProject } from "@/lib/project-store";
 import { headerStatus, statusExpiresAt } from "@/lib/headerStatus";
+import { headerCenter } from "@/lib/domain/navbar/headerCenter";
+import { useHeaderStats } from "./useHeaderStats";
 import { useAuthUser } from "@/lib/useAuthUser";
 import { useToast } from "./Toast";
 import NotificationBell from "./notifications/NotificationBell";
@@ -86,23 +88,23 @@ function UserMenu() {
   ];
 
   return (
-    <div ref={ref} className="relative flex items-center gap-2">
-      <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-2">
-        <div className="relative flex h-7 w-7 items-center justify-center rounded-full bg-[#8a8a8a] text-[11px] font-semibold text-white">
+    <div ref={ref} className="relative flex items-center">
+      {/* Avatar only: name, email and the plan/credits line live in the menu below. */}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Account menu"
+        aria-expanded={open}
+        title={user.name}
+        className="flex h-11 w-11 items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+      >
+        <span className="relative flex h-8 w-8 items-center justify-center rounded-full bg-gray-600 text-[12px] font-semibold text-white">
           {user.initials}
-          <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full border-2 border-[#110f0e] bg-[#00ab92]" />
-        </div>
-        <div className="hidden leading-tight text-left md:block">
-          <div className="flex items-center gap-1 text-[13px] font-medium text-white">
-            {user.name}
-            <ChevronDown size={12} className={`opacity-50 transition-transform ${open ? "rotate-180" : ""}`} />
-          </div>
-          {creditsLabel && <div className="text-[11px] text-gray-400">{creditsLabel}</div>}
-        </div>
+          <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full border-2 border-[#110f0e] bg-[#00ab92]" />
+        </span>
       </button>
 
       {open && (
-        <div className="absolute right-0 top-10 z-50 w-72 rounded-xl border border-gray-200 bg-white p-3 text-gray-900 shadow-xl">
+        <div className="absolute right-0 top-11 z-50 w-72 max-w-[calc(100vw-24px)] rounded-xl border border-gray-200 bg-white p-3 text-gray-900 shadow-xl">
           <div className="mb-2 flex items-center gap-3 rounded-lg p-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#8a8a8a] text-[12px] font-semibold text-white">
               {user.initials}
@@ -364,41 +366,68 @@ export default function TerminalLog() {
     return () => clearTimeout(id);
   }, [expiresAt]);
   const status = headerStatus(lines, now);
+  const center = headerCenter(status, useHeaderStats());
 
   return (
     <div ref={ref} className="relative z-30 shrink-0 bg-white px-3 pb-1 pt-2">
       <nav aria-label="Workspace" data-testid="terminal-bar" className="flex h-12 shrink-0 items-center justify-between rounded-xl bg-[#110f0e] px-3">
-        <div className="flex min-w-0 flex-1 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           {/* Decorative logo: its "Loading" status role must not be announced on an idle page. */}
           <span aria-hidden="true" className="contents">
-            <GhostLoader className="mr-1 h-7 w-7" tone="light" />
+            <GhostLoader className="mr-1 h-7 w-7 max-[419px]:hidden" tone="light" />
           </span>
           <ProjectSwitcher />
+        </div>
 
-          {status.kind !== "idle" && (
-            <button
-              onClick={() => setLogOpen((v) => !v)}
-              aria-expanded={logOpen}
-              aria-controls="terminal-log-panel"
-              title={logOpen ? "Hide agent activity" : "Show agent activity"}
-              className="ml-2 flex min-w-0 flex-1 items-center gap-2 rounded-md border-l border-white/10 py-1 pl-3 pr-1 text-left text-[13px] hover:bg-white/5"
+        {/* Middle: the numbers while idle, the status line while a job runs (and briefly after it ends). */}
+        <div className="mx-2 flex min-w-0 flex-1 items-center justify-center">
+          {center.mode === "status" ? (
+            <p
+              data-testid="header-status"
+              className={`min-w-0 truncate text-[13px] ${center.kind === "done" ? "text-[#00ab92]" : center.kind === "error" ? "text-amber-400" : "text-gray-300"}`}
             >
-              <span className="hidden shrink-0 items-center gap-1.5 text-gray-400 md:flex">
-                <ScrollText size={13} aria-hidden />
-                Status Log
-              </span>
-              <span className="hidden shrink-0 text-gray-600 md:inline" aria-hidden>|</span>
-              <span className={`min-w-0 flex-1 truncate ${status.kind === "done" ? "text-[#00ab92]" : status.kind === "error" ? "text-amber-400" : "text-gray-300"}`}>
-                {status.kind === "done" && <Check size={12} aria-hidden className="mr-1 inline shrink-0 align-[-1px]" />}
-                {status.kind === "error" && <AlertTriangle size={12} aria-hidden className="mr-1 inline shrink-0 align-[-1px]" />}
-                {status.text}
-              </span>
-              <ChevronDown size={13} aria-hidden className={`shrink-0 text-gray-400 transition-transform ${logOpen ? "rotate-180" : ""}`} />
-            </button>
+              {center.kind === "done" && <Check size={12} aria-hidden className="mr-1 inline shrink-0 align-[-1px]" />}
+              {center.kind === "error" && <AlertTriangle size={12} aria-hidden className="mr-1 inline shrink-0 align-[-1px]" />}
+              {center.text}
+            </p>
+          ) : (
+            <ul data-testid="header-stats" className="hidden items-center gap-5 md:flex">
+              {center.items.map((item) => (
+                <li key={item.key} title={item.title} aria-label={item.title} className="flex items-baseline gap-1.5 whitespace-nowrap text-[13px]">
+                  {item.action === "connect-google" ? (
+                    <>
+                      <span className="text-gray-400">{item.label}</span>
+                      <button
+                        type="button"
+                        onClick={() => window.dispatchEvent(new CustomEvent("marlo:open-traffic-tab"))}
+                        className="rounded font-medium text-white underline decoration-white/40 underline-offset-2 hover:decoration-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                      >
+                        {item.display}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-gray-400">{item.label}</span>
+                      <span className="font-semibold tabular-nums text-white">{item.display}</span>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
 
-        <div className="ml-2 flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            onClick={() => setLogOpen((v) => !v)}
+            aria-label="Status Log"
+            aria-expanded={logOpen}
+            aria-controls="terminal-log-panel"
+            title={logOpen ? "Hide agent activity" : "Show agent activity"}
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-300 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+          >
+            <ScrollText size={16} aria-hidden />
+          </button>
           <SocialNavMenu />
           <NotificationBell />
           <UserMenu />

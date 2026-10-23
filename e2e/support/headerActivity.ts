@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 
-/** Header status button (only rendered once the log has a line). */
+/** Header status button (an icon button, always present). */
 export const statusToggle = (page: Page) => page.locator('[data-testid="terminal-bar"] button[aria-controls="terminal-log-panel"]');
 
 /**
@@ -11,7 +11,7 @@ export const statusToggle = (page: Page) => page.locator('[data-testid="terminal
 export async function makeActivity(page: Page) {
   await page.getByRole("tablist").getByRole("tab", { name: "Links", exact: true }).or(page.getByRole("button", { name: "Links", exact: true })).first().click();
   await page.getByRole("button", { name: /Check reachability/ }).click();
-  await expect(statusToggle(page)).toBeVisible();
+  await expect(page.getByTestId("header-status")).toBeVisible();
 }
 
 /** Nothing in the header bar is exposed as a live region (aria-hidden subtrees are skipped by role queries). */

@@ -192,7 +192,8 @@ for (const vp of VIEWPORTS) {
       const bar = page.getByTestId("terminal-bar");
       await expect(bar).not.toContainText("No activity");
       await expect(bar).not.toContainText("Status Log");
-      await expect(statusToggle(page)).toHaveCount(0);
+      await expect(statusToggle(page)).toHaveAttribute("aria-expanded", "false");
+      await expect(page.getByTestId("header-stats")).toBeHidden(); // numbers are hidden below 768px
       await expectBarSilent(page);
       expect((await bar.boundingBox())!.height).toBe(48);
       await makeActivity(page);
