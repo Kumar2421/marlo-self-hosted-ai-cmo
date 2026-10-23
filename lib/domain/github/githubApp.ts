@@ -38,9 +38,33 @@ export class InstallationGoneError extends Error {
 export function normalizePrivateKey(raw: string): string {
   const text = raw.trim().replace(/^["']|["']$/g, "").replace(/\\r/g, "").replace(/\\n/g, "\n").replace(/\r/g, "");
   const m = text.match(/-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/);
-  if (!m) return text;
-  const lines = m[2].replace(/\s+/g, "").match(/.{1,64}/g) ?? [];
-  return `-----BEGIN ${m[1]}-----\n${lines.join("\n")}\n-----END ${m[1]}-----`;
+  const wrap = (label: string, body: string) => `-----BEGIN ${label}-----\n${(body.match(/.{1,64}/g) ?? []).join("\n")}\n-----END ${label}-----`;
+  if (!m) {
+    // A key pasted without its BEGIN/END lines: the base64 body alone. Try the two standard formats.
+    const body = text.replace(/\s+/g, "");
+    if (body.length < 200 || !/^[A-Za-z0-9+/]+={0,2}$/.test(body)) return text;
+    for (const label of ["RSA PRIVATE KEY", "PRIVATE KEY"]) {
+      const pem = wrap(label, body);
+      try {
+        crypto.createPrivateKey(pem);
+        return pem;
+      } catch {
+        // try the next format
+      }
+    }
+    return text;
+  }
+  return wrap(m[1], m[2].replace(/\s+/g, ""));
+}
+
+/** Non-secret facts about a stored private key, for diagnosing "DECODER routines::unsupported". Never includes key material. */
+export function describePrivateKeyShape(raw: string | undefined): Record<string, string | number | boolean> {
+  if (!raw) return { present: false };
+  const text = normalizePrivateKey(raw);
+  const m = text.match(/-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/);
+  if (!m) return { present: true, hasPemHeaderFooter: false, rawLength: raw.length };
+  const body = m[2].replace(/\s+/g, "");
+  return { present: true, hasPemHeaderFooter: true, label: m[1], base64Length: body.length, base64Valid: /^[A-Za-z0-9+/]+={0,2}$/.test(body), rawLength: raw.length };
 }
 
 export function readGithubAppConfig(env: Record<string, string | undefined> = process.env): GithubAppConfig | null {
