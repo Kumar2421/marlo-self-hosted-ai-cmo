@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import { ensureXDraftColumns } from "@/lib/domain/x/xDraftStore";
+import { CHAT_THREADS_SQLITE_DDL } from "@/lib/domain/assistant/threadSchema";
 
 /** Additive columns on the linkedin_drafts table; safe to run on every startup. */
 function ensureLinkedInDraftColumns(db: Database.Database): void {
@@ -461,6 +462,7 @@ function init(): Database.Database {
  * need these run explicitly. Each guarded by a columns-list check so it's
  * safe to run on every startup. */
 function migrate(db: Database.Database) {
+  db.exec(CHAT_THREADS_SQLITE_DDL);
   ensureXDraftColumns(db);
   ensureLinkedInDraftColumns(db);
   ensureRedditPostDraftColumns(db);

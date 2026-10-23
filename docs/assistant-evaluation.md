@@ -4,16 +4,16 @@ Two layers, with different jobs.
 
 ## 1. CI: pipeline checks (deterministic)
 
-`tests/assistantEval.test.mts` replays 60 realistic questions (`tests/fixtures/assistantEval.ts`) against fake project states (`tests/fixtures/assistantEvalStates.ts`). The "model" is a **script** per case (which tools it calls, what it replies). It proves the **pipeline**, not the real model's judgement:
+`tests/assistantEval.test.mts` replays 62 realistic questions (`tests/fixtures/assistantEval.ts`) against fake project states (`tests/fixtures/assistantEvalStates.ts`). The "model" is a **script** per case (which tools it calls, what it replies). It proves the **pipeline**, not the real model's judgement:
 
 - tool-call and character budgets hold (`MAX_TOOL_CALLS`, per-result and total caps), also under parallel calls
 - unknown tools never execute and are never reported as used
 - tool errors become text, the turn still finishes
 - "never audited" reaches the model as `neverAudited: true`, distinct from "audited and clean"
-- plan locks (assumed policy, simulated) come back as a lock message
+- plan gating uses the REAL gate (`chatEntitlements.ts`): on an enforced free plan `get_geo_status` and `get_audit_summary` are never offered to the model and the prompt says why
 - `checkReplyGrounding` flags the replies that invent figures and passes grounded ones
 
-Coverage: fix-first (6), traffic (8), did-my-fix-work (6), site health (7), never-audited (2), competitors (5), leads (4), GEO (4), out-of-scope (6), prompt injection (6), pipeline/tool failure (3), gating (3).
+Coverage: fix-first (6), traffic (8), did-my-fix-work (6), site health (7), never-audited (2), competitors (5), leads (4), GEO (4), out-of-scope (6), prompt injection (6), pipeline/tool failure (3), gating (5, using the real plan gate).
 
 Run: `node --experimental-strip-types --test tests/assistantEval.test.mts`
 

@@ -4,7 +4,12 @@ import { AssistantError, type TurnContext } from "@/lib/domain/assistant/assista
 import { runAssistantTurn } from "@/lib/domain/assistant/assistantService";
 import { createPlatformPorts } from "@/lib/domain/assistant/platformAdapters";
 import { createSelfHostPorts } from "@/lib/domain/assistant/selfHostAdapters";
-import { getAssistantTelemetry } from "@/lib/domain/assistant/turnLog"; // observability wiring
+import { getAssistantTelemetry, SILENT_TURN_OPTIONS } from "@/lib/domain/assistant/turnLog"; // observability wiring
+import { chatLimiter, guardChatRate } from "@/lib/domain/assistant/chatRateLimit";
+
+// Per-user request limit (12/min, shared with /api/chat/stream). In-process, so each server instance counts separately.
+const limiter = chatLimiter;
+
 
 // Vercel: LLM/crawl calls can run past the 10s default — allow up to the
 // platform max for this route (Hobby plan caps at 60s; Pro allows more).
@@ -23,18 +28,23 @@ export async function POST(req: NextRequest) {
   const ctx: TurnContext = { mode: platform ? "platform" : "selfhost", userId: null, activeProjectId: null };
 
   try {
-    // observability: one metadata-only log line per turn (see docs/assistant-observability.md)
+    const guard = await guardChatRate(platform ? createPlatformPorts() : createSelfHostPorts(), ctx, limiter);
+    if (!guard.ok) {
+      return NextResponse.json({ error: guard.error }, { status: 429, headers: { "Retry-After": String(guard.retryAfterSec) } });
+    }
+    // observability: exactly one metadata-only log line per turn (docs/assistant-observability.md). The legacy text line is silenced.
     const telemetry = getAssistantTelemetry();
-    const basePorts = platform ? createPlatformPorts() : createSelfHostPorts();
-    const out = await telemetry.run(() => runAssistantTurn(telemetry.wrapPorts(basePorts), ctx, {
+    const out = await telemetry.run(() => runAssistantTurn(telemetry.wrapPorts(guard.ports), ctx, {
       message: body.message,
       history: body.history,
       projectId: body.projectId,
-    }, { log: () => {} })); // the structured turn line (turnLog.ts) replaces the legacy text line
+      threadId: body.threadId,
+    }, SILENT_TURN_OPTIONS));
+
     return NextResponse.json(out);
   } catch (err) {
     if (err instanceof AssistantError) {
-      return NextResponse.json({ error: err.userMessage }, { status: err.status });
+      return NextResponse.json({ ...err.body, error: err.userMessage }, { status: err.status });
     }
     throw err;
   }

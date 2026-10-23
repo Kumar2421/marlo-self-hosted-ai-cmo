@@ -183,9 +183,22 @@ export function createTurnTelemetry(opts: TelemetryOptions = {}) {
           const s = await ports.scope.authenticate(ctx);
           const p = als.getStore();
           if (p && s?.userId) p.userId = s.userId;
+          if (p && ctx.mode === "selfhost" && p.plan === "unknown") p.plan = "selfhost";
           return s;
         },
       },
+      // The plan is read from the entitlement lookup the service already makes for the turn (no extra query).
+      ...(ports.entitlements ? {
+        entitlements: {
+          ...ports.entitlements,
+          entitlement: async (ctx) => {
+            const ent = await ports.entitlements!.entitlement(ctx);
+            const p = als.getStore();
+            if (p && ent && typeof ent.plan === "string") p.plan = ent.plan;
+            return ent;
+          },
+        },
+      } : {}),
       llm: {
         ...ports.llm,
         getDriver: (providerId) => {
@@ -221,6 +234,12 @@ export function createTurnTelemetry(opts: TelemetryOptions = {}) {
 
   return { observer, run, wrapPorts, metrics };
 }
+/**
+ * Pass as the turn options of runAssistantTurn / runAssistantTurnStream in BOTH chat routes: it silences the
+ * legacy "[assistant] turn ok=..." text line so the structured line from this file is the ONE line per turn.
+ */
+export const SILENT_TURN_OPTIONS: { log: (line: string) => void } = { log: () => {} };
+
 export type TurnTelemetry = ReturnType<typeof createTurnTelemetry>;
 
 let shared: TurnTelemetry | null = null;

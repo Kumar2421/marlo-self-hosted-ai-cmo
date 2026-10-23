@@ -10,13 +10,15 @@ import type { DriverLike } from "../../lib/domain/chat/toolLoop.ts";
 import type { EvalCase, Script } from "./assistantEval.ts";
 import { EVAL_NOW, STATES } from "./assistantEvalStates.ts";
 
-export const LOCKED_MESSAGE = "This tool is not available on the free plan. Tell the user it needs an upgrade; do not guess the data.";
-
 export type CaseRun = {
   reply: string;
   /** Existing tools the model invoked (including ones a plan gate answered with the lock message). */
   called: string[];
-  /** Tool names the model asked for that do not exist. */
+  /** Tool names the model was offered (after the REAL plan gate removed locked tools). */
+  offered: string[];
+  /** The system prompt of the last driver call (carries the real plan-limits note). */
+  system: string;
+  /** Tool names the model asked for that do not exist or were locked away. */
   rejected: string[];
   /** Exactly what each tool call returned to the model, in order. */
   results: string[];
@@ -47,18 +49,19 @@ export async function runCase(c: EvalCase, makeDriver: DriverFactory, opts: { mo
   const called: string[] = [];
   const rejected: string[] = [];
   const results: string[] = [];
-  const locked = c.plan === "free" ? c.gating?.lockedOnFree ?? [] : [];
+  let offered: string[] = [];
   const provider = opts.provider ?? "anthropic";
 
   const driver = makeDriver({ rejected });
   let lastSystem = "";
   const instrumented: DriverLike = async (req) => {
     lastSystem = req.system ?? "";
+    offered = (req.tools ?? []).map((t) => t.name);
     const tools = (req.tools ?? []).map((t) => ({
       ...t,
       execute: async (input: Record<string, unknown>) => {
         called.push(t.name);
-        const out = locked.includes(t.name) ? LOCKED_MESSAGE : await t.execute(input);
+        const out = await t.execute(input);
         results.push(out);
         return out;
       },
@@ -81,6 +84,9 @@ export async function runCase(c: EvalCase, makeDriver: DriverFactory, opts: { mo
     credits: { canAfford: async () => ({ ok: true }), charge: async () => ({ ok: true }) },
     prompts: { build: async () => "You are Marlo, the user's AI CMO. Be concise and honest." },
     data: { create: () => STATES[c.state] },
+    // REAL plan gate: with an entitlement port the service computes lockedTools (chatEntitlements.ts) and the
+    // tool loop never offers them to the model. Cases without `plan` run without one (no limits), as in self-host.
+    ...(c.plan ? { entitlements: { entitlement: async () => ({ plan: c.plan!, enforced: true }), countPlatformChatMessages: async () => 0 } } : {}),
   };
   const ctx: TurnContext = { mode: "platform", userId: null, activeProjectId: null };
   try {
@@ -93,7 +99,7 @@ export async function runCase(c: EvalCase, makeDriver: DriverFactory, opts: { mo
     error = e instanceof Error ? e.message : String(e);
   }
   const grounding = checkReplyGrounding(reply, results, { today: EVAL_NOW, extraGrounded: [c.question, lastSystem] });
-  return { reply, called, rejected, results, serviceToolsUsed, grounding, error, ms: Date.now() - started };
+  return { reply, offered, system: lastSystem, called, rejected, results, serviceToolsUsed, grounding, error, ms: Date.now() - started };
 }
 
 /** Score a finished run against the case's expectations. Used by the live script (and sanity-checked in CI). */

@@ -1,5 +1,13 @@
 /** Shared vocabulary of the assistant service. Pure types plus AssistantError. */
 
+import type { ChatRunHooks } from "../chat/toolLoop.ts";
+
+/** Optional streaming observers plus a cancel signal. Omitted by the JSON endpoint. */
+export type TurnHooks = ChatRunHooks & {
+  /** True once visible text went to the client: the turn can no longer fall back to another model. */
+  hasStreamed?: () => boolean;
+};
+
 export type ChatTurnMessage = { role: "user" | "assistant"; content: string };
 
 /**
@@ -10,12 +18,14 @@ export type AssistantTurnInput = {
   message: unknown;
   history: unknown;
   projectId: unknown;
+  /** Server-side chat thread to continue; absent on the first message of a chat. */
+  threadId?: unknown;
   // The client no longer picks provider/model: the server decides (modelSelection.ts). Legacy
   // `providerId`/`model` body fields are never read by the route, so they cannot steer which key is used.
 };
 
 /** Successful turn: the JSON body the chat API returns. */
-export type AssistantTurnResult = { reply: string | undefined; toolsUsed: string[]; lookedAt: string[] };
+export type AssistantTurnResult = { reply: string | undefined; toolsUsed: string[]; lookedAt: string[]; threadId?: string };
 
 /** Who is asking and where. userId / activeProjectId are filled in by the service as it learns them. */
 export type TurnContext = {
@@ -30,11 +40,14 @@ export class AssistantError extends Error {
   readonly userMessage: string;
   /** Underlying provider/system error, if any. Never sent to the client. */
   readonly cause?: unknown;
-  constructor(status: number, userMessage: string, cause?: unknown) {
+  /** Extra JSON fields sent beside `error` (e.g. code/used/limit for the chat cap). Never secrets. */
+  readonly body?: Record<string, unknown>;
+  constructor(status: number, userMessage: string, cause?: unknown, body?: Record<string, unknown>) {
     super(userMessage);
     this.name = "AssistantError";
     this.status = status;
     this.userMessage = userMessage;
     this.cause = cause;
+    this.body = body;
   }
 }

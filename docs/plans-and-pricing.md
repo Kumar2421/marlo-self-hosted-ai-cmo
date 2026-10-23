@@ -43,7 +43,9 @@ Annual billing charges 10 months for 12 (`ANNUAL_MONTHS_CHARGED = 10`). These ar
 | Hacker News drafts | — | — | ✓ | AI-drafted Hacker News posts. |
 | AI article writer | — | — | ✓ | Long-form articles written from your strategy. |
 | CMS publishing | — | — | ✓ | Publish articles to your CMS after your approval. |
-| AI CMO chat (messages per month) | 10 | Unlimited | Unlimited | Free: 10 messages per month. Paid plans spend credits. |
+| Chat messages per month | 10 | 150 | 600 | Platform-key messages per UTC month; bring-your-own-key and self-host are unlimited. |
+| Start an SEO audit from chat | - | Yes | Yes | Paid chat feature (`chat_start_audit`). |
+| Deeper chat tools | - | Yes | Yes | GEO, audit detail (`chat_deep_tools`). |
 | Community support | ✓ | ✓ | ✓ | Help from the community. |
 | Email support | — | ✓ | ✓ | Support by email. |
 | Priority email support | — | — | ✓ | Priority support by email. |
@@ -58,7 +60,7 @@ Annual billing charges 10 months for 12 (`ANNUAL_MONTHS_CHARGED = 10`). These ar
 | `credits_per_month` | 20 | 300 | 1000 |
 | `geo_prompts` | 3 | 10 | 10 |
 | `geo_manual_runs_per_week` | 1 | Unlimited | Unlimited |
-| `chat_messages_per_month` | 10 | Unlimited | Unlimited |
+| `chat_messages_per_month` | 10 | 150 | 600 |
 | `traffic_view_days` | 28 | Unlimited | Unlimited |
 | `daily_leads` | 0 | 0 | Unlimited |
 

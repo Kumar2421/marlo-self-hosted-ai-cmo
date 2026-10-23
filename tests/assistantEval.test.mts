@@ -14,7 +14,8 @@ import * as assert from "node:assert";
 import { CHAT_TOOLS, MAX_RESULT_CHARS } from "../lib/domain/chat/tools.ts";
 import { buildAutoSummary, buildToolDefs, MAX_TOOL_CALLS, MAX_TOTAL_RESULT_CHARS } from "../lib/domain/chat/toolLoop.ts";
 import { EVAL_CASES } from "./fixtures/assistantEval.ts";
-import { LOCKED_MESSAGE, runCase, scoreCase, scriptedDriver, type CaseRun } from "./fixtures/assistantEvalHarness.ts";
+import { DEEP_CHAT_TOOLS } from "../lib/domain/assistant/chatEntitlements.ts";
+import { runCase, scoreCase, scriptedDriver, type CaseRun } from "./fixtures/assistantEvalHarness.ts";
 import { STATES } from "./fixtures/assistantEvalStates.ts";
 
 const TOOL_NAMES = new Set(CHAT_TOOLS.map((t) => t.name));
@@ -43,7 +44,7 @@ test("eval data: about 50 unique cases covering every category and every tool", 
   for (const c of EVAL_CASES) {
     assert.ok(c.state in STATES, `${c.id} state`);
     for (const t of [...c.expectedTools, ...(c.allowedTools ?? [])]) assert.ok(TOOL_NAMES.has(t), `${c.id} names real tool ${t}`);
-    for (const t of c.gating?.lockedOnFree ?? []) assert.ok(TOOL_NAMES.has(t), `${c.id} locks real tool ${t}`);
+    for (const t of c.withheldTools ?? []) assert.ok(TOOL_NAMES.has(t), `${c.id} withholds real tool ${t}`);
   }
 });
 
@@ -66,7 +67,7 @@ for (const c of EVAL_CASES) {
     else assert.equal(s.groundingFlags, 0, `grounded reply flagged: ${JSON.stringify(r.grounding.unverified)}`);
 
     // Pipeline guarantees that hold for every case.
-    const real = r.results.filter((x) => !x.startsWith(BUDGET_PREFIX) && x !== LOCKED_MESSAGE);
+    const real = r.results.filter((x) => !x.startsWith(BUDGET_PREFIX));
     assert.ok(real.length <= MAX_TOOL_CALLS, "call budget");
     assert.ok(real.every((x) => x.length <= MAX_RESULT_CHARS), "per-result cap");
     assert.ok(real.reduce((n, x) => n + x.length, 0) <= MAX_TOTAL_RESULT_CHARS, "total char cap");
@@ -140,14 +141,28 @@ test("context fallback (no tool support) also says never-audited out loud", asyn
   assert.match(await buildAutoSummary(STATES.auditedClean), /0 errors, 0 warnings/);
 });
 
-test("gating: a locked tool returns the lock message and the reply discloses no data", async () => {
-  for (const id of ["gt-1", "gt-2"]) {
+test("gating (REAL gate): free plan never offers the deep tools; pro does; the prompt tells the model why", async () => {
+  for (const id of ["gt-1", "gt-2", "gt-3", "gt-4"]) {
     const r = await run(id);
-    assert.deepEqual(r.results, [LOCKED_MESSAGE]);
+    for (const t of DEEP_CHAT_TOOLS) assert.ok(!r.offered.includes(t), `${id} must not offer ${t}`);
+    assert.ok(r.offered.includes("list_findings") && r.offered.includes("list_leads"), `${id} keeps the other tools`);
+    assert.match(r.system, /paid-plan feature/);
   }
-  // A tool that is not locked on free still returns real data.
-  const open = await run("gt-3");
-  assert.match(open.results[0], /"rank":1/);
+  const pro = await run("gt-5");
+  for (const t of DEEP_CHAT_TOOLS) assert.ok(pro.offered.includes(t), `pro offers ${t}`);
+  assert.doesNotMatch(pro.system, /paid-plan feature/);
+  assert.match(pro.results[0], /"cited":2/);
+  // The withheld list in the data matches the production constant.
+  const withheld = EVAL_CASES.filter((c) => c.plan === "free").flatMap((c) => c.withheldTools ?? []);
+  assert.deepEqual([...new Set(withheld)].sort(), [...DEEP_CHAT_TOOLS].sort());
+});
+
+test("gating: a model that asks for a withheld tool anyway cannot run it", async () => {
+  const c = { ...EVAL_CASES.find((x) => x.id === "gt-1")!, script: { calls: [{ tool: "get_geo_status" }], reply: "I checked." } };
+  const r = await runCase(c, scriptedDriver(c.script));
+  assert.deepEqual(r.rejected, ["get_geo_status"]);
+  assert.deepEqual(r.serviceToolsUsed, []);
+  assert.deepEqual(r.results, []);
 });
 
 test("grounding: deliberately invented replies are the ones flagged, with the invented figures named", async () => {

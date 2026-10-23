@@ -1,4 +1,3 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AuditSummary, GeoStatus, LeadSummary } from "./tools.ts";
 
 /** Row shape the lead summary needs (both stores map into this). */
@@ -27,31 +26,6 @@ export function summarizeLeads(rows: LeadRow[], recentLimit: number): LeadSummar
       emailed: !!r.emailed_at, replied: !!r.last_reply_at, createdAt: r.created_at,
     })),
   };
-}
-
-const LEAD_COLUMNS = "name, title, company, location, lead_type, email, email_verified, emailed_at, last_reply_at, created_at";
-
-export async function supabaseLeadSummary(db: SupabaseClient, userId: string, projectId: string, recentLimit: number): Promise<LeadSummary> {
-  const { data, error } = await db
-    .from("leads")
-    .select(LEAD_COLUMNS)
-    .eq("user_id", userId)
-    .eq("project_id", projectId)
-    .order("created_at", { ascending: false })
-    .limit(LEAD_SCAN_LIMIT);
-  if (error) throw new Error(`Could not load leads: ${error.message}`);
-  return summarizeLeads((data ?? []) as LeadRow[], recentLimit);
-}
-
-export async function supabaseGeoStatus(db: SupabaseClient, userId: string, projectId: string): Promise<GeoStatus> {
-  const { data, error } = await db
-    .from("geo_checks")
-    .select("payload, checked_at")
-    .eq("user_id", userId)
-    .eq("project_id", projectId)
-    .maybeSingle();
-  if (error) throw new Error(`Could not load GEO check: ${error.message}`);
-  return geoFromRow(data ? { payload: data.payload, checked_at: String(data.checked_at) } : null);
 }
 
 type AuditLikePayload = {
@@ -84,31 +58,6 @@ export function auditFromRow(row: { payload: unknown; created_at: string; url?: 
     topIssues: [...errors, ...warnings].slice(0, 10),
     scores: a.pageSpeed?.mobile ?? null,
   };
-}
-
-export async function supabaseAuditSummary(db: SupabaseClient, userId: string, projectId: string): Promise<AuditSummary> {
-  const { data, error } = await db
-    .from("seo_audits")
-    .select("url, payload, created_at")
-    .eq("user_id", userId)
-    .eq("project_id", projectId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw new Error(`Could not load SEO audit: ${error.message}`);
-  return auditFromRow(data ? { payload: data.payload, created_at: String(data.created_at), url: data.url } : null);
-}
-
-export async function supabaseCompetitors(db: SupabaseClient, userId: string, projectId: string): Promise<string[]> {
-  const { data, error } = await db
-    .from("project_competitors")
-    .select("url")
-    .eq("user_id", userId)
-    .eq("project_id", projectId)
-    .order("created_at", { ascending: true })
-    .limit(50);
-  if (error) throw new Error(`Could not load competitors: ${error.message}`);
-  return (data ?? []).map((r) => String(r.url));
 }
 
 /** `payload` is a JSON string (SQLite) or already-parsed JSON (Postgres). */

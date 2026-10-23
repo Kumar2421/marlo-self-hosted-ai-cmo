@@ -3,13 +3,15 @@ import * as assert from "node:assert";
 import { runAssistantTurn, type AssistantPorts } from "../lib/domain/assistant/assistantService.ts";
 import { AssistantError, type TurnContext } from "../lib/domain/assistant/assistantTypes.ts";
 import { assistantHealthResponse } from "../lib/domain/assistant/healthEndpoint.ts";
-import { buildTurnLogLine, createMetrics, createTurnTelemetry, hashUserId, percentile, type TurnProbe } from "../lib/domain/assistant/turnLog.ts";
+import { SILENT_TURN_OPTIONS, buildTurnLogLine, createMetrics, createTurnTelemetry, hashUserId, percentile, type TurnProbe } from "../lib/domain/assistant/turnLog.ts";
 import type { ChatPorts } from "../lib/domain/chat/tools.ts";
 
 const EMAIL = "jane.doe@secretcorp.com";
 const TOKEN = "sk-live-AbCdEf0123456789XyZ9876543210";
 const MESSAGE = "my private question about Project Falcon revenue";
 const USER = "user-uuid-1234-5678";
+const THREAD = "11111111-2222-4333-8444-555555555555";
+const STREAM_DELTA = "streamed private delta about Project Falcon";
 
 const chatPorts = {
   getSearchSnapshot: async () => null, listFindings: async () => [], getFinding: async () => null, recommendationsFor: () => [],
@@ -17,37 +19,40 @@ const chatPorts = {
   getGeoStatus: async () => null, getAuditSummary: async () => null, listCompetitors: async () => [], now: () => new Date("2026-10-23T00:00:00Z"),
 } as unknown as ChatPorts;
 
-function ports(o: { fail?: boolean; reply?: string; tool?: boolean; failFirst?: boolean } = {}): AssistantPorts {
+function ports(o: { fail?: boolean; reply?: string; tool?: boolean; failFirst?: boolean; fallback?: boolean; plan?: string; stream?: boolean } = {}): AssistantPorts {
   let n = 0;
   return {
     scope: { authenticate: async () => ({ userId: USER }), activeProjectId: async () => "p1" },
     llm: {
       supportsTools: () => true,
-      getDriver: () => async (req) => {
+      getDriver: (providerId) => async (req) => {
         n += 1;
+        if (o.fallback && providerId === "groq") throw Object.assign(new Error(`rate limited ${EMAIL}`), { status: 429 });
+        if (o.stream) return { stream: new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode(STREAM_DELTA)); c.close(); } }) };
         if (o.fail || (o.failFirst && n === 1)) throw Object.assign(new Error(`boom ${EMAIL} ${TOKEN}`), { status: 429 });
         if (o.tool !== false) await req.tools?.find((t) => t.name === "get_audit_summary")?.execute({});
         return { text: o.reply ?? `Hello ${EMAIL}, you have 4242 clicks. ${TOKEN}` };
       },
     },
     credentials: {
-      resolve: async () => ({ kind: "byok", apiKey: TOKEN, baseUrl: undefined }),
-      preferredModel: async () => ({ providerId: "anthropic", model: "claude-x" }),
-      platformAvailable: () => false,
+      resolve: async () => (o.fallback ? { kind: "platform", loadApiKey: () => TOKEN } : { kind: "byok", apiKey: TOKEN, baseUrl: undefined }),
+      preferredModel: async () => (o.fallback ? null : { providerId: "anthropic", model: "claude-x" }),
+      platformAvailable: (id) => Boolean(o.fallback) && (id === "groq" || id === "mistral"),
     },
     credits: { canAfford: async () => ({ ok: true }), charge: async () => ({ ok: true }) },
     prompts: { build: async () => "SYS" },
     data: { create: () => chatPorts },
+    entitlements: { entitlement: async () => ({ plan: (o.plan ?? "free") as never, enforced: false }), countPlatformChatMessages: async () => 0 },
   };
 }
 const ctx: TurnContext = { mode: "platform", userId: null, activeProjectId: null };
-const input = { message: MESSAGE, history: [], projectId: "p1" };
+const input = { message: MESSAGE, history: [], projectId: "p1", threadId: THREAD };
 
-async function turn(p: AssistantPorts, plan = "free") {
+async function turn(p: AssistantPorts, plan?: string) {
   const lines: string[] = [];
   const t = createTurnTelemetry({ write: (l) => lines.push(l), salt: "pepper", now: () => new Date("2026-10-23T10:00:00Z") });
   let err: unknown = null;
-  try { await t.run(() => runAssistantTurn(t.wrapPorts(p), ctx, input), { plan }); } catch (e) { err = e; }
+  try { await t.run(() => runAssistantTurn(t.wrapPorts(p), ctx, input, SILENT_TURN_OPTIONS), { plan }); } catch (e) { err = e; }
   return { lines, t, err };
 }
 
@@ -60,9 +65,9 @@ test("log line has the expected shape and none of the sensitive content", async 
   assert.equal(line.provider, "anthropic");
   assert.equal(line.model, "claude-x");
   assert.deepEqual(line.tools, ["get_audit_summary"]);
-  assert.equal(line.plan, "free");
+  assert.equal(line.plan, "free", "plan comes from the turn's entitlement lookup");
   assert.ok(line.groundingFlags >= 1, "4242 is invented");
-  for (const secret of [EMAIL, TOKEN, MESSAGE, USER, "Falcon", "secretcorp", "4242", "SYS"]) {
+  for (const secret of [EMAIL, TOKEN, MESSAGE, USER, THREAD, STREAM_DELTA, "Falcon", "secretcorp", "4242", "SYS"]) {
     assert.ok(!lines[0].includes(secret), `leaked ${secret}`);
   }
   assert.equal(line.u, hashUserId(USER, "pepper"));
@@ -121,7 +126,7 @@ test("fallback across candidates is visible via attempts/candidateIndex when mod
 test("concurrent turns keep separate probes", async () => {
   const lines: string[] = [];
   const t = createTurnTelemetry({ write: (l) => lines.push(l) });
-  const mk = (tool: boolean) => t.run(() => runAssistantTurn(t.wrapPorts(ports({ tool, reply: "fine" })), ctx, input));
+  const mk = (tool: boolean) => t.run(() => runAssistantTurn(t.wrapPorts(ports({ tool, reply: "fine" })), ctx, input, SILENT_TURN_OPTIONS));
   await Promise.all([mk(true), mk(false), mk(true)]);
   const parsed = lines.map((l) => JSON.parse(l));
   assert.equal(parsed.length, 3);
@@ -182,4 +187,49 @@ test("admin endpoint: 401 without or with a wrong bearer or unset secret, 200 wi
     assert.equal(ok.body.turns, 0);
     assert.match(ok.body.note, /per server instance/);
   }
+});
+
+test("exactly ONE log line per turn (route options): ok, fallback and failed turns; the legacy text line is silenced", async () => {
+  const legacy: string[] = [];
+  const spy = console.log;
+  console.log = (...a: unknown[]) => { legacy.push(a.join(" ")); };
+  try {
+    for (const [name, p, kind] of [["ok", ports(), null], ["fallback", ports({ fallback: true }), null], ["failed", ports({ fail: true }), "rate_limit"]] as const) {
+      const lines: string[] = [];
+      const t = createTurnTelemetry({ write: (l) => lines.push(l) });
+      await t.run(() => runAssistantTurn(t.wrapPorts(p), ctx, input, SILENT_TURN_OPTIONS)).catch(() => {});
+      assert.equal(lines.length, 1, `${name}: structured lines`);
+      assert.equal(t.metrics.snapshot().turns, 1, `${name}: counted once`);
+      const line = JSON.parse(lines[0]);
+      assert.equal(line.errorKind, kind, name);
+      if (name === "fallback") { assert.equal(line.fallback, true); assert.equal(line.candidateIndex, 1); assert.equal(line.attempts, 2); assert.equal(line.provider, "mistral"); assert.equal(t.metrics.snapshot().fallbacks, 1); }
+      if (name === "failed") assert.ok(line.ok === false);
+      assert.ok(!lines[0].includes(EMAIL), name);
+    }
+  } finally { console.log = spy; }
+  assert.deepEqual(legacy.filter((l) => l.includes("[assistant]")), [], "legacy text line must not be printed");
+});
+
+test("streaming turn: counted once, plan logged, stream delta and thread id never reach the line", async () => {
+  const { runAssistantTurnStream } = await import("../lib/domain/assistant/assistantStream.ts");
+  const lines: string[] = [];
+  const events: unknown[] = [];
+  const t = createTurnTelemetry({ write: (l) => lines.push(l), salt: "pepper" });
+  const sp = ports({ stream: true, plan: "pro", tool: false });
+  sp.data = { create: () => null }; // no project data: the plain call path is the one that really streams
+  await t.run(() => runAssistantTurnStream(t.wrapPorts(sp), ctx, input, (e) => events.push(e), { chunkDelayMs: 0, ...SILENT_TURN_OPTIONS }));
+  assert.equal(lines.length, 1);
+  assert.equal(t.metrics.snapshot().turns, 1);
+  assert.ok(JSON.stringify(events).includes("streamed private delta"), "the client did receive the text");
+  const line = JSON.parse(lines[0]);
+  assert.equal(line.plan, "pro");
+  for (const secret of [STREAM_DELTA, "streamed private", THREAD, MESSAGE, EMAIL, TOKEN, USER]) assert.ok(!lines[0].includes(secret), `leaked ${secret}`);
+});
+
+test("self-host turns log plan 'selfhost'", async () => {
+  const lines: string[] = [];
+  const t = createTurnTelemetry({ write: (l) => lines.push(l) });
+  const p = ports(); delete p.entitlements;
+  await t.run(() => runAssistantTurn(t.wrapPorts(p), { ...ctx, mode: "selfhost" }, input, SILENT_TURN_OPTIONS));
+  assert.equal(JSON.parse(lines[0]).plan, "selfhost");
 });
