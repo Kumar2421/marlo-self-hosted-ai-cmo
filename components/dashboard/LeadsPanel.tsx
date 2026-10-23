@@ -9,7 +9,7 @@ import { useToast } from "./Toast";
 import { useProject } from "@/lib/project-store";
 import { useProviders, findProviderForModel } from "@/lib/providers-store";
 import { useTerminalLog } from "@/lib/terminal-log-store";
-import ComposeEmailModal from "./ComposeEmailModal";
+import OutreachPanel from "./leads/outreach/OutreachPanel";
 import GmailOutreachBar from "./leads/GmailOutreachBar";
 import { useGmailStatus } from "./leads/useGmailStatus";
 import { useLeadProfile } from "./leads/useLeadProfile";
@@ -136,6 +136,17 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
   const [followUpDraft, setFollowUpDraft] = useState<{ leadId: string; subject: string; body: string } | null>(null);
   const [draftingFollowUp, setDraftingFollowUp] = useState<string | null>(null);
   const { show } = useToast();
+  /** Shows who was emailed in the list. Skipped leads were not emailed, so they keep their old status. */
+  function markEmailed(results: { id: string; status: "sent" | "failed" | "skipped" }[]) {
+    const byId = new Map(results.filter((r) => r.status !== "skipped").map((r) => [r.id, r]));
+    setLeads((prev) =>
+      prev.map((l) => {
+        const r = byId.get(l.id);
+        if (!r) return l;
+        return { ...l, email_status: r.status === "sent" ? "sent" : "failed", emailed_at: r.status === "sent" ? new Date().toISOString() : l.emailed_at };
+      }),
+    );
+  }
   const { project, leadsVersion } = useProject();
   const { primaryModel } = useProviders();
   const { log, logDone } = useTerminalLog();
@@ -643,18 +654,12 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
       )}
 
       {composeOpen && (
-        <ComposeEmailModal
+        <OutreachPanel
           leads={leads.filter((l) => selected.has(l.id))}
+          gmailEmail={gmail.email}
           onClose={() => setComposeOpen(false)}
           onSent={(results) => {
-            const byId = new Map(results.map((r) => [r.id, r]));
-            setLeads((prev) =>
-              prev.map((l) => {
-                const r = byId.get(l.id);
-                if (!r) return l;
-                return { ...l, email_status: r.status, emailed_at: r.status === "sent" ? new Date().toISOString() : l.emailed_at };
-              })
-            );
+            markEmailed(results);
             const sentCount = results.filter((r) => r.status === "sent").length;
             show(`Sent ${sentCount} of ${results.length} email${results.length === 1 ? "" : "s"}.`);
             setSelected(new Set());
@@ -663,33 +668,27 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
       )}
 
       {followUpDraft && (
-        <ComposeEmailModal
+        <OutreachPanel
           leads={leads.filter((l) => l.id === followUpDraft.leadId)}
+          gmailEmail={gmail.email}
           initialSubject={followUpDraft.subject}
           initialBody={followUpDraft.body}
           onClose={() => setFollowUpDraft(null)}
           onSent={(results) => {
-            const sent = results.find((r) => r.status === "sent");
-            show(sent ? "Follow-up sent." : "Failed to send follow-up.");
-            setFollowUpDraft(null);
+            markEmailed(results);
+            show(results.some((r) => r.status === "sent") ? "Follow-up sent." : "Follow-up was not sent.");
           }}
         />
       )}
 
       {bizEmailLead && (
-        <ComposeEmailModal
+        <OutreachPanel
           leads={[bizEmailLead]}
+          gmailEmail={gmail.email}
           onClose={() => setBizEmailLead(null)}
           onSent={(results) => {
-            const r = results.find((x) => x.id === bizEmailLead.id);
-            if (r) {
-              setLeads((prev) =>
-                prev.map((l) =>
-                  l.id === r.id ? { ...l, email_status: r.status, emailed_at: r.status === "sent" ? new Date().toISOString() : l.emailed_at } : l
-                )
-              );
-            }
-            show(r?.status === "sent" ? "Email sent." : "Failed to send the email.");
+            markEmailed(results);
+            show(results.some((r) => r.status === "sent") ? "Email sent." : "Email was not sent.");
           }}
         />
       )}
