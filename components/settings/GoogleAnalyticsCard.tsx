@@ -2,6 +2,7 @@
 
 /* eslint-disable react-hooks/set-state-in-effect */
 
+import { useOauthBusy } from "@/components/shared/useOauthBusy";
 import { CREDENTIALS_PATH } from "@/lib/settingsPaths";
 import { useEffect, useState } from "react";
 import { AlertTriangle, Check } from "lucide-react";
@@ -39,6 +40,7 @@ export default function GoogleAnalyticsCard() {
   const { project } = useProject();
   const [resources, setResources] = useState<IntegrationResources[]>([]);
   const [busy, setBusy] = useState(false);
+  const [connecting, setConnecting] = useOauthBusy();
   const [loaded, setLoaded] = useState(false);
   const health = useGoogleConnection(project?.id);
 
@@ -65,7 +67,7 @@ export default function GoogleAnalyticsCard() {
   }, [project]);
 
   async function handlePlatformConnect() {
-    setBusy(true);
+    setConnecting(true);
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -76,7 +78,7 @@ export default function GoogleAnalyticsCard() {
       },
     });
     if (error) {
-      setBusy(false);
+      setConnecting(false);
       show(error.message);
     }
   }
@@ -153,10 +155,10 @@ export default function GoogleAnalyticsCard() {
       ) : FEATURES.PLATFORM_MODE ? (
         <button
           onClick={handlePlatformConnect}
-          disabled={busy}
+          disabled={busy || connecting}
           className="inline-flex items-center gap-1.5 rounded-lg bg-[#111111] px-3 py-2 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50"
         >
-          {busy ? "Connecting..." : "Connect Google"}
+          {busy || connecting ? "Connecting..." : "Connect Google"}
         </button>
       ) : (
         <a

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useOauthBusy } from "@/components/shared/useOauthBusy";
 import { AlertTriangle, Check, Mail } from "lucide-react";
 import { FEATURES } from "@/lib/features";
 import { googleOAuthQueryParams, scopesFor } from "@/lib/googleOAuthScopes";
@@ -19,7 +20,7 @@ import { useGmailStatus } from "./useGmailStatus";
  */
 export default function GmailOutreachBar() {
   const gmail = useGmailStatus();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useOauthBusy();
   const [error, setError] = useState<string | null>(null);
 
   async function connectHosted() {
