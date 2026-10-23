@@ -8,6 +8,8 @@ import { useTerminalLog } from "@/lib/terminal-log-store";
 import type { Finding } from "@/lib/domain/seo/SEOAgent";
 import type { ProposedFix } from "@/lib/domain/codefix/types";
 
+const MISSING_MODEL = "Select a model first — connect a provider in Settings → LLM Providers.";
+
 export default function CodeFixModal({
   finding,
   onClose,
@@ -26,13 +28,11 @@ export default function CodeFixModal({
   const [error, setError] = useState<string | null>(null);
   const [prUrl, setPrUrl] = useState<string | null>(null);
 
+  const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
+  const missingModel = !primaryModel || !providerId;
+
   useEffect(() => {
-    const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
-    if (!primaryModel || !providerId) {
-      setError("Select a model first — connect a provider in Settings → LLM Providers.");
-      setProposing(false);
-      return;
-    }
+    if (!primaryModel || !providerId) return;
 
     log(`Looking for the file that renders ${finding.label.toLowerCase()}...`);
     fetch("/api/agents/codefix/propose", {
@@ -56,7 +56,7 @@ export default function CodeFixModal({
       })
       .finally(() => setProposing(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [primaryModel, providerId]);
 
   async function handleApply() {
     if (!proposed) return;
@@ -95,22 +95,22 @@ export default function CodeFixModal({
           <div className="flex items-center gap-2 text-[14px] font-semibold text-gray-900">
             <Code2 size={15} className="text-gray-500" /> Fix in code — {finding.label}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">
+          <button onClick={onClose} className="text-ui-subtle hover:text-gray-700">
             <X size={18} />
           </button>
         </div>
 
         <div className="okara-scroll flex-1 space-y-3 overflow-y-auto p-4">
-          {proposing ? (
+          {proposing && !missingModel ? (
             <div className="flex flex-col items-center justify-center py-10 text-center text-gray-500">
-              <Loader2 className="animate-spin text-gray-400 mb-2" size={22} />
+              <Loader2 className="animate-spin text-ui-faint mb-2" size={22} />
               <p className="text-sm">Reading the repo and drafting a fix...</p>
             </div>
-          ) : error ? (
-            <div className="rounded-lg bg-red-50 px-3 py-2 text-[12px] text-red-700">{error}</div>
+          ) : missingModel || error ? (
+            <div className="rounded-lg bg-red-50 px-3 py-2 text-[12px] text-red-700">{missingModel ? MISSING_MODEL : error}</div>
           ) : prUrl ? (
             <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e6f7f4] text-[#00846f]">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e6f7f4] text-ui-accent-strong">
                 <Check size={18} />
               </span>
               <p className="text-[13px] text-gray-700">Draft PR opened — review and merge on GitHub when ready.</p>

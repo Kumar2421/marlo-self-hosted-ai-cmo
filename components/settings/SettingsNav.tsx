@@ -55,7 +55,7 @@ function NavGroup({
   return (
     <div className="mb-5">
       {title && (
-        <div className="mb-1 px-3 text-[11px] font-semibold tracking-wide text-gray-400">{title}</div>
+        <div className="mb-1 px-3 text-xs font-semibold tracking-wide text-ui-subtle">{title}</div>
       )}
       {items.map((item) => {
         const Icon = item.icon;
