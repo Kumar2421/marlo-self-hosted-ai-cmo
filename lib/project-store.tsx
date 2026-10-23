@@ -16,6 +16,7 @@ import {
   type DocKey,
   type DocOutcome,
 } from "./domain/project/setupRun";
+import { runDag, documentConcurrency, isRateLimited, RATE_LIMIT_BACKOFF_MS, type DagNode } from "./domain/project/docScheduler";
 import {
   SETUP_STEPS,
   WAITING_PREFIX,
@@ -166,6 +167,31 @@ async function maybeDiscoverCompetitors(
   }
 }
 
+/** POSTs a document route. Documents now generate a few at a time, so a provider
+ * rate limit (429, or the raw message the route passes through) is retried with
+ * a short backoff before the document is reported as failed. Any other failure
+ * is returned as-is. A failed attempt's body is read from a clone. */
+async function postDocument(
+  url: string,
+  model: string,
+  providerId: string,
+  title: string,
+  log: (text: string) => void
+): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model, providerId }),
+    });
+    if (res.ok || attempt >= RATE_LIMIT_BACKOFF_MS.length) return res;
+    const data = await res.clone().json().catch(() => ({}));
+    if (!isRateLimited(res.status, typeof data.error === "string" ? data.error : undefined)) return res;
+    log(`${title}: the model provider is rate limiting us — retrying in ${Math.round(RATE_LIMIT_BACKOFF_MS[attempt] / 1000)}s.`);
+    await new Promise((r) => setTimeout(r, RATE_LIMIT_BACKOFF_MS[attempt]));
+  }
+}
+
 /** Same stream → accumulate → POST /save shape as DocumentPanel.tsx's
  * handleGenerate — every /api/project/documents/<doc>/route.ts POST always
  * streams (see e.g. ProductInfoGenerator.generate's stream: true), so
@@ -185,11 +211,7 @@ async function generateAndSaveDocument(
 ): Promise<boolean> {
   const base = `/api/project/documents/${apiPath}`;
   try {
-    const res = await fetch(base, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, providerId }),
-    });
+    const res = await postDocument(base, model, providerId, title, log);
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -280,11 +302,7 @@ async function generateSelfSavingDocument(
   log: (text: string) => void
 ): Promise<boolean> {
   try {
-    const res = await fetch(`/api/project/documents/${apiPath}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, providerId }),
-    });
+    const res = await postDocument(`/api/project/documents/${apiPath}`, model, providerId, title, log);
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -331,7 +349,8 @@ type SetupHooks = {
 async function autoGenerateContextDocuments(
   projectId: string,
   primaryModel: string | null,
-  hasCompetitors: boolean,
+  /** Resolves once competitor discovery has finished (true = at least one competitor exists). */
+  hasCompetitorsP: Promise<boolean>,
   log: (text: string) => void,
   logDone: (text: string) => void,
   onSaved: () => void,
@@ -341,12 +360,18 @@ async function autoGenerateContextDocuments(
   priorProblems: string[],
   only: Set<DocKey>,
   prior: Partial<Record<SetupStepKey, SetupStatus>>,
-  hooks: SetupHooks
+  hooks: SetupHooks,
+  /** Description / competitors / leads running alongside the documents; the final
+   * summary line waits for them. Never rejects. */
+  lanesDone: Promise<void>,
+  /** Set by a lane that lost a step claim to another tab: remaining documents are not started. */
+  ctl: { stopped: boolean }
 ): Promise<void> {
   const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
   if (!primaryModel || !providerId) {
     log("Skipping auto-generated context documents — connect a model in Settings to enable it.");
     for (const k of DOC_STEP_ORDER) if (only.has(k)) hooks.settle(k, "failed", "connect a model in Settings");
+    await lanesDone;
     const last = finalSetupLine([...priorProblems, "no documents (connect a model in Settings)"]);
     log(`⚠ ${last.text}`);
     return;
@@ -366,13 +391,13 @@ async function autoGenerateContextDocuments(
     const was = prior[k];
     outcomes.push({ key: k, title: DOC_STEP_TITLES[k], status: was === "done" ? "ready" : was === "skipped" ? "skipped" : "failed" });
   }
-  let stopped = false;
+  const stoppedNow = () => ctl.stopped;
 
   /** Runs one document unless a prerequisite failed (then it is left waiting and
    * the reason is logged), records the outcome, and bumps documentsVersion on a
    * real save so the Context panel picks it up. */
   const step = async (key: DocKey, run: () => Promise<boolean>): Promise<void> => {
-    if (!only.has(key) || stopped) return;
+    if (!only.has(key) || ctl.stopped) return;
     const title = DOC_STEP_TITLES[key];
     const blocker = blockedBy(key, outcomes);
     if (blocker) {
@@ -381,8 +406,12 @@ async function autoGenerateContextDocuments(
       hooks.settle(key, "pending", `${WAITING_PREFIX}${blocker}`);
       return;
     }
+    if (!(await guard())) {
+      ctl.stopped = true;
+      return;
+    }
     if (!(await hooks.claim(key))) {
-      stopped = true;
+      ctl.stopped = true;
       return;
     }
     const ok = await run();
@@ -392,35 +421,56 @@ async function autoGenerateContextDocuments(
   };
   const generate = (key: DocKey) =>
     step(key, () => generateAndSaveDocument(key, DOC_STEP_TITLES[key], primaryModel, providerId, log));
-  /** True to carry on to the next document. */
-  const proceed = async (key: DocKey): Promise<boolean> => (only.has(key) && !stopped ? guard() : !stopped);
+
+  let hasCompetitors = false;
+  const skipNoCompetitors = (key: "competitor-analysis" | "competitor-comparison") => {
+    if (!only.has(key)) return;
+    outcomes.push({ key, title: DOC_STEP_TITLES[key], status: "skipped" });
+    hooks.settle(key, "skipped");
+  };
+
+  // Dependency graph (see PREREQUISITES in setupRun.ts and each route's grounding reads):
+  // Marketing Strategy reads Product Info; Content Strategy reads Product Info, Marketing
+  // Strategy and Competitor Analysis; Design Guide reads Marketing Strategy; the two
+  // competitor documents read only competitors + the crawl. Everything independent runs
+  // together, capped for provider rate limits.
+  type Node = DocKey | "competitors-ready";
+  const nodes: DagNode<Node>[] = [
+    { key: "product-info" },
+    { key: "competitors-ready", noSlot: true },
+    { key: "marketing-strategy", after: ["product-info"] },
+    { key: "competitor-analysis", after: ["competitors-ready"] },
+    { key: "competitor-comparison", after: ["competitors-ready"] },
+    { key: "design-guide", after: ["marketing-strategy"] },
+    { key: "content-strategy", after: ["product-info", "marketing-strategy", "competitor-analysis"] },
+  ];
 
   log(`Writing your Context documents — ${DOC_STEP_ORDER.filter((k) => only.has(k)).map((k) => DOC_STEP_TITLES[k]).join(", ")}...`);
-  await generate("product-info");
-  if (!(await proceed("product-info"))) return;
-  await generate("marketing-strategy");
-  if (!(await proceed("marketing-strategy"))) return;
-  if (hasCompetitors) {
-    await generate("competitor-analysis");
-    if (!(await proceed("competitor-analysis"))) return;
-    await step("competitor-comparison", () =>
-      generateSelfSavingDocument("competitor-comparison", "Competitor Comparison", primaryModel, providerId, log)
-    );
-    if (!(await proceed("competitor-comparison"))) return;
-  } else {
-    for (const k of ["competitor-analysis", "competitor-comparison"] as const) {
-      if (!only.has(k)) continue;
-      outcomes.push({ key: k, title: DOC_STEP_TITLES[k], status: "skipped" });
-      hooks.settle(k, "skipped");
-    }
-    if (only.has("competitor-analysis") || only.has("competitor-comparison")) {
-      log("Skipping Competitor Analysis and Competitor Comparison — no competitors found or added yet.");
-    }
-  }
-  await generate("content-strategy");
-  if (!(await proceed("content-strategy"))) return;
-  await generate("design-guide");
-  if (stopped) return;
+  await runDag<Node>(
+    nodes,
+    documentConcurrency(providerId),
+    async (key) => {
+      if (key === "competitors-ready") {
+        hasCompetitors = await hasCompetitorsP.catch(() => false);
+        if (!hasCompetitors && (only.has("competitor-analysis") || only.has("competitor-comparison"))) {
+          log("Skipping Competitor Analysis and Competitor Comparison — no competitors found or added yet.");
+        }
+        return;
+      }
+      if ((key === "competitor-analysis" || key === "competitor-comparison") && !hasCompetitors) {
+        skipNoCompetitors(key);
+        return;
+      }
+      if (key === "competitor-comparison") {
+        await step(key, () => generateSelfSavingDocument(key, DOC_STEP_TITLES[key], primaryModel, providerId, log));
+        return;
+      }
+      await generate(key);
+    },
+    stoppedNow
+  );
+  await lanesDone;
+  if (ctl.stopped) return;
 
   const summary = summarizeDocumentRun(outcomes);
   if (summary.hasProblems) log(`⚠ ${summary.text}`);
@@ -501,99 +551,121 @@ async function runSetupSteps(ctx: SetupRunCtx, steps: SetupStepKey[]): Promise<{
     return { docs: null };
   }
 
-  if (want.has("description")) {
-    const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
-    if (project.description.trim()) {
-      // The user wrote their own description: never overwrite it with a generated one.
-      hooks.settle("description", "done");
-    } else if (primaryModel && providerId) {
-      if (!(await hooks.claim("description"))) return { docs: null };
-      try {
-        log("Writing a real description from what's actually on the page...");
-        const descRes = await fetch(`/api/project/${project.id}/generate-description`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: primaryModel, providerId }),
-        });
-        if (descRes.ok) {
-          const { description } = await descRes.json();
-          ctx.onDescription(description);
-          hooks.settle("description", "done");
-          logDone(`Description: "${description}"`);
-        } else {
-          const err = await descRes.json().catch(() => ({}));
-          log(`Couldn't write a description (${err.error ?? `HTTP ${descRes.status}`}) — generate it from Context, or edit it in Settings → Websites.`);
-          problems.push("no description");
-          hooks.settle("description", "failed", String(err.error ?? `HTTP ${descRes.status}`));
+  // The crawl is done (and saved), so nothing below needs to wait for anything else:
+  // description -> competitors is one lane (discovery reads the description), leads is
+  // another, and the documents start immediately instead of queueing behind both.
+  // `ctl.stopped` is set when a lane loses a step claim to another tab.
+  const ctl = { stopped: false };
+
+  const descriptionAndCompetitors = async (): Promise<boolean> => {
+    if (want.has("description")) {
+      const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
+      if (project.description.trim()) {
+        // The user wrote their own description: never overwrite it with a generated one.
+        hooks.settle("description", "done");
+      } else if (primaryModel && providerId) {
+        if (!(await hooks.claim("description"))) {
+          ctl.stopped = true;
+          return false;
         }
-      } catch {
-        // non-fatal — description stays blank, editable manually in Settings → Websites
-        log("Couldn't reach the description service — generate it from Context, or edit it in Settings → Websites.");
-        problems.push("no description");
-        hooks.settle("description", "failed", "description service unreachable");
+        try {
+          log("Writing a real description from what's actually on the page...");
+          const descRes = await fetch(`/api/project/${project.id}/generate-description`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model: primaryModel, providerId }),
+          });
+          if (descRes.ok) {
+            const { description } = await descRes.json();
+            ctx.onDescription(description);
+            hooks.settle("description", "done");
+            logDone(`Description: "${description}"`);
+          } else {
+            const err = await descRes.json().catch(() => ({}));
+            log(`Couldn't write a description (${err.error ?? `HTTP ${descRes.status}`}) — generate it from Context, or edit it in Settings → Websites.`);
+            problems.push("no description");
+            hooks.settle("description", "failed", String(err.error ?? `HTTP ${descRes.status}`));
+          }
+        } catch {
+          // non-fatal — description stays blank, editable manually in Settings → Websites
+          log("Couldn't reach the description service — generate it from Context, or edit it in Settings → Websites.");
+          problems.push("no description");
+          hooks.settle("description", "failed", "description service unreachable");
+        }
+      } else {
+        problems.push("no description (connect a model in Settings)");
+        hooks.settle("description", "failed", "connect a model in Settings");
       }
-    } else {
-      problems.push("no description (connect a model in Settings)");
-      hooks.settle("description", "failed", "connect a model in Settings");
     }
-  }
 
-  let hasCompetitors = false;
-  if (want.has("competitors")) {
-    if (!(await hooks.claim("competitors"))) return { docs: null };
-    const outcome = await maybeDiscoverCompetitors(project.id, log, primaryModel, ctx.onCompetitors);
-    hasCompetitors = outcome === "found";
-    hooks.settle(
-      "competitors",
-      outcome === "off" ? "skipped" : outcome === "failed" ? "failed" : "done",
-      outcome === "failed" ? "discovery failed" : undefined
-    );
-  } else if (steps.some(isDocStep)) {
-    hasCompetitors = await ctx.loadHasCompetitors();
-  }
+    if (want.has("competitors")) {
+      if (!(await hooks.claim("competitors"))) {
+        ctl.stopped = true;
+        return false;
+      }
+      const outcome = await maybeDiscoverCompetitors(project.id, log, primaryModel, ctx.onCompetitors);
+      hooks.settle(
+        "competitors",
+        outcome === "off" ? "skipped" : outcome === "failed" ? "failed" : "done",
+        outcome === "failed" ? "discovery failed" : undefined
+      );
+      return outcome === "found";
+    }
+    return steps.some(isDocStep) ? await ctx.loadHasCompetitors() : false;
+  };
 
-  if (want.has("leads")) {
+  const leadsLane = async (): Promise<void> => {
+    if (!want.has("leads")) return;
     // Free, platform-only baseline (up to 10 leads) -- runs on the platform's own
     // Groq key, so it works before any LLM is connected. Self-host has none.
     if (!FEATURES.PLATFORM_MODE) {
       hooks.settle("leads", "skipped");
-    } else if (await hooks.claim("leads")) {
-      try {
-        log("Finding real leads to kick off outreach...");
-        const leadsRes = await fetch(`/api/project/${project.id}/generate-leads`, { method: "POST" });
-        if (leadsRes.ok) {
-          const { added, message } = await leadsRes.json();
-          if (added > 0) {
-            logDone(`Found ${added} real lead${added === 1 ? "" : "s"} — check the Leads panel.`);
-            ctx.onLeads();
-          } else {
-            log(message ? `${message} Search manually in the Leads panel, or check back tomorrow.` : "No confident leads found yet — search manually in the Leads panel, or check back tomorrow.");
-          }
-          hooks.settle("leads", "done");
-        } else {
-          log("Couldn't find leads automatically — search manually in the Leads panel.");
-          // 429 = the 24h window already ran for this project: nothing to retry.
-          hooks.settle("leads", leadsRes.status === 429 ? "done" : "failed", leadsRes.status === 429 ? undefined : `HTTP ${leadsRes.status}`);
-        }
-      } catch {
-        // non-fatal -- leads can always be found manually in the Leads panel
-        log("Couldn't reach the lead finder — search manually in the Leads panel.");
-        hooks.settle("leads", "failed", "lead finder unreachable");
-      }
-    } else {
-      return { docs: null };
+      return;
     }
-  }
+    if (!(await hooks.claim("leads"))) {
+      ctl.stopped = true;
+      return;
+    }
+    try {
+      log("Finding real leads to kick off outreach...");
+      const leadsRes = await fetch(`/api/project/${project.id}/generate-leads`, { method: "POST" });
+      if (leadsRes.ok) {
+        const { added, message } = await leadsRes.json();
+        if (added > 0) {
+          logDone(`Found ${added} real lead${added === 1 ? "" : "s"} — check the Leads panel.`);
+          ctx.onLeads();
+        } else {
+          log(message ? `${message} Search manually in the Leads panel, or check back tomorrow.` : "No confident leads found yet — search manually in the Leads panel, or check back tomorrow.");
+        }
+        hooks.settle("leads", "done");
+      } else {
+        log("Couldn't find leads automatically — search manually in the Leads panel.");
+        // 429 = the 24h window already ran for this project: nothing to retry.
+        hooks.settle("leads", leadsRes.status === 429 ? "done" : "failed", leadsRes.status === 429 ? undefined : `HTTP ${leadsRes.status}`);
+      }
+    } catch {
+      // non-fatal -- leads can always be found manually in the Leads panel
+      log("Couldn't reach the lead finder — search manually in the Leads panel.");
+      hooks.settle("leads", "failed", "lead finder unreachable");
+    }
+  };
+
+  // Lane errors must never reject the documents' wait on them.
+  const hasCompetitorsP = descriptionAndCompetitors().catch(() => false);
+  const leadsP = leadsLane().catch(() => {});
+  const lanesDone: Promise<void> = Promise.all([hasCompetitorsP, leadsP]).then(() => {});
 
   const docSteps = new Set(steps.filter(isDocStep));
   if (docSteps.size === 0) {
+    await lanesDone;
+    if (ctl.stopped) return { docs: null };
     const last = finalSetupLine(problems);
     if (last.ok) logDone(last.text);
     else log(`⚠ ${last.text}`);
     return { docs: null };
   }
   return {
-    docs: autoGenerateContextDocuments(project.id, primaryModel, hasCompetitors, log, logDone, ctx.onDocSaved, problems, docSteps, ctx.prior, hooks),
+    docs: autoGenerateContextDocuments(project.id, primaryModel, hasCompetitorsP, log, logDone, ctx.onDocSaved, problems, docSteps, ctx.prior, hooks, lanesDone, ctl),
   };
 }
 
