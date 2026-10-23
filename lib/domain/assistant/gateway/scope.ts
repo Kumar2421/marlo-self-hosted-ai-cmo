@@ -1,3 +1,5 @@
+import { isFindingId } from "../../chat/toolSchema.ts";
+
 /**
  * Every gateway function takes an explicit scope. There is no "current user" global and no
  * default: a missing or malformed scope throws before any query is built.
@@ -37,5 +39,5 @@ export function requireLocalScope(scope: unknown): { projectId: string } {
   return { projectId: s.projectId };
 }
 
-import { isFindingId } from "../../chat/toolSchema.ts";
+/** Finding ids the model may pass back (UUID, optionally "finding_"-prefixed). */
 export { isFindingId };

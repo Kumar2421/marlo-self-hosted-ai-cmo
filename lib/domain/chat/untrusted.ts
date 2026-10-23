@@ -10,8 +10,7 @@ export const DATA_CLOSE = "⟧";
 export const MAX_FIELD_CHARS = 200;
 
 /** Control chars (keeps nothing but space), zero-width / bidi / BOM / line separators, and unpaired surrogates. */
-// eslint-disable-next-line no-control-regex
-const INVISIBLE = /[\u0000-\u001F\u007F-\u009F­͏؜ᅟᅠ឴឵᠋-᠏​-‏ - ⁠-⁯ㅤ︀-️﻿ﾠ￹-￻]/g;
+const INVISIBLE = /[\u0000-\u001F\u007F-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u2028-\u202F\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF9-\uFFFB]/g;
 
 /**
  * Clean one string: strip invisible characters, remove the data markers themselves (so content can
