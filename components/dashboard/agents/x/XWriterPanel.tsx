@@ -29,7 +29,7 @@ function CharCount({ text }: { text: string }) {
   const n = countTweetChars(text);
   const over = n > MAX_TWEET_CHARS;
   return (
-    <span className={`text-[11px] tabular-nums ${over ? "font-semibold text-red-600" : n > 260 ? "text-amber-600" : "text-gray-500"}`}>
+    <span className={`text-xs tabular-nums ${over ? "font-semibold text-red-600" : n > 260 ? "text-amber-600" : "text-gray-500"}`}>
       {n}/{MAX_TWEET_CHARS}
     </span>
   );
@@ -61,10 +61,10 @@ function DraftRow({ draft, onOpen }: { draft: XDraft; onOpen: () => void }) {
         className="w-full rounded-xl border border-gray-200 bg-white p-4 text-left transition-colors hover:border-gray-300 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gray-900"
       >
         <div className="mb-2 flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">{draft.angle}</span>
-          {draft.edited && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">Edited</span>}
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">{draft.angle}</span>
+          {draft.edited && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">Edited</span>}
           {draft.status === "completed" && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
               <Check size={10} /> Completed
             </span>
           )}
@@ -234,8 +234,8 @@ function DraftDetail({ draft, onClose, onChange }: { draft: XDraft; onClose: () 
             <TweetCard text={draft.text} />
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">{draft.angle}</span>
-                {draft.edited && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">Edited</span>}
+                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">{draft.angle}</span>
+                {draft.edited && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">Edited</span>}
               </div>
               <CharCount text={draft.text} />
             </div>
@@ -244,7 +244,7 @@ function DraftDetail({ draft, onClose, onChange }: { draft: XDraft; onClose: () 
 
         {draft.whyThisWorks && (
           <section className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-            <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Why this works</h3>
+            <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">Why this works</h3>
             <p className="text-[13px] leading-relaxed text-gray-700">{draft.whyThisWorks}</p>
           </section>
         )}
@@ -308,7 +308,7 @@ export default function XWriterPanel({ onClose }: { onClose: () => void }) {
       toolbar={toolbar}
       footer={
         <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[11px] text-gray-500">Drafts open in X for you to post. Nothing is sent automatically.</p>
+          <p className="text-xs text-gray-500">Drafts open in X for you to post. Nothing is sent automatically.</p>
           {generateButton}
         </div>
       }

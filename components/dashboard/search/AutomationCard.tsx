@@ -15,7 +15,7 @@ export default function AutomationCard({ projectId }: { projectId: string }) {
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-4" data-testid="automation-card">
       <h4 className="text-[12px] font-semibold text-gray-700">Automation</h4>
-      <p className="mt-1 text-[11px] leading-4 text-gray-500">
+      <p className="mt-1 text-xs leading-4 text-gray-500">
         Marlo suggests up to 3 fixes a day. &ldquo;Ask me&rdquo; leaves them for you to approve; &ldquo;Auto-approve safe fixes&rdquo; pre-approves the low-risk ones. Nothing changes on your site or gets sent without your click.
       </p>
       <div role="radiogroup" aria-label="Automation" className="mt-3 inline-flex rounded-lg border border-gray-200 p-0.5">
@@ -30,7 +30,7 @@ export default function AutomationCard({ projectId }: { projectId: string }) {
               disabled={isLoading || save.isPending}
               onClick={() => !active && save.mutate(option.mode)}
               className={
-                "rounded-md px-2.5 py-1.5 text-[11px] font-medium disabled:opacity-50 " +
+                "rounded-md px-2.5 py-1.5 text-xs font-medium disabled:opacity-50 " +
                 (active ? "bg-[#111111] text-white" : "text-gray-600 hover:bg-gray-50")
               }
             >
@@ -39,7 +39,7 @@ export default function AutomationCard({ projectId }: { projectId: string }) {
           );
         })}
       </div>
-      {(isError || save.isError) && <p className="mt-2 text-[11px] text-red-600">Could not load or save this setting. Try again.</p>}
+      {(isError || save.isError) && <p className="mt-2 text-xs text-red-600">Could not load or save this setting. Try again.</p>}
     </section>
   );
 }

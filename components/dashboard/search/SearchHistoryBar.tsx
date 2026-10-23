@@ -39,7 +39,7 @@ export default function SearchHistoryBar() {
   else status = "No search history yet. Refresh to start tracking changes over time.";
 
   return (
-    <div className="mb-4 flex items-center justify-between gap-3 text-[11px] text-gray-500">
+    <div className="mb-4 flex items-center justify-between gap-3 text-xs text-gray-500">
       <span>
         {status}
         {refresh.isError && <span className="ml-2 text-amber-600">⚠ {refresh.error.message}</span>}
@@ -48,7 +48,7 @@ export default function SearchHistoryBar() {
         type="button"
         onClick={() => refresh.mutate()}
         disabled={refresh.isPending}
-        className="shrink-0 rounded-md border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        className="shrink-0 rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
       >
         {refresh.isPending ? "Refreshing…" : "Refresh now"}
       </button>

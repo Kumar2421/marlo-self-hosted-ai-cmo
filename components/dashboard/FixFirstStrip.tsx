@@ -28,7 +28,7 @@ export default function FixFirstStrip({
   if (view.kind === "hidden") return null;
 
   const shell = "shrink-0 max-h-40 overflow-y-auto border-b border-gray-200 bg-white px-4 py-2.5";
-  const label = <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Fix first</div>;
+  const label = <div className="text-xs font-semibold uppercase tracking-wide text-ui-subtle">Fix first</div>;
   const button = "shrink-0 rounded-lg bg-[#111111] px-2.5 py-1.5 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50";
 
   if (view.kind === "loading") {
@@ -57,7 +57,7 @@ export default function FixFirstStrip({
           ))}
         </ul>
         {view.moreCount > 0 && (
-          <button type="button" onClick={onShowAll} className="mt-1.5 text-[11px] text-gray-500 hover:text-gray-800 hover:underline">
+          <button type="button" onClick={onShowAll} className="mt-1.5 text-xs text-gray-500 hover:text-gray-800 hover:underline">
             {view.moreCount} more in Findings
           </button>
         )}

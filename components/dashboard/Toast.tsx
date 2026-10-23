@@ -27,7 +27,7 @@ export default function ToastProvider({ children }: { children: React.ReactNode 
         <div className="fixed bottom-5 left-1/2 z-[100] -translate-x-1/2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-[13px] font-medium text-gray-800 shadow-xl">
           <div className="flex items-center gap-3">
             {msg}
-            <button onClick={() => setMsg(null)} className="text-gray-400 hover:text-gray-600">
+            <button onClick={() => setMsg(null)} className="text-ui-subtle hover:text-gray-600">
               <X size={13} />
             </button>
           </div>

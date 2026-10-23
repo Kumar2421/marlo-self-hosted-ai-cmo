@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { describeAge, lastGoodFromPrevious, withLastGoodPageSpeed } from "../lib/domain/seo/pageSpeedFallback.ts";
+import { describeAge, lastGoodFromPrevious, withLastGoodPageSpeed, type PageSpeedCarrier } from "../lib/domain/seo/pageSpeedFallback.ts";
 import { fetchPageSpeed, isPageSpeedTimeout, PSI_AUDIT_TIMEOUT_MS, PSI_TIMEOUT_MS } from "../lib/domain/seo/pageSpeedInsights.ts";
 
 const scores = { performance: 71, accessibility: 90, bestPractices: 100, seo: 95 };
 const goodPrev = { pageSpeed: { desktop: scores, mobile: scores }, pageSpeedMeasuredAt: "2026-10-18T10:00:00.000Z" };
 
 test("a timed-out run gets the previous scores, dated, under lastGoodPageSpeed only", () => {
-  const next = { pageSpeedUnavailable: "timeout" as const };
+  const next: PageSpeedCarrier & { pageSpeedUnavailable?: string } = { pageSpeedUnavailable: "timeout" };
   const out = withLastGoodPageSpeed(next, goodPrev, "2026-10-19T00:00:00.000Z");
   assert.equal(out.pageSpeed, undefined, "stale scores must never become the fresh pageSpeed");
   assert.equal(out.lastGoodPageSpeed?.measuredAt, "2026-10-18T10:00:00.000Z");
@@ -22,7 +22,7 @@ test("falls back to the stored row date when the old payload has no measuredAt",
 
 test("repeated timeouts keep the original measurement date", () => {
   const prev = { lastGoodPageSpeed: { measuredAt: "2026-10-10T00:00:00.000Z", pageSpeed: goodPrev.pageSpeed } };
-  const out = withLastGoodPageSpeed({ pageSpeedUnavailable: "error" as const }, prev, "2026-10-20T00:00:00.000Z");
+  const out = withLastGoodPageSpeed<PageSpeedCarrier & { pageSpeedUnavailable?: string }>({ pageSpeedUnavailable: "error" }, prev, "2026-10-20T00:00:00.000Z");
   assert.equal(out.lastGoodPageSpeed?.measuredAt, "2026-10-10T00:00:00.000Z");
 });
 
@@ -34,7 +34,7 @@ test("a fresh result or a run without a key is left untouched", () => {
 });
 
 test("nothing to carry when there was no earlier good run", () => {
-  const next = { pageSpeedUnavailable: "timeout" as const };
+  const next: PageSpeedCarrier & { pageSpeedUnavailable?: string } = { pageSpeedUnavailable: "timeout" };
   assert.equal(withLastGoodPageSpeed(next, null, null), next);
   assert.equal(withLastGoodPageSpeed(next, { pageSpeedUnavailable: "timeout" } as never, "2026-10-19T00:00:00.000Z"), next);
 });

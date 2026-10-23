@@ -111,12 +111,12 @@ export default function GoogleAnalyticsCard() {
             <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
               Google Analytics &amp; Search Console
               {connected && health.state === "needs_reconnect" && health.badge && (
-                <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
                   <AlertTriangle size={10} /> {health.badge.label}
                 </span>
               )}
               {connected && health.state !== "needs_reconnect" && (
-                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">
+                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">
                   <Check size={10} /> Connected
                 </span>
               )}
@@ -129,7 +129,7 @@ export default function GoogleAnalyticsCard() {
       </div>
 
       {!project ? (
-        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
           Select or create a project before connecting Google.
         </div>
       ) : !loaded ? null : connected ? (
@@ -146,7 +146,7 @@ export default function GoogleAnalyticsCard() {
             Choose which Search Console site and Analytics property this project uses from the{" "}
             <a href="/dashboard" className="font-medium text-gray-900 underline">SEO tab</a>.
           </div>
-          <button onClick={handleDisconnect} disabled={busy} className="text-[11px] font-medium text-red-600 hover:underline disabled:opacity-50">
+          <button onClick={handleDisconnect} disabled={busy} className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50">
             Disconnect Google from this project
           </button>
         </div>

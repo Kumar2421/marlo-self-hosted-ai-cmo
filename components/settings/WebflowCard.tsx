@@ -135,7 +135,7 @@ export default function WebflowCard() {
           <div className="flex items-center gap-2 truncate text-[13px] font-semibold text-gray-900">
             Webflow
             {connected && (
-              <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">
+              <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">
                 <Check size={10} /> Connected
               </span>
             )}
@@ -146,7 +146,7 @@ export default function WebflowCard() {
           href="https://developers.webflow.com/data/docs/getting-started-data-clients#site-token"
           target="_blank"
           rel="noreferrer"
-          className="flex shrink-0 items-center gap-1 text-[11px] text-gray-400 hover:text-gray-700"
+          className="flex shrink-0 items-center gap-1 text-xs text-ui-subtle hover:text-gray-700"
         >
           Get a site token <ExternalLink size={11} />
         </a>
@@ -199,7 +199,7 @@ export default function WebflowCard() {
                   ))}
                 </select>
               )}
-              <p className="text-[11px] leading-4 text-gray-500">
+              <p className="text-xs leading-4 text-gray-500">
                 The token needs CMS read and write. Marlo only edits SEO fields (titles, descriptions, image alt text) in this collection, and only after you approve a preview.
               </p>
               <button

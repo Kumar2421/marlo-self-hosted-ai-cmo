@@ -75,10 +75,12 @@ export type InstallationToken = { token: string; expiresAt: string };
 export async function mintInstallationToken(
   cfg: GithubAppConfig,
   installationId: number,
-  opts: { fetch?: FetchLike; now?: number; repo?: string } = {},
+  opts: { fetch?: FetchLike; now?: number; repo?: string; readOnly?: boolean } = {},
 ): Promise<InstallationToken> {
   const f = opts.fetch ?? fetch;
-  const body: Record<string, unknown> = { permissions: { contents: "write", pull_requests: "write", metadata: "read" } };
+  // Listing repositories needs no write access: ask for none, so an installation that has not
+  // (yet) been granted contents/pull_requests write can still show its repository list.
+  const body: Record<string, unknown> = opts.readOnly ? {} : { permissions: { contents: "write", pull_requests: "write", metadata: "read" } };
   if (opts.repo) body.repositories = [opts.repo.split("/").pop()];
   const res = await f(`${API}/app/installations/${installationId}/access_tokens`, {
     method: "POST",
@@ -86,7 +88,11 @@ export async function mintInstallationToken(
     body: JSON.stringify(body),
   });
   if (res.status === 404) throw new InstallationGoneError();
-  if (!res.ok) throw new Error(`GitHub could not issue an installation token: HTTP ${res.status}`);
+  if (!res.ok) {
+    // GitHub's own message (e.g. "The permissions requested are not granted to this installation") is safe and tells the owner what to fix.
+    const detail = ((await res.json().catch(() => ({}))) as { message?: string }).message;
+    throw new Error(`GitHub could not issue an installation token: HTTP ${res.status}${detail ? ` (${detail.slice(0, 160)})` : ""}`);
+  }
   const data = (await res.json()) as { token?: string; expires_at?: string };
   if (!data.token) throw new Error("GitHub did not return an installation token.");
   return { token: data.token, expiresAt: data.expires_at ?? "" };

@@ -71,7 +71,7 @@ export default function ComposeEmailModal({
               <span className="ml-1 font-normal text-amber-600">({leads.length - withEmail.length} skipped, no email)</span>
             )}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">
+          <button onClick={onClose} className="text-ui-subtle hover:text-gray-700">
             <X size={18} />
           </button>
         </div>
@@ -98,7 +98,7 @@ export default function ComposeEmailModal({
               placeholder={"Hi {{name}},\n\n..."}
               className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
             />
-            <p className="mt-1 text-[11px] text-gray-400">
+            <p className="mt-1 text-xs text-ui-subtle">
               Merge tags: <code className="rounded bg-gray-100 px-1">{"{{name}}"}</code>{" "}
               <code className="rounded bg-gray-100 px-1">{"{{company}}"}</code>{" "}
               <code className="rounded bg-gray-100 px-1">{"{{title}}"}</code>
@@ -107,7 +107,7 @@ export default function ComposeEmailModal({
 
           {previewLead && (subject || body) && (
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ui-subtle">
                 Preview — {previewLead.name}
               </div>
               <div className="text-[13px] font-medium text-gray-900">{merge(subject, previewLead)}</div>

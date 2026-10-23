@@ -12,7 +12,7 @@ function Chip({ label, value, tone }: { label: string; value: number; tone?: "go
   return (
     <div className="flex-1 rounded-lg border border-gray-200 bg-white px-2.5 py-2">
       <div className={`text-base font-semibold leading-none ${color}`}>{value}</div>
-      <div className="mt-1 text-[10px] uppercase leading-tight text-gray-500">{label}</div>
+      <div className="mt-1 text-xs uppercase leading-tight text-gray-500">{label}</div>
     </div>
   );
 }
@@ -33,15 +33,15 @@ export default function SearchInsightsSection({ search, topQueries }: { search: 
       className="mt-3 flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] font-medium text-gray-800 transition-colors hover:bg-gray-50"
     >
       See all search insights
-      <ChevronRight size={14} className="text-gray-400" />
+      <ChevronRight size={14} className="text-ui-faint" />
     </button>
   );
 
   let content: React.ReactNode;
   if (state.status === "loading") {
-    content = <div className="text-[11px] text-gray-400">Loading search insights…</div>;
+    content = <div className="text-xs text-ui-subtle">Loading search insights…</div>;
   } else if (state.status === "error") {
-    content = <div className="text-[11px] text-amber-600">⚠ Couldn&apos;t load search insights.</div>;
+    content = <div className="text-xs text-amber-600">⚠ Couldn&apos;t load search insights.</div>;
   } else if (state.status === "empty") {
     content = (
       <div className="rounded-xl border border-dashed border-gray-200 p-3 text-[12px] text-gray-500">
@@ -68,7 +68,7 @@ export default function SearchInsightsSection({ search, topQueries }: { search: 
                 <div className="truncate text-[12px] font-medium text-gray-900" title={item.query}>
                   {item.query}
                 </div>
-                <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-gray-500">{item.reasons[0]}</div>
+                <div className="mt-0.5 line-clamp-2 text-xs leading-snug text-gray-500">{item.reasons[0]}</div>
               </li>
             ))}
           </ul>

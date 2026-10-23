@@ -93,7 +93,7 @@ export default function PersonalizationPage() {
               placeholder="Enter your name"
               className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2.5 pr-14 text-[13px] text-gray-800 placeholder:text-gray-400"
             />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">{name.length}/50</span>
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ui-subtle">{name.length}/50</span>
           </div>
 
           <label className="mb-1 block text-[13px] font-medium text-gray-800">What do you do?</label>
@@ -105,7 +105,7 @@ export default function PersonalizationPage() {
               placeholder="Engineer, student, etc."
               className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2.5 pr-16 text-[13px] text-gray-800 placeholder:text-gray-400"
             />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">{role.length}/100</span>
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ui-subtle">{role.length}/100</span>
           </div>
 
           <label className="mb-1 block text-[13px] font-medium text-gray-800">Anything else we should know about you?</label>
@@ -117,7 +117,7 @@ export default function PersonalizationPage() {
               placeholder="Interests, values, or preferences to keep in mind"
               className="h-28 w-full resize-y rounded-lg border border-gray-200 px-3 py-2.5 pb-6 text-[13px] text-gray-800 placeholder:text-gray-400"
             />
-            <span className="absolute bottom-2 right-3 text-[11px] text-gray-400">{notes.length}/3000</span>
+            <span className="absolute bottom-2 right-3 text-xs text-ui-subtle">{notes.length}/3000</span>
           </div>
 
           <button

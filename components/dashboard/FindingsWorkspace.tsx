@@ -23,14 +23,14 @@ const STATUS_ACTION: Partial<Record<FindingStatus, { next: FindingStatus; label:
 const CAN_RECHECK = new Set<FindingStatus>(["fixing", "fixed", "failed"]);
 
 function dotClass(severity: Finding["severity"]) {
-  return severity === "critical" ? "text-red-500" : severity === "warning" ? "text-amber-500" : "text-gray-400";
+  return severity === "critical" ? "text-red-500" : severity === "warning" ? "text-amber-500" : "text-ui-subtle";
 }
 
 function Stat({ label, value, tone }: { label: string; value: number; tone?: "bad" | "good" }) {
   const color = tone === "bad" && value > 0 ? "text-red-600" : tone === "good" && value > 0 ? "text-emerald-600" : "text-gray-900";
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-3">
-      <div className="text-[10px] uppercase tracking-wide text-gray-400">{label}</div>
+      <div className="text-xs uppercase tracking-wide text-ui-subtle">{label}</div>
       <div className={`mt-1 text-lg font-semibold ${color}`}>{value}</div>
     </div>
   );
@@ -156,7 +156,7 @@ export default function FindingsWorkspace({
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-gray-900">Findings</h3>
-          <p className="mt-0.5 text-[11px] text-gray-500">The most important problems first. Open one to see why it matters and what to do.</p>
+          <p className="mt-0.5 text-xs text-gray-500">The most important problems first. Open one to see why it matters and what to do.</p>
         </div>
         <button
           type="button"
@@ -175,7 +175,7 @@ export default function FindingsWorkspace({
         ))}
       </div>
       {counts.awaitingVerification > 0 && (
-        <p className="-mt-2 text-[11px] text-gray-500">
+        <p className="-mt-2 text-xs text-gray-500">
           {counts.awaitingVerification} fixed and waiting for Marlo to re-check. They are not counted above until verified.
         </p>
       )}
@@ -212,15 +212,15 @@ export default function FindingsWorkspace({
                 <span className="min-w-0 flex-1">
                   <span className="line-clamp-2 block text-[13px] font-medium leading-5 text-gray-900">{findingTitle(finding)}</span>
                   <span className="mt-1 flex items-center gap-2">
-                    <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-medium ${statusClass(finding.status)}`}>
+                    <span className={`rounded-full border px-1.5 py-0.5 text-xs font-medium ${statusClass(finding.status)}`}>
                       {STATUS_LABEL[finding.status]}
                     </span>
-                    <span className="min-w-0 truncate text-[11px] text-gray-500" title={finding.url ?? undefined}>
+                    <span className="min-w-0 truncate text-xs text-gray-500" title={finding.url ?? undefined}>
                       {pagePath(finding.url)}
                     </span>
                   </span>
-                  {vanishedNote(finding) && <span data-testid="finding-vanished" className="mt-1 block text-[11px] text-gray-500">{vanishedNote(finding)}</span>}
-                  {index < 3 && <span className="mt-1 block text-[11px] text-gray-500">Why it is up here: {explainPriority(finding)}</span>}
+                  {vanishedNote(finding) && <span data-testid="finding-vanished" className="mt-1 block text-xs text-gray-500">{vanishedNote(finding)}</span>}
+                  {index < 3 && <span className="mt-1 block text-xs text-gray-500">Why it is up here: {explainPriority(finding)}</span>}
                 </span>
                 <ChevronRight size={14} className="mt-1 shrink-0 text-gray-300" />
               </button>
@@ -236,14 +236,14 @@ export default function FindingsWorkspace({
         subtitle={
           selected && (
             <span className="flex flex-wrap items-center gap-1.5">
-              <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase ${severityClass(selected.severity)}`}>
+              <span className={`rounded-full border px-1.5 py-0.5 text-xs font-semibold uppercase ${severityClass(selected.severity)}`}>
                 {selected.severity}
               </span>
-              <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-medium ${statusClass(selected.status)}`}>
+              <span className={`rounded-full border px-1.5 py-0.5 text-xs font-medium ${statusClass(selected.status)}`}>
                 {STATUS_LABEL[selected.status]}
               </span>
               {selected.url && (
-                <a href={selected.url} target="_blank" rel="noreferrer" className="min-w-0 truncate text-[#00846f] hover:underline">
+                <a href={selected.url} target="_blank" rel="noreferrer" className="min-w-0 truncate text-ui-accent-strong hover:underline">
                   {selected.url}
                 </a>
               )}

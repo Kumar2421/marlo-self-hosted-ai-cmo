@@ -110,7 +110,7 @@ export default function GitHubAgentModal({ onClose }: { onClose: () => void }) {
               <p className="text-[12px] text-gray-500">Turn SEO findings into a PR proposal</p>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100">
+          <button onClick={onClose} className="rounded-lg p-2 text-ui-muted hover:bg-gray-100">
             <X size={18} />
           </button>
         </div>
@@ -126,7 +126,7 @@ export default function GitHubAgentModal({ onClose }: { onClose: () => void }) {
                 className="w-full rounded-lg border border-gray-200 p-2 text-[13px] outline-none focus:border-black"
                 placeholder="yourname/yourrepo"
               />
-              <p className="mt-1.5 text-[11px] text-gray-400">
+              <p className="mt-1.5 text-xs text-ui-subtle">
                 Uses the most recent SEO audit for your linked website. Run an audit in
                 Analytics → SEO first if you haven&apos;t yet.
               </p>

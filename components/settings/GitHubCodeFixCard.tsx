@@ -189,7 +189,7 @@ export default function GitHubCodeFixCard() {
               <div className="mt-1 text-[12px] text-gray-500">Authorize GitHub with your account, then select the repository Marlo may use for draft SEO fixes. No personal access token is required.</div>
             </div>
           </div>
-          <span className="rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">OAuth</span>
+          <span className="rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">OAuth</span>
         </div>
         {!loaded ? null : !githubAuthorized ? (
           <a href="/api/auth/github/connect" className="inline-flex rounded-lg bg-[#111111] px-3 py-2 text-[13px] font-medium text-white hover:bg-black">Connect GitHub</a>
@@ -217,7 +217,7 @@ export default function GitHubCodeFixCard() {
             <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
               GitHub — Code Fix Agent
               {connected && (
-                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-[10px] font-medium text-[#00846f]">
+                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">
                   <Check size={10} /> Connected
                 </span>
               )}
@@ -233,7 +233,7 @@ export default function GitHubCodeFixCard() {
           href="https://github.com/settings/personal-access-tokens/new"
           target="_blank"
           rel="noreferrer"
-          className="flex shrink-0 items-center gap-1 text-[11px] text-gray-400 hover:text-gray-700"
+          className="flex shrink-0 items-center gap-1 text-xs text-ui-subtle hover:text-gray-700"
         >
           Create token <ExternalLink size={11} />
         </a>

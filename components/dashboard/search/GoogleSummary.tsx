@@ -9,7 +9,7 @@ type Ga4 = { sessions: number; activeUsers: number; screenPageViews: number } | 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-3">
-      <div className="mb-1 text-[11px] uppercase text-gray-500">{label}</div>
+      <div className="mb-1 text-xs uppercase text-gray-500">{label}</div>
       <div className="text-lg font-semibold text-gray-900">{value}</div>
     </div>
   );
@@ -70,7 +70,7 @@ export default function GoogleSummary({
     <section className="mb-5">
       <div className="mb-2 flex items-center justify-between">
         <h4 className="text-[12px] font-semibold text-gray-700">Last 28 days on Google</h4>
-        <button type="button" onClick={onViewTraffic} className="text-[11px] text-blue-600 hover:underline">
+        <button type="button" onClick={onViewTraffic} className="text-xs text-blue-600 hover:underline">
           See full traffic →
         </button>
       </div>

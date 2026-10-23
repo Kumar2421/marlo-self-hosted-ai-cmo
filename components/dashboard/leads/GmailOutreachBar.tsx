@@ -43,7 +43,7 @@ export default function GmailOutreachBar() {
     const className =
       tone === "primary"
         ? "ml-auto shrink-0 rounded-lg bg-gray-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50"
-        : "shrink-0 text-[11px] font-medium text-gray-500 underline-offset-2 hover:text-gray-800 hover:underline disabled:opacity-50";
+        : "shrink-0 text-xs font-medium text-gray-500 underline-offset-2 hover:text-gray-800 hover:underline disabled:opacity-50";
     return FEATURES.PLATFORM_MODE ? (
       <button type="button" onClick={connectHosted} disabled={busy} className={className}>
         {busy ? "Opening Google…" : label}
@@ -60,21 +60,21 @@ export default function GmailOutreachBar() {
   }
 
   if (gmail.isError) {
-    return <div className="mx-4 my-3 text-[11px] text-amber-600">⚠ Couldn&apos;t check your Gmail connection.</div>;
+    return <div className="mx-4 my-3 text-xs text-amber-600">⚠ Couldn&apos;t check your Gmail connection.</div>;
   }
 
   if (!gmail.connected) {
     return (
       <div className="mx-4 my-3 rounded-xl border border-gray-200 bg-white p-3">
         <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
-          <Mail size={16} className="mt-0.5 shrink-0 text-gray-400" />
+          <Mail size={16} className="mt-0.5 shrink-0 text-ui-faint" />
           <div className="min-w-0 flex-[1_1_9rem]">
             <div className="text-[13px] font-semibold text-gray-900">Connect Gmail to email your leads</div>
-            <p className="mt-0.5 text-[11px] leading-4 text-gray-500">
+            <p className="mt-0.5 text-xs leading-4 text-gray-500">
               Send outreach from your own address and see replies here. Marlo only reads replies on threads it started. On Google&apos;s
               screen, keep both Gmail boxes ticked.
             </p>
-            {error && <p className="mt-1 text-[11px] text-red-600">{error}</p>}
+            {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
           </div>
           {button("Connect Gmail")}
         </div>
@@ -90,11 +90,11 @@ export default function GmailOutreachBar() {
           <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600" />
           <div className="min-w-0 flex-[1_1_9rem]">
             <div className="text-[13px] font-semibold text-amber-900">Gmail is connected, but can&apos;t {missing}</div>
-            <p className="mt-0.5 text-[11px] leading-4 text-amber-800">
+            <p className="mt-0.5 text-xs leading-4 text-amber-800">
               {gmail.email ? `${gmail.email} ` : "This account "}
               was connected without a Gmail permission. Reconnect and keep every Gmail box ticked on Google&apos;s screen.
             </p>
-            {error && <p className="mt-1 text-[11px] text-red-600">{error}</p>}
+            {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
           </div>
           {button("Reconnect Gmail")}
         </div>
@@ -103,7 +103,7 @@ export default function GmailOutreachBar() {
   }
 
   return (
-    <div className="mx-3 flex min-h-9 items-center gap-1.5 text-[11px] text-gray-500" data-testid="gmail-status-bar">
+    <div className="mx-3 flex min-h-9 items-center gap-1.5 text-xs text-gray-500" data-testid="gmail-status-bar">
       <Check size={12} className="shrink-0 text-emerald-600" />
       <span className="min-w-0 truncate">Sending as {gmail.email ?? "your Gmail"}</span>
       <span className="shrink-0 text-gray-300">·</span>
