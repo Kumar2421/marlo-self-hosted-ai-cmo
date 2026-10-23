@@ -16,6 +16,9 @@ import {
   LogOut,
   Loader2,
   ScrollText,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 import { user as mockUser } from "@/lib/mock-data";
 import { useTerminalLog } from "@/lib/terminal-log-store";
@@ -25,6 +28,8 @@ import { headerStatus, statusExpiresAt } from "@/lib/headerStatus";
 import { headerCenter } from "@/lib/domain/navbar/headerCenter";
 import { useHeaderStats } from "./useHeaderStats";
 import { useAuthUser } from "@/lib/useAuthUser";
+import { useTheme } from "@/lib/useTheme";
+import { THEME_LABEL, nextThemePreference } from "@/lib/theme";
 import { useToast } from "./Toast";
 import NotificationBell from "./notifications/NotificationBell";
 import SocialNavMenu from "./social/SocialNavMenu";
@@ -59,6 +64,9 @@ function UserMenu() {
   const { show } = useToast();
   const { user: authUser } = useAuthUser();
   const credits = useCredits();
+  const { preference, setPreference } = useTheme();
+  const nextTheme = nextThemePreference(preference);
+  const ThemeIcon = preference === "light" ? Sun : preference === "dark" ? Moon : Monitor;
 
   // Falls back to mock data until Supabase credentials are wired — keeps the
   // dashboard usable in local/self-host dev before a project exists.
@@ -104,7 +112,7 @@ function UserMenu() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-11 z-50 w-72 max-w-[calc(100vw-24px)] rounded-xl border border-gray-200 bg-white p-3 text-gray-900 shadow-xl">
+        <div className="theme-follow absolute right-0 top-11 z-50 w-72 max-w-[calc(100vw-24px)] rounded-xl border border-gray-200 bg-white p-3 text-gray-900 shadow-xl">
           <div className="mb-2 flex items-center gap-3 rounded-lg p-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#8a8a8a] text-[12px] font-semibold text-white">
               {user.initials}
@@ -158,6 +166,14 @@ function UserMenu() {
             >
               <FileText size={14} />
               Docs
+            </button>
+            <button
+              onClick={() => setPreference(nextTheme)}
+              aria-label={`Theme: ${THEME_LABEL[preference]}. Switch to ${THEME_LABEL[nextTheme]}`}
+              title={`Theme: ${THEME_LABEL[preference]}`}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-50"
+            >
+              <ThemeIcon size={14} aria-hidden />
             </button>
             <button
               onClick={handleLogout}
@@ -295,7 +311,7 @@ function ProjectSwitcher() {
         <ChevronDown size={13} className={`opacity-50 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="absolute left-0 top-11 z-50 w-64 rounded-xl border border-gray-200 bg-white p-2 text-gray-900 shadow-xl">
+        <div className="theme-follow absolute left-0 top-11 z-50 w-64 rounded-xl border border-gray-200 bg-white p-2 text-gray-900 shadow-xl">
           {projects.length === 0 ? (
             <div className="px-2.5 py-2 text-[12px] text-gray-400">No projects yet</div>
           ) : (
@@ -370,7 +386,7 @@ export default function TerminalLog() {
 
   return (
     <div ref={ref} className="relative z-30 shrink-0 bg-white px-3 pb-1 pt-2">
-      <nav aria-label="Workspace" data-testid="terminal-bar" className="flex h-12 shrink-0 items-center justify-between rounded-xl bg-[#110f0e] px-3">
+      <nav aria-label="Workspace" data-testid="terminal-bar" className="theme-island flex h-12 shrink-0 items-center justify-between rounded-xl bg-[#110f0e] px-3">
         <div className="flex shrink-0 items-center gap-1">
           {/* Decorative logo: its "Loading" status role must not be announced on an idle page. */}
           <span aria-hidden="true" className="contents">
@@ -440,7 +456,7 @@ export default function TerminalLog() {
           role="log"
           aria-label="Agent activity"
           ref={scrollRef}
-          className="okara-scroll-dark absolute inset-x-3 top-full z-40 max-h-[185px] overflow-y-auto rounded-xl border border-white/10 bg-[#110f0e] px-4 py-2.5 font-mono text-[12px] leading-[1.65] shadow-xl"
+          className="theme-island okara-scroll-dark absolute inset-x-3 top-full z-40 max-h-[185px] overflow-y-auto rounded-xl border border-white/10 bg-[#110f0e] px-4 py-2.5 font-mono text-[12px] leading-[1.65] shadow-xl"
         >
           {lines.length === 0 && <div className="text-gray-600">Agent activity will show up here as it happens.</div>}
           {lines.map((line, i) => {

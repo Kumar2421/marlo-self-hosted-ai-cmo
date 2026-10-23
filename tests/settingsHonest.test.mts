@@ -13,6 +13,8 @@ for (const file of ["app/settings/agents/page.tsx", "app/settings/personalizatio
   });
 }
 
-test("user menu has no dead theme icon", () => {
-  assert.equal(readFileSync("components/dashboard/TerminalLog.tsx", "utf8").includes("Moon"), false);
+test("user menu theme icon is wired to the real theme setting (no dead icon)", () => {
+  const src = readFileSync("components/dashboard/TerminalLog.tsx", "utf8");
+  // The theme button is allowed (Sun/Moon/Monitor) only as the display of a working setting.
+  assert.equal(src.includes("Moon") ? src.includes("useTheme") && src.includes("setPreference(nextTheme)") : true, true);
 });

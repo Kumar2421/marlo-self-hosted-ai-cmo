@@ -8,7 +8,7 @@ function Pulse({ className }: { className: string }) {
 
 function ColumnSkeleton({ dark = false, className = "" }: { dark?: boolean; className?: string }) {
   return (
-    <div className={`${className} flex h-full flex-col border-r ${dark ? "border-white/10 bg-[#110f0e]" : "border-gray-200 bg-white"} p-4`}>
+    <div className={`${className} flex h-full flex-col border-r ${dark ? "theme-island border-white/10 bg-[#110f0e]" : "border-gray-200 bg-white"} p-4`}>
       <div className={`mb-4 h-4 w-24 animate-pulse rounded ${dark ? "bg-white/10" : "bg-gray-200"}`} />
       <div className="space-y-3">
         {Array.from({ length: 6 }).map((_, i) => (
@@ -24,7 +24,7 @@ export default function Loading() {
     <div className="relative flex h-dvh flex-col bg-white">
       {/* Same geometry as the dashboard's terminal bar so the swap to real content doesn't shift. */}
       <div className="shrink-0 px-3 pb-1 pt-2">
-      <div className="flex h-12 items-center justify-between rounded-xl bg-[#110f0e] px-3">
+      <div className="theme-island flex h-12 items-center justify-between rounded-xl bg-[#110f0e] px-3">
         <div className="flex items-center gap-2">
           <GhostLoader className="h-8 w-8" tone="light" />
           <div className="h-4 w-28 animate-pulse rounded bg-white/10" />

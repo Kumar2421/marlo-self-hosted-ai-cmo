@@ -202,7 +202,7 @@ export default function SocialNavMenu() {
         <div
           id={menuId}
           onKeyDown={onMenuKeyDown}
-          className="absolute right-0 top-10 z-50 w-64 max-w-[calc(100vw-24px)] rounded-xl border border-gray-200 bg-white p-2 text-gray-900 shadow-xl"
+          className="theme-follow absolute right-0 top-10 z-50 w-64 max-w-[calc(100vw-24px)] rounded-xl border border-gray-200 bg-white p-2 text-gray-900 shadow-xl"
         >
           <div role="menu" aria-label="Social drafts">
             {SOCIAL_NAV_PLATFORMS.map((platform, index) => {
