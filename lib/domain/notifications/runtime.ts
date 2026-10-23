@@ -45,3 +45,8 @@ export function emailLinksFor(userId: string, config: NotificationConfig): Email
     preferencesUrl: `${config.appUrl}/settings/notifications`,
   };
 }
+
+/** Whether emails can really go out: a sender, a signing secret and an app URL (the job sends nothing without all three). */
+export function emailReady(config: NotificationConfig): boolean {
+  return config.emailConfigured && Boolean(config.appUrl) && Boolean(config.signingSecret);
+}

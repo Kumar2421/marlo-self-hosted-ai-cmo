@@ -24,7 +24,6 @@ const SETTINGS_PAGES = [
   "api-credentials",
   "agents",
   "integrations",
-  "team",
   "personalization",
   "account",
   "notifications",

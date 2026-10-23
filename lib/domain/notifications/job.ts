@@ -263,7 +263,7 @@ async function flushEmails(
 
   for (const n of pending.sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
     if (budget <= 0 || timeUp()) break;
-    if (emailDecision(n, stored, now) !== "send") continue;
+    if (emailDecision(n, stored) !== "send") continue;
     // A recent failed attempt waits before the next one.
     if (n.lastEmailAttemptAt && now.getTime() - Date.parse(n.lastEmailAttemptAt) < RETRY_DELAY_MS) continue;
 
