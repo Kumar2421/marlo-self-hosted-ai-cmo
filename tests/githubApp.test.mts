@@ -110,6 +110,22 @@ test("mints a short-lived installation token narrowed to the repo; 404 means gon
   await assert.rejects(mintInstallationToken(cfg, 77, { fetch: async () => json({}, 500) }), /HTTP 500/);
 });
 
+test("read-only tokens request no permissions; failures carry GitHub's reason", async () => {
+  let body = "";
+  const ok: FetchLike = async (_u, init) => {
+    body = String(init?.body);
+    return json({ token: "ghs_fake" }, 201);
+  };
+  await mintInstallationToken(cfg, 5, { fetch: ok, readOnly: true });
+  assert.equal(JSON.parse(body).permissions, undefined);
+  await mintInstallationToken(cfg, 5, { fetch: ok });
+  assert.equal(JSON.parse(body).permissions.contents, "write");
+  await assert.rejects(
+    mintInstallationToken(cfg, 5, { fetch: async () => json({ message: "The permissions requested are not granted to this installation." }, 422) }),
+    /HTTP 422 \(The permissions requested are not granted/,
+  );
+});
+
 test("errors never contain secrets", async () => {
   await assert.rejects(
     mintInstallationToken(cfg, 1, { fetch: async () => json({ message: "bad" }, 401) }),
