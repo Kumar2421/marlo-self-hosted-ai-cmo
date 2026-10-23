@@ -1,7 +1,7 @@
 "use client";
 
-import GoogleReconnectLink from "@/components/settings/GoogleReconnectLink";
 import { RECONNECT_TEXT } from "@/lib/domain/integrations/googleHealthView";
+import { RECONNECT_IN_TRAFFIC_HINT } from "@/lib/googleOAuthScopes";
 
 type Totals = { clicks: number; impressions: number; ctr: number; position: number };
 type Ga4 = { sessions: number; activeUsers: number; screenPageViews: number } | null;
@@ -48,7 +48,7 @@ export default function GoogleSummary({
     return (
       <div role="alert" className="mb-5 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-800">
         <span className="min-w-0 break-words">{RECONNECT_TEXT}</span>
-        <GoogleReconnectLink returnTo="dashboard" className="shrink-0 font-medium underline" />
+        <span className="shrink-0">{RECONNECT_IN_TRAFFIC_HINT}</span>
       </div>
     );
   }

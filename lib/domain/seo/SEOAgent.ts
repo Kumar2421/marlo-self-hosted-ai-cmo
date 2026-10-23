@@ -3,7 +3,8 @@ import { jinaRead, extractMarkdownLinks } from "@/lib/domain/shared/jinaReader";
 import { assertPublicHostLiteral } from "@/lib/domain/net/ssrf";
 import { SafeFetchError } from "../net/safeFetch.ts";
 import { extractTitle } from "@/lib/domain/seo/extractTitle";
-import { fetchPageSpeed, isPageSpeedTimeout, type CwvSnapshot, type LighthouseIssue, type PageSpeedResult } from "@/lib/domain/seo/pageSpeedInsights";
+import type { LastGoodPageSpeed } from "@/lib/domain/seo/pageSpeedFallback";
+import { fetchPageSpeed, isPageSpeedTimeout, PSI_AUDIT_TIMEOUT_MS, type CwvSnapshot, type LighthouseIssue, type PageSpeedResult } from "@/lib/domain/seo/pageSpeedInsights";
 import { checkRobotsTxt, fetchSitePage, SITE_MAX_REDIRECTS, type SitePageFetch } from "./siteFetch.ts";
 
 export type { CwvStatus, CwvMetric, CwvSnapshot } from "@/lib/domain/seo/pageSpeedInsights";
@@ -59,6 +60,11 @@ export type SEOAuditPayload = {
   /** Set when a PageSpeed key was connected but PSI gave no result this run:
    * "timeout" (too slow, skipped) or "error". Never a score; the UI says "not measured". */
   pageSpeedUnavailable?: "timeout" | "error";
+  /** When `pageSpeed` was measured (this run). Absent when PageSpeed did not answer. */
+  pageSpeedMeasuredAt?: string;
+  /** The last good PageSpeed scores for this URL, carried over when this run got none. Never mixed into
+   * `pageSpeed`: it always carries its own measuredAt so the UI can say the scores are old. */
+  lastGoodPageSpeed?: LastGoodPageSpeed;
   coreWebVitals?: {
     desktop: CwvSnapshot;
     mobile: CwvSnapshot;
@@ -430,12 +436,18 @@ export class SEOAgent {
     let vitals: SEOAuditPayload["coreWebVitals"];
     let lighthouseIssues: SEOAuditPayload["lighthouseIssues"];
     let pageSpeedUnavailable: SEOAuditPayload["pageSpeedUnavailable"];
+    let pageSpeedMeasuredAt: string | undefined;
     let lighthouseComplete = false;
 
     if (this.pageSpeedApiKey) {
       try {
-        const result = await fetchPageSpeed(url, this.pageSpeedApiKey, { timeoutMs: this.options.pageSpeedTimeoutMs });
+        const result = await fetchPageSpeed(url, this.pageSpeedApiKey, {
+          timeoutMs: this.options.pageSpeedTimeoutMs ?? PSI_AUDIT_TIMEOUT_MS,
+          // The quick onboarding budget stays a single short try; the full audit retries once after a timeout.
+          retryAfterTimeout: this.options.pageSpeedTimeoutMs === undefined,
+        });
         pageSpeedScores = result.pageSpeed;
+        pageSpeedMeasuredAt = new Date().toISOString();
         vitals = result.coreWebVitals;
         lighthouseIssues = result.lighthouseIssues;
 
@@ -637,6 +649,7 @@ export class SEOAgent {
       checksRan: { lighthouse: lighthouseComplete },
       pageSpeed: pageSpeedScores,
       pageSpeedUnavailable,
+      pageSpeedMeasuredAt,
       coreWebVitals: vitals,
       lighthouseIssues,
       bodyText,
