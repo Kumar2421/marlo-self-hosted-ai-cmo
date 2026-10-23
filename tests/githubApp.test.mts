@@ -372,3 +372,11 @@ test("describePrivateKeyShape reports shape without key material", () => {
   assert.deepEqual(describePrivateKeyShape(undefined), { present: false });
   assert.equal(describePrivateKeyShape("not a key").hasPemHeaderFooter, false);
 });
+
+test("normalizePrivateKey accepts a key pasted without BEGIN/END lines", () => {
+  const body = privatePem.split("\n").filter((l) => l && !l.startsWith("-----")).join("\n");
+  const fixed = normalizePrivateKey(body);
+  assert.match(fixed, /^-----BEGIN (RSA )?PRIVATE KEY-----/);
+  assert.equal(createAppJwt({ appId: "1", privateKey: fixed }).split(".").length, 3);
+  assert.equal(normalizePrivateKey("not a key"), "not a key");
+});
