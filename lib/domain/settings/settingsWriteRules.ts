@@ -12,7 +12,10 @@ export const SETTING_TOO_LARGE_MESSAGE = "Setting value is too large.";
 
 const AGENT_TOGGLE_IDS = ["seo", "reddit", "x", "linkedin", "articles"];
 
-/** Plain preferences the UI saves in every mode. */
+/** Plain preferences the UI saves in every mode. The personalization_* (except the
+ * onboarding role), agents_region, agents_reddit_prompt and agents_toggle_* keys are
+ * no longer written by any UI (nothing read them); they stay allowed so existing
+ * rows and older clients keep working. */
 const PREFERENCE_KEYS: readonly string[] = [
   "personalization_name",
   "personalization_role",
