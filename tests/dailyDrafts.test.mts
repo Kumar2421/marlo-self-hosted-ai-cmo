@@ -368,15 +368,15 @@ test("paused notice respects the content category being off", async () => {
 test("social drafts never send an email by default", () => {
   const social = { kind: "social_drafts_ready" as const, payload: { open: "social" } };
   const state = { prefs: defaultPrefs(), unsubscribedAll: false };
-  assert.equal(emailDecision(social, state, NOW), "skip");
+  assert.equal(emailDecision(social, state), "skip");
 });
 
 test("content (social drafts) never emails, even when the frequency is instant", () => {
   const prefs = defaultPrefs();
   prefs.categories.content = "instant";
   const state = { prefs, unsubscribedAll: false };
-  assert.equal(emailDecision({ kind: "social_drafts_ready", payload: {} }, state, NOW), "skip");
-  assert.equal(emailDecision({ kind: "social_drafts_paused", payload: {} }, state, NOW), "skip");
+  assert.equal(emailDecision({ kind: "social_drafts_ready", payload: {} }, state), "skip");
+  assert.equal(emailDecision({ kind: "social_drafts_paused", payload: {} }, state), "skip");
 });
 
 test("settings: content is a row in the notification settings and shows in-app only or off", () => {

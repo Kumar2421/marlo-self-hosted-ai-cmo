@@ -17,7 +17,7 @@ All three use the same mocked, signed-in dashboard as `dashboard-layout.spec.ts`
 
 ### Accessibility: `a11y.spec.ts`
 
-- Runs axe-core (`@axe-core/playwright`) on the dashboard at 1536x730 (default view, each Analytics tab, header log open), at 390x844 (each of the four tab-shell tabs), on ten settings pages and on the login/sign-up screens.
+- Runs axe-core (`@axe-core/playwright`) on the dashboard at 1536x730 (default view, each Analytics tab, header log open), at 390x844 (each of the four tab-shell tabs), on nine settings pages and on the login/sign-up screens.
 - Fails on any **serious or critical** violation that is not in `support/a11yAllowlist.ts`. Minor and moderate findings are ignored.
 - The allowlist holds today's known violations so the suite is green now and blocks new ones. Each entry has `rule`, `selector`, `reason` and optional `pages`. Selectors are matched exactly after `:nth-child(7)` is normalised to `:nth-child(N)` and icon attributes are dropped (`support/a11y.ts`), so one entry covers a repeated list row.
 - **See everything that is currently flagged:** `A11Y_AUDIT=1 npx playwright test a11y.spec.ts`. This ignores the allowlist, so the tests fail by design; read the `[a11y] <page> | <impact> | <rule> | <selector> | xN` lines in the output.

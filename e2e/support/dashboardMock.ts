@@ -121,7 +121,6 @@ const NOTIFICATION_PREFS = {
     categories: { digest: "weekly", outcomes: "instant", credits: "instant", approvals: "daily", integrations: "instant", content: "daily" },
     paused: false,
     timezone: null,
-    quietHours: null,
   },
   unsubscribedAll: false,
   emailConfigured: false,
