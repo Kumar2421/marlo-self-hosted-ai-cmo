@@ -138,22 +138,32 @@ const chatPorts = {
   listCompetitors: async () => [], now: () => NOW,
 } as unknown as ChatPorts;
 
-function service(opts: { cred: "byok" | "platform"; ent: ChatEntitlement; used: number }) {
+function service(opts: { cred: "byok" | "platform"; ent: ChatEntitlement; used: number; platformIds?: string[] }) {
   const events: string[] = [];
   const systems: string[] = [];
+  const checks: string[] = [];
   const rows = Array.from({ length: opts.used }, () => ok(new Date().toISOString()));
+  const base = port(opts.ent, rows);
+  const platformIds = opts.platformIds ?? ["groq", "mistral"];
   const ports: AssistantPorts = {
     scope: { authenticate: async () => ({ userId: "u1" }), activeProjectId: async () => "p1" },
     llm: { getDriver: () => async (req) => { systems.push(req.system ?? ""); return { text: "hi" }; }, supportsTools: () => false },
-    credentials: { resolve: async () => (opts.cred === "byok" ? { kind: "byok", apiKey: "k", baseUrl: undefined } : { kind: "platform", loadApiKey: () => "pk" }) },
-    credits: { chargeBeforeAnswer: async () => { events.push("charge"); return { ok: true }; } },
+    credentials: {
+      resolve: async (_c, id) => (opts.cred === "byok" ? { kind: "byok", apiKey: "k", baseUrl: undefined } : platformIds.includes(id) ? { kind: "platform", loadApiKey: () => "pk" } : { kind: "missing" }),
+      preferredModel: async () => (opts.cred === "byok" ? { providerId: "anthropic", model: "m" } : null),
+      platformAvailable: (id) => platformIds.includes(id),
+    },
+    credits: {
+      canAfford: async () => { events.push("canAfford"); return { ok: true }; },
+      charge: async () => { events.push("charge"); return { ok: true }; },
+    },
     prompts: { build: async () => "SYS" },
     data: { create: () => chatPorts },
-    entitlements: port(opts.ent, rows),
+    entitlements: { ...base, countPlatformChatMessages: async (c, f, t) => { checks.push("count"); return base.countPlatformChatMessages(c, f, t); } },
   };
-  return { ports, events, systems };
+  return { ports, events, systems, checks };
 }
-const input = { message: "hello", history: [], projectId: "p1", requestedProvider: "anthropic", requestedModel: "m" };
+const input = { message: "hello", history: [], projectId: "p1" };
 const turnCtx: TurnContext = { mode: "platform", userId: null, activeProjectId: null };
 
 test("service denies with 402 chat_limit body and does not charge", async () => {
@@ -170,6 +180,22 @@ test("service denies with 402 chat_limit body and does not charge", async () => 
     return true;
   });
   assert.deepEqual(events, []);
+});
+
+test("denial with the fallback loop: exactly one check, zero fallbacks, zero charges, chat_limit body kept", async () => {
+  const s = service({ cred: "platform", ent: { plan: "free", enforced: true }, used: 10 });
+  const drivers: string[] = [];
+  const getDriver = s.ports.llm.getDriver;
+  s.ports.llm.getDriver = (id) => { const d = getDriver(id); return d && (async (r) => { drivers.push(id); return d(r); }); };
+  await assert.rejects(runAssistantTurn(s.ports, turnCtx, input), (e: unknown) => {
+    assert.ok(e instanceof AssistantError);
+    assert.equal(e.status, 402);
+    assert.equal(e.body?.code, "chat_limit");
+    return true;
+  });
+  assert.deepEqual(s.checks, ["count"]);
+  assert.deepEqual(drivers, []);
+  assert.deepEqual(s.events, []);
 });
 
 test("service: BYOK exempt, not-enforced exempt, under cap allowed", async () => {

@@ -81,7 +81,7 @@ function SingleKeyCard() {
             </div>
             <div className="text-[12px] text-ui-muted">
               {isConnected
-                ? "Chat and agents use your own key — no usage limits from us."
+                ? "Chat uses your own key first and falls back automatically to our default models if it fails. No usage limits from us."
                 : "Chat and agents already work on the model included with your plan. Bring your own key for a different model or no usage limits."}
             </div>
           </div>
@@ -144,7 +144,7 @@ export default function LlmProvidersPage() {
       <div className="min-w-0 max-w-3xl">
         <SettingsPageHeader
           title="LLM Provider"
-          caption="Your plan already includes a model for chat and agents — nothing to set up. Bring your own key only if you want a different model or no usage limits."
+          caption="Your plan already includes models for chat and agents — nothing to set up. If you bring your own key, chat uses it first and falls back automatically to our default models if it fails."
         />
         <SingleKeyCard />
       </div>
@@ -155,7 +155,7 @@ export default function LlmProvidersPage() {
     <div className="min-w-0 max-w-3xl">
       <SettingsPageHeader
         title="LLM Providers"
-        caption={<>Connect the model providers your agents can use. Pick one model as primary — that&apos;s what the chat and agents default to.</>}
+        caption={<>Connect the model providers your agents can use. Pick one model as your preferred model — chat uses it first, and if it&apos;s unavailable it falls back automatically to our default models where the plan includes them.</>}
       />
 
       <div className="mb-5 flex items-center gap-2.5 rounded-xl border border-ui-border bg-ui-surface-muted px-4 py-3 text-[13px] text-ui-muted">
@@ -163,8 +163,8 @@ export default function LlmProvidersPage() {
         {connectedModels.length === 0
           ? "No providers connected yet. Connect at least one to start using the chat and agents."
           : primaryModel
-            ? `Primary model: ${primaryModel}`
-            : "Providers connected — pick a primary model on any connected card."}
+            ? `Preferred model: ${primaryModel}`
+            : "Providers connected — pick a preferred model on any connected card."}
       </div>
 
       <div className="space-y-3">
