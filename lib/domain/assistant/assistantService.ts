@@ -5,6 +5,7 @@ import type { ChatPorts } from "../chat/tools.ts";
 import { DeadlineExceededError, withDeadline } from "../fixes/withDeadline.ts";
 import { PLATFORM_DEFAULT_MODELS } from "../../llm/platformKeys.ts";
 import { AssistantError, type AssistantTurnInput, type AssistantTurnResult, type ChatTurnMessage, type TurnContext } from "./assistantTypes.ts";
+import { CHAT_LIMIT_MESSAGE, checkChatAllowance, chatLimitBody, resolveChatToolPolicy, type ChatEntitlement, type EntitlementPort } from "./chatEntitlements.ts";
 import type { CredentialPort, CreditPort } from "./credentialResolver.ts";
 import { friendlyProviderError } from "./errorMapping.ts";
 import {
@@ -61,13 +62,15 @@ export type AssistantPorts = {
   credits: CreditPort;
   prompts: PromptPort;
   data: DataPort;
+  /** Plan limits/locks for chat. Absent = no limits (self-host, tests). */
+  entitlements?: EntitlementPort;
   observer?: TurnObserver;
 };
 
 /** One chat turn: tools when there's an active project, plain driver call otherwise. */
 async function answer(args: {
   driver: DriverLike; supportsTools: boolean; apiKey: string; model: string; baseUrl?: string; system: string;
-  messages: ChatTurnMessage[]; ports: ChatPorts | null;
+  messages: ChatTurnMessage[]; ports: ChatPorts | null; lockedTools?: readonly string[];
 }): Promise<AssistantTurnResult> {
   if (!args.ports) {
     const result = await args.driver({ apiKey: args.apiKey, model: args.model, system: args.system, messages: args.messages, baseUrl: args.baseUrl });
@@ -75,7 +78,7 @@ async function answer(args: {
   }
   const run = await runChatTurn({
     driver: args.driver, apiKey: args.apiKey, model: args.model, baseUrl: args.baseUrl, system: args.system,
-    messages: args.messages, ports: args.ports, supportsTools: args.supportsTools,
+    messages: args.messages, ports: args.ports, supportsTools: args.supportsTools, lockedTools: args.lockedTools,
   });
   return { reply: run.text, toolsUsed: run.toolsUsed, lookedAt: run.lookedAt };
 }
@@ -98,7 +101,14 @@ export async function attemptWithCandidate(
   if (cred.kind === "missing") throw new CandidateUnavailable(`${providerId} has no usable key`);
 
   const paidWithPlatformKey = cred.kind === "platform";
+  let knownEntitlement: ChatEntitlement | undefined;
   if (paidWithPlatformKey) {
+    // Monthly plan cap first (BYOK, self-host and not-enforced skip it). A denial is a non-502 AssistantError: no fallback, no charge.
+    if (ports.entitlements) {
+      const allowance = await checkChatAllowance(ports.entitlements, ctx);
+      knownEntitlement = { plan: allowance.plan, enforced: allowance.enforced };
+      if (!allowance.allowed) throw new AssistantError(402, CHAT_LIMIT_MESSAGE, undefined, chatLimitBody(allowance));
+    }
     // Read-only affordability check; the actual charge happens once, after a successful reply.
     const afford = await ports.credits.canAfford(ctx);
     if (!afford.ok) throw new AssistantError(402, "Out of credits. Upgrade or connect your own key.");
@@ -108,11 +118,15 @@ export async function attemptWithCandidate(
     const result = await withDeadline(async () => {
       const apiKey = cred.kind === "byok" ? cred.apiKey : cred.loadApiKey(); // platform key: baseUrl intentionally not set
       const baseUrl = cred.kind === "byok" ? cred.baseUrl : undefined;
-      const system = await ports.prompts.build(ctx);
+      const policy = await resolveChatToolPolicy(ports.entitlements, ctx, knownEntitlement);
+      const built = await ports.prompts.build(ctx);
+      const system = policy.note ? `${built}
+
+${policy.note}` : built;
       const driver = ports.llm.getDriver(providerId)!;
       return answer({
         driver, supportsTools: ports.llm.supportsTools(providerId), apiKey, model, baseUrl, system,
-        messages, ports: ports.data.create(ctx),
+        messages, ports: ports.data.create(ctx), lockedTools: policy.lockedTools,
       });
     }, budgetMs).catch((e) => { throw e instanceof DeadlineExceededError ? new Error("request timed out") : e; });
     if (!result.reply || !result.reply.trim()) throw new EmptyReplyError();

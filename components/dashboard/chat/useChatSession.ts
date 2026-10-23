@@ -8,14 +8,19 @@ import {
   initialChatSessionState,
   historyForRequest,
   lastFailedUserText,
+  describeChatFailure,
 } from "@/lib/domain/chat/chatSessionState";
 import { sendChatMessage } from "@/lib/query/chatTransport";
+import { unlockTrigger } from "@/lib/ui/unlockTrigger";
+import { useQueryClient } from "@tanstack/react-query";
+import { qk } from "@/lib/query/keys";
 
 /** All conversation state and the send flow. UI pieces only read from / call into this. */
 export function useChatSession() {
   const [{ messages, pending }, dispatch] = useReducer(chatSessionReducer, initialChatSessionState);
   const [input, setInputState] = useState("");
   // Display-only (limited-data notice); sending never depends on it - the server picks the model.
+  const queryClient = useQueryClient();
   const { primaryModel } = useProviders();
   const { project } = useProject();
   const projectId = project?.id ?? null;
@@ -77,9 +82,13 @@ export function useChatSession() {
       if (!isCurrent()) return;
 
       if (!ok) {
-        dispatch({ type: "fail", message: `⚠ ${data.error ?? "Something went wrong."}` });
+        const failure = describeChatFailure(data);
+        dispatch({ type: "fail", message: failure.message });
+        if (failure.limitReached) unlockTrigger.fire();
+        queryClient.invalidateQueries({ queryKey: qk.chatAllowance() });
         return;
       }
+      queryClient.invalidateQueries({ queryKey: qk.chatAllowance() });
 
       dispatch({
         type: "reply",

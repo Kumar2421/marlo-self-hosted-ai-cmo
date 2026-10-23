@@ -42,7 +42,7 @@ export function formatLimit(key: LimitKey, value: number): string | null {
     case "geo_prompts":
       return `${value} prompts`;
     case "chat_messages_per_month":
-      return value < 0 ? "Uses credits" : `${value} / month`;
+      return value < 0 ? "Unlimited" : `${value} / month`;
     case "traffic_view_days":
       return value < 0 ? "Full history" : `${value} days`;
     default:
