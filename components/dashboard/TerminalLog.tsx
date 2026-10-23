@@ -14,7 +14,6 @@ import {
   Gift,
   FileText,
   LogOut,
-  Moon,
   Loader2,
   X,
   ScrollText,
@@ -111,7 +110,6 @@ function UserMenu() {
               <div className="truncate text-[13px] font-semibold">{user.name}</div>
               <div className="truncate text-[11px] text-gray-500">{user.email}</div>
             </div>
-            <Moon size={15} className="shrink-0 text-gray-400" />
           </div>
           {creditsLabel && (
             <div className="mb-2 flex items-center gap-2 px-2">
