@@ -41,13 +41,13 @@ export default function GeminiCard() {
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className="rounded-xl border border-ui-border bg-ui-surface p-5 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-[13px] font-semibold text-gray-900">Gemini API key</div>
-          <p className="mt-0.5 text-[12px] text-gray-500">Used to ask Gemini (with Google Search) the questions your buyers ask, and see if you are mentioned.</p>
+          <div className="text-[13px] font-semibold text-ui-text">Gemini API key</div>
+          <p className="mt-0.5 text-[12px] text-ui-muted">Used to ask Gemini (with Google Search) the questions your buyers ask, and see if you are mentioned.</p>
         </div>
-        {preview && <span className="flex items-center gap-1 text-[12px] text-[#00ab92]"><Check size={12} /> {preview}</span>}
+        {preview && <span className="flex items-center gap-1 text-[12px] text-ui-accent-strong"><Check size={12} /> {preview}</span>}
       </div>
       <div className="mt-3 flex gap-2">
         <input
@@ -55,10 +55,10 @@ export default function GeminiCard() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Paste your Gemini API key"
-          className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-1.5 text-[12px]"
+          className="min-w-0 flex-1 min-h-11 rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-[12px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40"
         />
-        <button onClick={() => input.trim() && save(input.trim())} disabled={busy} className="rounded-lg bg-[#111111] px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-60">Save</button>
-        {preview && <button onClick={() => save("")} disabled={busy} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[12px] text-gray-700 disabled:opacity-60">Remove</button>}
+        <button onClick={() => input.trim() && save(input.trim())} disabled={busy} className="rounded-lg bg-ui-primary min-h-11 px-3.5 py-2 text-[12px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 focus-visible:ring-offset-1 focus-visible:ring-offset-ui-surface font-medium text-ui-inverse disabled:opacity-60">Save</button>
+        {preview && <button onClick={() => save("")} disabled={busy} className="min-h-11 rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-[12px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 text-ui-muted disabled:opacity-60">Remove</button>}
       </div>
     </div>
   );

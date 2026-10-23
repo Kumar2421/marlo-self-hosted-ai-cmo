@@ -35,21 +35,10 @@ const REASON = {
 
 export const A11Y_ALLOWLIST: AllowedViolation[] = [
   { rule: "button-name", selector: ".gap-3.items-center > .hover\\:text-gray-600", reason: REASON.BUTTON_NAME, pages: ["desktop-1280-log-open"] },
-  { rule: "button-name", selector: ".mb-4.p-4.rounded-xl:nth-child(N) > .gap-3.items-start.justify-between > .relative.transition-colors.w-11", reason: REASON.BUTTON_NAME, pages: ["settings-1280-agents","settings-390-agents"] },
-  { rule: "button-name", selector: ".mb-4.p-4.rounded-xl:nth-child(N) > .gap-3.items-start.mb-3 > .relative.transition-colors.w-11", reason: REASON.BUTTON_NAME, pages: ["settings-1280-agents","settings-390-agents"] },
-  { rule: "button-name", selector: ".relative", reason: REASON.BUTTON_NAME, pages: ["settings-1280-api-credentials","settings-390-api-credentials"] },
   { rule: "color-contrast", selector: ".gap-1\\.5.group.w-\\[68px\\]:nth-child(N) > .-right-1.-top-1.rounded-full", reason: REASON.CONTRAST, pages: ["login-signin","login-signup"] },
   { rule: "color-contrast", selector: ".leading-5", reason: REASON.CONTRAST, pages: ["login-signup"] },
   { rule: "color-contrast", selector: ".mt-4", reason: REASON.CONTRAST, pages: ["login-signin","login-signup"] },
   { rule: "color-contrast", selector: ".my-4", reason: REASON.CONTRAST, pages: ["login-signin","login-signup"] },
   { rule: "color-contrast", selector: "a[href$=\"privacy\"]", reason: REASON.CONTRAST, pages: ["login-signup"] },
   { rule: "color-contrast", selector: "a[href$=\"terms\"]", reason: REASON.CONTRAST, pages: ["login-signup"] },
-  { rule: "select-name", selector: ".mb-4.p-4.rounded-xl:nth-child(N) > select", reason: REASON.SELECT_NAME, pages: ["settings-1280-agents","settings-390-agents"] },
-  { rule: "select-name", selector: "select", reason: REASON.SELECT_NAME, pages: ["settings-1280-personalization","settings-390-personalization"] },
-  { rule: "svg-img-alt", selector: ".border-gray-200.p-4.rounded-xl:nth-child(N) > .flex.gap-3.items-start > .h-9.justify-center.w-9 > svg", reason: REASON.SVG_ALT, pages: ["settings-1280-api-credentials","settings-390-api-credentials"] },
-  { rule: "svg-img-alt", selector: ".flex.gap-3.items-center > .font-bold.h-9.w-9 > svg", reason: REASON.SVG_ALT, pages: ["settings-1280-integrations","settings-390-integrations"] },
-  { rule: "svg-img-alt", selector: ".flex.gap-3.items-center > .h-9.justify-center.w-9 > svg", reason: REASON.SVG_ALT, pages: ["settings-1280-api-credentials","settings-390-api-credentials"] },
-  { rule: "svg-img-alt", selector: ".flex.gap-3.items-start > .font-bold.h-9.w-9 > svg", reason: REASON.SVG_ALT, pages: ["settings-1280-integrations","settings-390-integrations"] },
-  { rule: "svg-img-alt", selector: ".h-9.ring-2.ring-white:nth-child(N) > svg[role=\"img\"]", reason: REASON.SVG_ALT, pages: ["settings-1280-api-credentials","settings-1280-integrations","settings-390-api-credentials","settings-390-integrations"] },
-  { rule: "svg-img-alt", selector: ".items-start.justify-between.mb-3 > .flex.gap-3.items-start > .h-9.justify-center.w-9 > svg", reason: REASON.SVG_ALT, pages: ["settings-1280-api-credentials","settings-390-api-credentials"] },
 ];

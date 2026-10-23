@@ -9,7 +9,7 @@ export default function Toggle({ checked, onChange }: { checked: boolean; onChan
       }`}
     >
       <span
-        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+        className={`absolute top-0.5 h-5 w-5 rounded-full bg-ui-surface shadow transition-transform ${
           checked ? "translate-x-5" : "translate-x-0.5"
         }`}
       />

@@ -78,31 +78,31 @@ export default function GitHubAppCard() {
   const connectHref = `/api/github/app/install?returnTo=${encodeURIComponent(returnTo ?? "/settings/integrations")}`;
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className="rounded-xl border border-ui-border bg-ui-surface p-5 shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <BrandIcon id="github" color="#111111" fallback="G" />
           <div>
-            <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
+            <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-ui-text">
               GitHub
               {gh?.connected && (
-                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">
+                <span className="flex items-center gap-1 rounded-full bg-ui-success-soft px-2 py-0.5 text-xs font-medium text-ui-success-text">
                   <Check size={10} /> Connected
                 </span>
               )}
             </div>
-            <div className="mt-1 text-[12px] text-gray-500">
+            <div className="mt-1 text-[12px] text-ui-muted">
               Marlo sends suggested changes for one repository per project as a pull request. You review and merge it on GitHub. Marlo never merges.
             </div>
           </div>
         </div>
-        <span className="shrink-0 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">GitHub App</span>
+        <span className="shrink-0 rounded-full bg-ui-accent-soft px-2 py-0.5 text-xs font-medium text-ui-accent-strong">GitHub App</span>
       </div>
 
       {status.isPending ? (
-        <div className="h-9 animate-pulse rounded-lg bg-gray-100" aria-busy="true" />
+        <div className="h-9 animate-pulse rounded-lg bg-ui-surface-sunken" aria-busy="true" />
       ) : status.isError ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-ui-surface-muted px-3 py-2 text-[12px] text-ui-muted">
           <span>We couldn&apos;t check GitHub.</span>
           <button type="button" onClick={() => status.refetch()} disabled={status.isFetching} className="font-medium text-blue-600 hover:underline disabled:opacity-50">
             {status.isFetching ? "Checking..." : "Retry"}
@@ -111,7 +111,7 @@ export default function GitHubAppCard() {
       ) : !installed ? (
         <div className="space-y-2">
           {gh?.error === "access_removed" && <p className="text-[12px] text-amber-700">Marlo lost access to GitHub. Connect it again to keep suggesting fixes.</p>}
-          <a href={connectHref} className="inline-flex rounded-lg bg-[#111111] px-3 py-2 text-[13px] font-medium text-white hover:bg-black">
+          <a href={connectHref} className="inline-flex items-center justify-center rounded-lg bg-ui-primary min-h-11 px-3.5 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 focus-visible:ring-offset-1 focus-visible:ring-offset-ui-surface font-medium text-ui-inverse hover:bg-ui-primary-hover">
             Connect GitHub
           </a>
         </div>
@@ -138,9 +138,9 @@ export default function GitHubAppCard() {
             </div>
           )}
           {gh?.connected && (
-            <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
+            <div className="flex items-center justify-between rounded-lg bg-ui-surface-muted px-3 py-2 text-[12px] text-ui-muted">
               <span className="min-w-0 break-all font-mono">{gh.repoFullName}</span>
-              <button onClick={disconnect} disabled={busy} className="font-medium text-red-600 hover:underline disabled:opacity-50">Disconnect</button>
+              <button onClick={disconnect} disabled={busy} className="font-medium text-ui-danger-text hover:underline disabled:opacity-50">Disconnect</button>
             </div>
           )}
           <div className="flex flex-wrap gap-2">
@@ -148,14 +148,14 @@ export default function GitHubAppCard() {
               value={choice}
               onChange={(e) => setChoice(e.target.value)}
               aria-label="Repository"
-              className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] text-gray-800"
+              className="min-w-0 flex-1 rounded-lg border border-ui-border bg-ui-surface px-3 py-2 text-[13px] text-ui-text"
             >
               <option value="">{gh?.connected ? "Switch repository..." : "Choose a repository..."}</option>
               {(gh?.repos ?? []).map((r) => (
                 <option key={r.fullName} value={r.fullName}>{r.fullName}{r.private ? " (private)" : ""}</option>
               ))}
             </select>
-            <button onClick={saveRepo} disabled={save.isPending || !choice} className="shrink-0 rounded-lg bg-[#111111] px-3 py-2 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50">
+            <button onClick={saveRepo} disabled={save.isPending || !choice} className="shrink-0 rounded-lg bg-ui-primary min-h-11 px-3.5 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 focus-visible:ring-offset-1 focus-visible:ring-offset-ui-surface font-medium text-ui-inverse hover:bg-ui-primary-hover disabled:opacity-50">
               {save.isPending ? "Saving..." : "Save repository"}
             </button>
           </div>
@@ -165,7 +165,7 @@ export default function GitHubAppCard() {
             </a>
           )}
           {gh && !gh.connected && (
-            <button onClick={disconnect} disabled={busy} className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50">Disconnect</button>
+            <button onClick={disconnect} disabled={busy} className="text-xs font-medium text-ui-danger-text hover:underline disabled:opacity-50">Disconnect</button>
           )}
           <p className="text-xs text-ui-subtle">
             Disconnecting only removes the link inside Marlo. To remove the app from your GitHub account, uninstall it in{" "}

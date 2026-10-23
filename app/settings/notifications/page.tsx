@@ -6,6 +6,7 @@ import { useToast } from "@/components/dashboard/Toast";
 import { SkeletonCard } from "@/components/shared/Skeleton";
 import { useNotificationPrefs } from "@/components/dashboard/notifications/useNotificationPrefs";
 import { FEATURES } from "@/lib/features";
+import { BTN_PRIMARY, BTN_SECONDARY, CARD, FOCUS_RING, INPUT, SettingsPageHeader } from "@/components/settings/ui";
 import { displayedFrequency, type NotificationPrefs } from "@/lib/domain/notifications/preferences";
 import type { Frequency, NotificationCategory } from "@/lib/domain/notifications/types";
 
@@ -78,22 +79,22 @@ export default function NotificationsSettingsPage() {
 
   if (query.isPending) {
     return (
-      <div className="min-w-0 max-w-2xl">
-        <h1 className="text-[15px] font-semibold text-gray-900">Notifications</h1>
-        <p className="mb-5 text-[13px] text-gray-500">
-          Choose what Marlo tells you about. Everything shows in the bell at the top of your dashboard; email is optional on top of that.
-        </p>
+      <div className="min-w-0 max-w-3xl">
+        <SettingsPageHeader
+          title="Notifications"
+          caption="Choose what Marlo tells you about. Everything shows in the bell at the top of your dashboard; email is optional on top of that."
+        />
         <SkeletonCard rows={5} />
       </div>
     );
   }
   if (query.isError || !data) {
     return (
-      <div className="min-w-0 max-w-2xl">
-        <h1 className="text-[15px] font-semibold text-gray-900">Notifications</h1>
-        <p className="mt-2 text-[13px] text-gray-600" role="alert">
+      <div className="min-w-0 max-w-3xl">
+        <SettingsPageHeader title="Notifications" />
+        <p className="text-[13px] text-ui-muted" role="alert">
           Couldn&apos;t load your notification settings.{" "}
-          <button type="button" onClick={() => query.refetch()} className="font-medium text-gray-900 underline">
+          <button type="button" onClick={() => query.refetch()} className="font-medium text-ui-text underline">
             Try again
           </button>
         </p>
@@ -120,41 +121,41 @@ export default function NotificationsSettingsPage() {
   }
 
   return (
-    <div className="min-w-0 max-w-2xl">
-      <h1 className="text-[15px] font-semibold text-gray-900">Notifications</h1>
-      <p className="mb-5 text-[13px] text-gray-500">
-        Choose what Marlo tells you about. Everything shows in the bell at the top of your dashboard; email is optional on top of that.
-      </p>
+    <div className="min-w-0 max-w-3xl">
+      <SettingsPageHeader
+        title="Notifications"
+        caption="Choose what Marlo tells you about. Everything shows in the bell at the top of your dashboard; email is optional on top of that."
+      />
 
-      <section className="mb-5 rounded-xl border border-gray-200 p-4" aria-labelledby="email-status">
+      <section className={`${CARD} mb-4 p-5`} aria-labelledby="email-status">
         <div className="flex items-start gap-3">
-          <Mail size={16} className="mt-0.5 shrink-0 text-gray-500" aria-hidden="true" />
+          <Mail size={16} className="mt-0.5 shrink-0 text-ui-muted" aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <h2 id="email-status" className="text-[13px] font-semibold text-gray-900">
+            <h2 id="email-status" className="text-[13px] font-semibold text-ui-text">
               Email
             </h2>
-            <p className="mt-1 text-[12px] leading-relaxed text-gray-500">
+            <p className="mt-1 text-[12px] leading-relaxed text-ui-muted">
               Emails go out during a daily check ({FEATURES.PLATFORM_MODE ? "around 03:00 UTC" : "this app checks every few hours while it is open"}), not the moment something happens.
               Everything also appears in the app straight away.
             </p>
             {!emailConfigured ? (
               FEATURES.PLATFORM_MODE ? (
-                <p className="mt-1 text-[13px] leading-relaxed text-gray-600">
+                <p className="mt-1 text-[13px] leading-relaxed text-ui-muted">
                   Email delivery is managed by the host, so notifications stay in the app for now.
                 </p>
               ) : (
-                <p className="mt-1 text-[13px] leading-relaxed text-gray-600">
+                <p className="mt-1 text-[13px] leading-relaxed text-ui-muted">
                   Email isn&apos;t set up on this server, so notifications stay in the app. To turn email on, the server needs a Resend API key and a sender address
-                  (<code className="rounded bg-gray-100 px-1 text-[12px]">RESEND_API_KEY</code>, <code className="rounded bg-gray-100 px-1 text-[12px]">NOTIFY_FROM_EMAIL</code>), plus <code className="rounded bg-gray-100 px-1 text-[12px]">NOTIFY_SIGNING_SECRET</code> and <code className="rounded bg-gray-100 px-1 text-[12px]">NEXT_PUBLIC_APP_URL</code> for the unsubscribe links.
+                  (<code className="rounded bg-ui-surface-sunken px-1 text-[12px]">RESEND_API_KEY</code>, <code className="rounded bg-ui-surface-sunken px-1 text-[12px]">NOTIFY_FROM_EMAIL</code>), plus <code className="rounded bg-ui-surface-sunken px-1 text-[12px]">NOTIFY_SIGNING_SECRET</code> and <code className="rounded bg-ui-surface-sunken px-1 text-[12px]">NEXT_PUBLIC_APP_URL</code> for the unsubscribe links.
                 </p>
               )
             ) : unsubscribedAll ? (
-              <p className="mt-1 text-[13px] leading-relaxed text-gray-600">
+              <p className="mt-1 text-[13px] leading-relaxed text-ui-muted">
                 You unsubscribed from Marlo emails. Notifications still appear in the app.
               </p>
             ) : (
-              <p className="mt-1 text-[13px] leading-relaxed text-gray-600">
-                {email ? <>Emails go to <span className="break-all font-medium text-gray-900">{email}</span>.</> : "We don't have an email address for you yet."} They&apos;re separate from the
+              <p className="mt-1 text-[13px] leading-relaxed text-ui-muted">
+                {email ? <>Emails go to <span className="break-all font-medium text-ui-text">{email}</span>.</> : "We don't have an email address for you yet."} They&apos;re separate from the
                 outreach emails you send to leads, and every one has an unsubscribe link.
               </p>
             )}
@@ -164,7 +165,7 @@ export default function NotificationsSettingsPage() {
                 type="button"
                 disabled={save.isPending}
                 onClick={() => save.mutate({ unsubscribedAll: false }, { onSuccess: () => show("Email is back on.") })}
-                className="mt-3 rounded-lg bg-[#111111] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50"
+                className={`${BTN_PRIMARY} mt-3`}
               >
                 Turn email back on
               </button>
@@ -175,22 +176,22 @@ export default function NotificationsSettingsPage() {
                   type="button"
                   disabled={sendTest.isPending || !email}
                   onClick={onTest}
-                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                  className={BTN_SECONDARY}
                 >
                   {sendTest.isPending && <Loader2 size={13} className="animate-spin" aria-hidden="true" />}
                   Send me a test email
                 </button>
-                <span className="text-[12px] text-gray-500">Sends one message to your address to check it arrives.</span>
+                <span className="text-[12px] text-ui-muted">Sends one message to your address to check it arrives.</span>
               </div>
             )}
           </div>
         </div>
       </section>
 
-      <section className="mb-5 flex items-start justify-between gap-4 rounded-xl border border-gray-200 p-4">
+      <section className={`${CARD} mb-4 flex items-start justify-between gap-4 p-5`}>
         <div>
-          <h2 className="text-[13px] font-semibold text-gray-900">Pause all email</h2>
-          <p className="mt-1 text-[12px] leading-relaxed text-gray-500">Handy for holidays. Notifications still collect in the app.</p>
+          <h2 className="text-[13px] font-semibold text-ui-text">Pause all email</h2>
+          <p className="mt-1 text-[12px] leading-relaxed text-ui-muted">Handy for holidays. Notifications still collect in the app.</p>
         </div>
         <button
           type="button"
@@ -199,30 +200,30 @@ export default function NotificationsSettingsPage() {
           aria-label="Pause all email"
           disabled={save.isPending}
           onClick={() => update({ ...prefs, paused: !prefs.paused }, prefs.paused ? "Email resumed." : "Email paused.")}
-          className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-60 ${prefs.paused ? "bg-[#00ab92]" : "bg-gray-300"}`}
+          className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors after:absolute after:-inset-y-2.5 after:inset-x-0 after:content-[''] disabled:opacity-60 ${FOCUS_RING} ${prefs.paused ? "bg-ui-accent" : "bg-ui-border-strong"}`}
         >
-          <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${prefs.paused ? "left-[18px]" : "left-0.5"}`} />
+          <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${prefs.paused ? "left-[22px]" : "left-0.5"}`} />
         </button>
       </section>
 
-      <section className="rounded-xl border border-gray-200" aria-label="What to be notified about">
-        <ul className="divide-y divide-gray-100">
+      <section className={CARD} aria-label="What to be notified about">
+        <ul className="divide-y divide-ui-border">
           {ROWS.map((row) => {
             const id = `pref-${row.category}`;
             return (
-              <li key={row.category} className="flex flex-col gap-2 p-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+              <li key={row.category} className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
                 <div className="min-w-0">
-                  <label htmlFor={id} className="text-[13px] font-semibold text-gray-900">
+                  <label htmlFor={id} className="text-[13px] font-semibold text-ui-text">
                     {row.title}
                   </label>
-                  <p className="mt-1 text-[12px] leading-relaxed text-gray-500">{row.description}</p>
+                  <p className="mt-1 text-[12px] leading-relaxed text-ui-muted">{row.description}</p>
                 </div>
                 <select
                   id={id}
                   value={shownValue(row.category, prefs.categories[row.category])}
                   disabled={save.isPending}
                   onChange={(e) => setCategory(row.category, e.target.value as Frequency)}
-                  className="w-full shrink-0 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[13px] text-gray-900 outline-none focus:border-black sm:w-60"
+                  className={`${INPUT} shrink-0 sm:w-64`}
                 >
                   {row.options.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -237,7 +238,7 @@ export default function NotificationsSettingsPage() {
       </section>
 
       {!emailOn && emailConfigured && !unsubscribedAll && prefs.paused && (
-        <p className="mt-4 text-[12px] text-gray-500">Email is paused. Turn the pause off to get emails again.</p>
+        <p className="mt-4 text-[12px] text-ui-muted">Email is paused. Turn the pause off to get emails again.</p>
       )}
     </div>
   );

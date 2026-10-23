@@ -28,7 +28,7 @@ export default function BrandIcon({
   color,
   fallback,
   size = 17,
-  className = "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[13px] font-bold text-white",
+  className = "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[13px] font-bold text-white ring-1 ring-inset ring-ui-border-strong",
 }: {
   id: string;
   color: string;
@@ -39,7 +39,7 @@ export default function BrandIcon({
   const Icon = ICONS[id];
   return (
     <span className={className} style={{ backgroundColor: color }}>
-      {Icon ? <Icon size={size} color="#ffffff" /> : fallback}
+      {Icon ? <Icon size={size} color="#ffffff" aria-hidden="true" focusable="false" /> : fallback}
     </span>
   );
 }

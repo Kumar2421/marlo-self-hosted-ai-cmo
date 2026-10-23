@@ -96,53 +96,53 @@ export default function WordPressCard() {
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className="flex h-full flex-col rounded-xl border border-ui-border bg-ui-surface p-5 shadow-sm">
       <div className="mb-3 flex items-center gap-3">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#21759b] text-[13px] font-bold text-white">
           W
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 truncate text-[13px] font-semibold text-gray-900">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-semibold text-ui-text">
             WordPress (Self-Hosted)
             {connected && (
-              <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">
+              <span className="flex items-center gap-1 rounded-full bg-ui-success-soft px-2 py-0.5 text-xs font-medium text-ui-success-text">
                 <Check size={10} /> Connected
               </span>
             )}
           </div>
-          <div className="truncate text-[12px] text-gray-500">Connect via Application Password</div>
+          <div className="text-[12px] text-ui-muted">Connect via Application Password</div>
         </div>
         <a
           href="https://make.wordpress.org/core/2020/11/05/application-passwords-integration-guide/"
           target="_blank"
           rel="noreferrer"
-          className="flex shrink-0 items-center gap-1 text-xs text-ui-subtle hover:text-gray-700"
+          className="flex shrink-0 items-center gap-1 text-xs text-ui-subtle hover:text-ui-text"
         >
           How to create one <ExternalLink size={11} />
         </a>
       </div>
 
       {!loaded ? null : connected ? (
-        <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
+        <div className="mt-auto flex items-center justify-between rounded-lg bg-ui-surface-muted px-3 py-2 text-[12px] text-ui-muted">
           <span className="min-w-0 truncate font-mono">{siteSaved}</span>
-          <button onClick={handleDisconnect} disabled={busy} className="shrink-0 font-medium text-red-600 hover:underline disabled:opacity-50">
+          <button onClick={handleDisconnect} disabled={busy} className="shrink-0 font-medium text-ui-danger-text hover:underline disabled:opacity-50">
             Disconnect
           </button>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="mt-auto space-y-2">
           <input
             value={siteUrl}
             onChange={(e) => setSiteUrl(e.target.value)}
             placeholder="yoursite.com"
-            className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
+            className="min-w-0 w-full min-h-11 rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 text-ui-text placeholder:text-ui-faint"
           />
           <div className="flex gap-2">
             <input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="WordPress username"
-              className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
+              className="min-w-0 flex-1 min-h-11 rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 text-ui-text placeholder:text-ui-faint"
             />
             <input
               value={appPassword}
@@ -150,13 +150,13 @@ export default function WordPressCard() {
               onKeyDown={(e) => e.key === "Enter" && handleConnect()}
               placeholder="Application password"
               type="password"
-              className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
+              className="min-w-0 flex-1 min-h-11 rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 text-ui-text placeholder:text-ui-faint"
             />
           </div>
           <button
             onClick={handleConnect}
             disabled={busy}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#111111] px-3 py-2 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-ui-primary min-h-11 px-3.5 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 focus-visible:ring-offset-1 focus-visible:ring-offset-ui-surface font-medium text-ui-inverse hover:bg-ui-primary-hover disabled:opacity-50"
           >
             {busy ? <Loader2 size={12} className="animate-spin" /> : <Lock size={11} />}
             {busy ? "Verifying..." : "Connect"}

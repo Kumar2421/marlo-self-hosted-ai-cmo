@@ -71,26 +71,26 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className="rounded-xl border border-ui-border bg-ui-surface p-5 shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <BrandIcon id={provider.id} color={provider.color} fallback={provider.icon} size={19} />
 
           <div>
-            <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-gray-900">
+            <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-ui-text">
               {provider.name}
               {isConnected && (
-                <span className="flex items-center gap-1 rounded-full bg-[#e6f7f4] px-2 py-0.5 text-xs font-medium text-ui-accent-strong">
+                <span className="flex items-center gap-1 rounded-full bg-ui-success-soft px-2 py-0.5 text-xs font-medium text-ui-success-text">
                   <Check size={10} /> Connected
                 </span>
               )}
               {isPlatformIncluded && (
-                <span className="flex items-center gap-1 rounded-full bg-[#eef2ff] px-2 py-0.5 text-xs font-medium text-[#4338ca]">
+                <span className="flex items-center gap-1 rounded-full bg-ui-info-soft px-2 py-0.5 text-xs font-medium text-ui-info-text">
                   <Sparkles size={10} /> Included with your plan
                 </span>
               )}
             </div>
-            <div className="text-[12px] text-gray-500">{provider.desc}</div>
+            <div className="text-[12px] text-ui-muted">{provider.desc}</div>
           </div>
         </div>
         {provider.docsUrl && (
@@ -98,7 +98,7 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
             href={provider.docsUrl}
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-1 text-xs text-ui-subtle hover:text-gray-700"
+            className="flex items-center gap-1 text-xs text-ui-subtle hover:text-ui-text"
           >
             Get key <ExternalLink size={11} />
           </a>
@@ -107,7 +107,7 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
 
       {isConnected ? (
         <div className="space-y-3">
-          <div className="space-y-1.5 rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
+          <div className="space-y-1.5 rounded-lg bg-ui-surface-muted px-3 py-2 text-[12px] text-ui-muted">
             {connection.baseUrl && (
               <div className="flex items-center justify-between gap-3">
                 <span className="text-ui-subtle">Endpoint</span>
@@ -126,7 +126,7 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
                     : `${connection.apiKey.slice(0, 4)}••••${connection.apiKey.slice(-2)}`
                   : "No API key required"}
               </span>
-              <button onClick={handleDisconnect} disabled={busy} className="font-medium text-red-600 hover:underline disabled:opacity-50">
+              <button onClick={handleDisconnect} disabled={busy} className="font-medium text-ui-danger-text hover:underline disabled:opacity-50">
                 Disconnect
               </button>
             </div>
@@ -135,12 +135,12 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
         </div>
       ) : isPlatformIncluded ? (
         <div className="space-y-3">
-          <div className="rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
+          <div className="rounded-lg bg-ui-surface-muted px-3 py-2 text-[12px] text-ui-muted">
             Ready to use — no key needed. The platform provides this model for every hosted account.
           </div>
           <ModelPicker provider={provider} primaryModel={primaryModel} onPick={setPrimaryModel} show={show} />
           <details className="text-xs text-ui-subtle">
-            <summary className="cursor-pointer hover:text-gray-600">Use your own key instead</summary>
+            <summary className="cursor-pointer hover:text-ui-muted">Use your own key instead</summary>
             <div className="mt-2 flex gap-2">
               <input
                 value={keyInput}
@@ -148,12 +148,12 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
                 onKeyDown={(e) => e.key === "Enter" && handleConnect()}
                 placeholder={provider.keyPlaceholder}
                 type="password"
-                className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
+                className="min-w-0 flex-1 min-h-11 rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 text-ui-text placeholder:text-ui-faint"
               />
               <button
                 onClick={handleConnect}
                 disabled={busy}
-                className="shrink-0 rounded-lg bg-[#111111] px-3 py-2 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50"
+                className="shrink-0 rounded-lg bg-ui-primary min-h-11 px-3.5 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 focus-visible:ring-offset-1 focus-visible:ring-offset-ui-surface font-medium text-ui-inverse hover:bg-ui-primary-hover disabled:opacity-50"
               >
                 {busy ? "Connecting..." : "Connect"}
               </button>
@@ -161,7 +161,7 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
           </details>
         </div>
       ) : blockedInPlatformMode ? (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
+        <div className="flex items-start gap-2 rounded-lg border border-ui-warn/30 bg-ui-warn-soft px-2.5 py-2 text-xs text-ui-warn-text">
           <AlertTriangle size={12} className="mt-0.5 shrink-0" />
           {provider.name} only runs on your own machine — not reachable from a hosted deployment. Available in
           self-host mode only.
@@ -174,7 +174,7 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
               onChange={(e) => setBaseUrlInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !needsKey && handleConnect()}
               placeholder={provider.baseUrlPlaceholder || "http://localhost:1234/v1"}
-              className="min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
+              className="min-w-0 w-full min-h-11 rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 text-ui-text placeholder:text-ui-faint"
             />
           )}
           <div className="flex gap-2">
@@ -185,13 +185,13 @@ export default function ProviderCard({ provider }: { provider: Provider }) {
                 onKeyDown={(e) => e.key === "Enter" && handleConnect()}
                 placeholder={provider.keyPlaceholder || "API key (optional)"}
                 type="password"
-                className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400"
+                className="min-w-0 flex-1 min-h-11 rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 text-ui-text placeholder:text-ui-faint"
               />
             )}
             <button
               onClick={handleConnect}
               disabled={busy}
-              className={`shrink-0 rounded-lg bg-[#111111] px-3 py-2 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50 ${
+              className={`shrink-0 rounded-lg bg-ui-primary min-h-11 px-3.5 py-2 text-[13px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 focus-visible:ring-offset-1 focus-visible:ring-offset-ui-surface font-medium text-ui-inverse hover:bg-ui-primary-hover disabled:opacity-50 ${
                 needsKey ? "" : "w-full"
               }`}
             >
@@ -217,7 +217,7 @@ function ModelPicker({
 }) {
   return (
     <div>
-      <div className="mb-1.5 text-xs font-medium text-gray-500">Models</div>
+      <div className="mb-1.5 text-xs font-medium text-ui-muted">Models</div>
       <div className="flex flex-wrap gap-1.5">
         {provider.models.map((m) => (
           <button
@@ -229,7 +229,7 @@ function ModelPicker({
             className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
               primaryModel === m
                 ? "border-gray-900 bg-gray-900 text-white"
-                : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                : "border-ui-border text-ui-muted hover:bg-ui-surface-sunken"
             }`}
           >
             {primaryModel === m && "★ "}

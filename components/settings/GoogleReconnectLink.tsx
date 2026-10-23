@@ -5,7 +5,7 @@ export default function GoogleReconnectLink({ returnTo, className }: { returnTo:
   return (
     <a
       href={googleReconnectHref(returnTo)}
-      className={className ?? "inline-flex items-center gap-1.5 rounded-lg bg-[#111111] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-black"}
+      className={className ?? "inline-flex items-center gap-1.5 rounded-lg bg-ui-primary min-h-11 px-3.5 py-2 text-[12px] sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-text/40 focus-visible:ring-offset-1 focus-visible:ring-offset-ui-surface font-medium text-ui-inverse hover:bg-ui-primary-hover"}
     >
       Reconnect Google
     </a>
