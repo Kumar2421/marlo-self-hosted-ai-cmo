@@ -217,14 +217,14 @@ function ModelPicker({
 }) {
   return (
     <div>
-      <div className="mb-1.5 text-xs font-medium text-ui-muted">Models</div>
+      <div className="mb-1.5 text-xs font-medium text-ui-muted">Models (the starred one is your preferred model)</div>
       <div className="flex flex-wrap gap-1.5">
         {provider.models.map((m) => (
           <button
             key={m}
             onClick={() => {
               onPick(m);
-              show(`${m} set as primary model.`);
+              show(`${m} set as your preferred model.`);
             }}
             className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
               primaryModel === m
