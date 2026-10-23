@@ -145,3 +145,42 @@ test.describe("Fix first strip", () => {
     await expect(page.getByRole("dialog")).toContainText("Thing 0");
   });
 });
+
+test.describe("Fix first strip: closing the suggestions", () => {
+  test.use({ viewport: { width: 1536, height: 730 } });
+  test.setTimeout(120_000);
+
+  test.beforeEach(async ({ page, context, baseURL }) => {
+    await signIn(context, baseURL!);
+    await serveLottieWasmLocally(page);
+    await mockDashboardApi(page);
+  });
+
+  test("the X hides the suggestions, a Show link brings them back, the choice survives a reload, and a changed list reappears", async ({ page }) => {
+    let findings = [0, 1].map((i) => finding(i, { category: `cat-${i}`, entityId: `entity-${i}`, evidence: { label: `Issue ${i}` } }));
+    await page.route("**/api/agents/analytics/findings", (r) => r.fulfill(json({ findings })));
+    await page.goto("/dashboard");
+    const panel = analytics(page);
+    const strip = panel.getByTestId("fix-first");
+    await expect(strip).toHaveAttribute("data-state", "actions");
+
+    await strip.getByRole("button", { name: "Hide fix-first suggestions" }).click();
+    await expect(strip).toHaveAttribute("data-state", "dismissed");
+    await expect(strip).toContainText("Fix-first suggestions hidden");
+
+    // Remembered across a reload (same suggestions).
+    await page.reload();
+    await expect(analytics(page).getByTestId("fix-first")).toHaveAttribute("data-state", "dismissed");
+
+    // Show brings them back.
+    await analytics(page).getByTestId("fix-first").getByRole("button", { name: "Show" }).click();
+    await expect(analytics(page).getByTestId("fix-first")).toHaveAttribute("data-state", "actions");
+
+    // Close again, then the list changes: the strip comes back by itself.
+    await analytics(page).getByTestId("fix-first").getByRole("button", { name: "Hide fix-first suggestions" }).click();
+    await expect(analytics(page).getByTestId("fix-first")).toHaveAttribute("data-state", "dismissed");
+    findings = [0, 1, 2].map((i) => finding(i, { category: `cat-${i}`, entityId: `entity-${i}`, evidence: { label: `Issue ${i}` }, severity: i === 2 ? "critical" : "warning" }));
+    await page.reload();
+    await expect(analytics(page).getByTestId("fix-first")).toHaveAttribute("data-state", "actions");
+  });
+});

@@ -11,6 +11,8 @@ import { NoticeActionCard, TintedNotice } from "@/components/ui/TintedNotice";
 import { CHIP_DOT, VITAL_TEXT, vitalTone } from "@/components/ui/premium";
 import FindingsWorkspace from "./FindingsWorkspace";
 import FixFirstStrip from "./FixFirstStrip";
+import { useFixFirstDismissed } from "./useFixFirstDismissed";
+import { suggestionSignature } from "@/lib/domain/overview/fixFirstDismiss";
 import { ANALYTICS_TAB_STORAGE_KEY, buildFixFirstView, pickInitialTab } from "@/lib/domain/overview/fixFirst";
 import { nextTabIndex } from "@/lib/tabKeys";
 import type { SEOAuditPayload } from "@/lib/domain/seo/SEOAgent";
@@ -203,6 +205,8 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
     audit: auditQuery.isError ? "error" : auditQuery.isPending ? "pending" : auditData ? "present" : "missing",
     now: new Date(),
   });
+  const fixFirstSignature = fixFirstView.kind === "actions" ? suggestionSignature(fixFirstView.items) : "";
+  const fixFirstDismiss = useFixFirstDismissed(project?.id, fixFirstSignature);
   const auditLoading = auditQuery.isPending && open && Boolean(project?.url);
   const setAuditData = (value: SEOAuditPayload | null) => queryClient.setQueryData(auditKey, value);
 
@@ -586,6 +590,9 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
         retrying={storedFindings.isFetching}
         onRunAudit={handleRunAudit}
         auditRunning={loading || setupRunning}
+        dismissed={fixFirstDismiss.dismissed}
+        onDismiss={fixFirstDismiss.dismiss}
+        onRestore={fixFirstDismiss.restore}
       />
 
       {/* Equal-width tabs that fit the panel; below ~300px they scroll sideways with the scrollbar hidden. */}

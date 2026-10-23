@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import type { FixFirstView } from "@/lib/domain/overview/fixFirst";
 
 /**
@@ -16,6 +16,9 @@ export default function FixFirstStrip({
   onRunAudit,
   auditRunning = false,
   retrying = false,
+  dismissed = false,
+  onDismiss,
+  onRestore,
 }: {
   view: FixFirstView;
   onOpen: (findingId: string) => void;
@@ -24,6 +27,10 @@ export default function FixFirstStrip({
   onRunAudit: () => void;
   auditRunning?: boolean;
   retrying?: boolean;
+  /** The user closed these suggestions: show only a one-line "Show" link. */
+  dismissed?: boolean;
+  onDismiss?: () => void;
+  onRestore?: () => void;
 }) {
   if (view.kind === "hidden") return null;
 
@@ -42,10 +49,34 @@ export default function FixFirstStrip({
     );
   }
 
+  if (view.kind === "actions" && dismissed) {
+    return (
+      <div data-testid="fix-first" data-state="dismissed" className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-1.5">
+        <span className="text-xs text-ui-subtle">Fix-first suggestions hidden</span>
+        <button type="button" onClick={onRestore} className="text-xs font-medium text-gray-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring-color)]">
+          Show
+        </button>
+      </div>
+    );
+  }
+
   if (view.kind === "actions") {
     return (
       <div data-testid="fix-first" data-state="actions" className={shell}>
-        {label}
+        <div className="flex items-center justify-between gap-2">
+          {label}
+          {onDismiss && (
+            <button
+              type="button"
+              onClick={onDismiss}
+              aria-label="Hide fix-first suggestions"
+              title="Hide these suggestions"
+              className="-mr-2 -my-1.5 flex h-9 w-9 items-center justify-center rounded-md text-ui-subtle hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring-color)]"
+            >
+              <X size={14} aria-hidden />
+            </button>
+          )}
+        </div>
         <ul className="mt-1 space-y-1.5">
           {view.items.map((item) => (
             <li key={item.findingId} className="flex items-center justify-between gap-3">
