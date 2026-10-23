@@ -19,6 +19,7 @@ import { useProviders, findProviderForModel } from "@/lib/providers-store";
 import { useProject } from "@/lib/project-store";
 import { limitedDataNotice } from "@/lib/llm/capabilities";
 import { parseChatText } from "@/lib/chatText";
+import UnlockPanel from "./UnlockPanel";
 
 const SUGGESTED_PROMPTS = [
   "What should I fix first on my site?",
@@ -206,6 +207,7 @@ export default function ChatPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white">
+      <UnlockPanel />
 
       <div className="dash-panel-header">
         <h2 className="dash-title">
