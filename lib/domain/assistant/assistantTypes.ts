@@ -1,5 +1,13 @@
 /** Shared vocabulary of the assistant service. Pure types plus AssistantError. */
 
+import type { ChatRunHooks } from "../chat/toolLoop.ts";
+
+/** Optional streaming observers plus a cancel signal. Omitted by the JSON endpoint. */
+export type TurnHooks = ChatRunHooks & {
+  /** True once visible text went to the client: the turn can no longer fall back to another model. */
+  hasStreamed?: () => boolean;
+};
+
 export type ChatTurnMessage = { role: "user" | "assistant"; content: string };
 
 /**

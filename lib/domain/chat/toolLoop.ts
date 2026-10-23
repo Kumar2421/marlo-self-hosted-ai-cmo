@@ -12,7 +12,39 @@ export type DriverLike = (req: {
   apiKey: string; model: string; system?: string; baseUrl?: string;
   messages: Array<{ role: "user" | "assistant"; content: string }>;
   tools?: ToolDefLike[];
-}) => Promise<{ text?: string }>;
+  /** Streaming (optional): ask the driver for a ReadableStream of text chunks instead of one string. */
+  stream?: boolean;
+  signal?: AbortSignal;
+}) => Promise<{ text?: string; stream?: ReadableStream<Uint8Array> }>;
+
+/** Optional observers for a streamed turn. Every field is optional; omitting all of them changes nothing. */
+export type ChatRunHooks = {
+  /** A tool is about to run (for live status chips). */
+  onToolStart?: (name: string) => void;
+  /** Present = the caller wants text as it is produced; used only where the driver truly streams. */
+  onDelta?: (text: string) => void;
+  signal?: AbortSignal;
+};
+
+/** Reads a driver text stream to the end, forwarding each chunk; returns the whole text. */
+export async function readTextStream(stream: ReadableStream<Uint8Array>, onDelta: (text: string) => void): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let all = "";
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const text = decoder.decode(value, { stream: true });
+      if (text) { all += text; onDelta(text); }
+    }
+    const rest = decoder.decode();
+    if (rest) { all += rest; onDelta(rest); }
+  } finally {
+    reader.releaseLock();
+  }
+  return all;
+}
 
 /**
  * Bounds. The OpenAI-compatible driver already stops after 4 model rounds
@@ -35,12 +67,14 @@ export type ChatRunInput = {
   ports: ChatPorts;
   /** Whether this provider's driver runs a tool-call loop (providerSupportsTools). */
   supportsTools: boolean;
+  /** Streaming hooks; absent for the plain JSON endpoint. */
+  hooks?: ChatRunHooks;
 };
 
 export type ChatRunResult = { text: string; toolsUsed: string[]; lookedAt: string[]; mode: "tools" | "context" };
 
 /** Tool definitions for the driver, wrapped to enforce call/char budgets and record what was used. */
-export function buildToolDefs(ports: ChatPorts, used: string[]): ToolDefLike[] {
+export function buildToolDefs(ports: ChatPorts, used: string[], onToolStart: (name: string) => void = () => {}): ToolDefLike[] {
   let calls = 0;
   let chars = 0;
   return CHAT_TOOLS.map((spec) => ({
@@ -50,6 +84,7 @@ export function buildToolDefs(ports: ChatPorts, used: string[]): ToolDefLike[] {
     execute: async (input: Record<string, unknown>) => {
       if (calls >= MAX_TOOL_CALLS || chars >= MAX_TOTAL_RESULT_CHARS) return BUDGET_MESSAGE;
       calls += 1;
+      try { onToolStart(spec.name); } catch { /* status hooks must never break a tool call */ }
       if (!used.includes(spec.name)) used.push(spec.name);
       // Reserve budget BEFORE awaiting so parallel calls cannot overshoot the cap.
       const reserved = Math.min(MAX_RESULT_CHARS, MAX_TOTAL_RESULT_CHARS - chars);
@@ -120,15 +155,17 @@ export async function buildAutoSummary(ports: ChatPorts): Promise<string> {
 
 /** Run one chat turn: tool-calling when the driver supports it, otherwise a context summary. */
 export async function runChatTurn(input: ChatRunInput): Promise<ChatRunResult> {
-  const { driver, apiKey, model, baseUrl, messages, ports } = input;
+  const { driver, apiKey, model, baseUrl, messages, ports, hooks } = input;
 
   if (input.supportsTools) {
     const used: string[] = [];
     try {
       const result = await driver({
-        apiKey, model, baseUrl, messages,
+        apiKey, model, baseUrl, messages, signal: hooks?.signal,
         system: `${input.system}\n\n${TOOL_SYSTEM_RULES}`,
-        tools: buildToolDefs(ports, used),
+        // Tool path is NOT token-streamed: the OpenAI-compatible driver runs its tool rounds
+        // non-streaming and returns the finished answer (lib/llm/openai.ts).
+        tools: buildToolDefs(ports, used, hooks?.onToolStart),
       });
       return { text: result.text ?? "", toolsUsed: used, lookedAt: labelsFor(used), mode: "tools" };
     } catch (err) {
@@ -142,11 +179,13 @@ export async function runChatTurn(input: ChatRunInput): Promise<ChatRunResult> {
   }
 
   const summary = await buildAutoSummary(ports);
+  // Context path (no tools): REAL token streaming when the caller wants deltas and the driver returns a stream.
   const result = await driver({
-    apiKey, model, baseUrl, messages,
+    apiKey, model, baseUrl, messages, signal: hooks?.signal, ...(hooks?.onDelta ? { stream: true } : {}),
     system: `${input.system}\n\n${summary}\n\nYou cannot look up more detail in this chat. Never invent figures; if the overview above does not cover the question, say you do not have that data here.`,
   });
-  return { text: result.text ?? "", toolsUsed: [], lookedAt: [], mode: "context" };
+  const text = result.stream && hooks?.onDelta ? await readTextStream(result.stream, hooks.onDelta) : result.text ?? "";
+  return { text, toolsUsed: [], lookedAt: [], mode: "context" };
 }
 
 export function labelsFor(names: string[]): string[] {

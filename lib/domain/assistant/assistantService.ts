@@ -1,8 +1,8 @@
 import { validateChatInput } from "../chat/chatLimits.ts";
 import { checkChatProjectScope } from "../chat/projectScope.ts";
-import { runChatTurn, type DriverLike } from "../chat/toolLoop.ts";
+import { readTextStream, runChatTurn, type DriverLike } from "../chat/toolLoop.ts";
 import type { ChatPorts } from "../chat/tools.ts";
-import { AssistantError, type AssistantTurnInput, type AssistantTurnResult, type ChatTurnMessage, type TurnContext } from "./assistantTypes.ts";
+import { AssistantError, type AssistantTurnInput, type AssistantTurnResult, type ChatTurnMessage, type TurnContext, type TurnHooks } from "./assistantTypes.ts";
 import type { CredentialPort, CreditPort } from "./credentialResolver.ts";
 import { classifyProviderError, friendlyProviderError } from "./errorMapping.ts";
 import { resolveModelPlan, shouldFallback, type ModelCandidate } from "./modelSelection.ts";
@@ -48,22 +48,28 @@ export type AssistantPorts = {
 /** One chat turn: tools when there's an active project, plain driver call otherwise. */
 async function answer(args: {
   driver: DriverLike; supportsTools: boolean; apiKey: string; model: string; baseUrl?: string; system: string;
-  messages: ChatTurnMessage[]; ports: ChatPorts | null;
+  messages: ChatTurnMessage[]; ports: ChatPorts | null; hooks?: TurnHooks;
 }): Promise<AssistantTurnResult> {
   if (!args.ports) {
-    const result = await args.driver({ apiKey: args.apiKey, model: args.model, system: args.system, messages: args.messages, baseUrl: args.baseUrl });
+    // Streaming hook: real token streaming when the driver returns a stream (JSON endpoint: hooks absent, unchanged).
+    const onDelta = args.hooks?.onDelta;
+    const result = await args.driver({
+      apiKey: args.apiKey, model: args.model, system: args.system, messages: args.messages, baseUrl: args.baseUrl,
+      ...(onDelta ? { stream: true, signal: args.hooks?.signal } : {}),
+    });
+    if (onDelta && result.stream) return { reply: await readTextStream(result.stream, onDelta), toolsUsed: [], lookedAt: [] };
     return { reply: result.text, toolsUsed: [], lookedAt: [] };
   }
   const run = await runChatTurn({
     driver: args.driver, apiKey: args.apiKey, model: args.model, baseUrl: args.baseUrl, system: args.system,
-    messages: args.messages, ports: args.ports, supportsTools: args.supportsTools,
+    messages: args.messages, ports: args.ports, supportsTools: args.supportsTools, hooks: args.hooks,
   });
   return { reply: run.text, toolsUsed: run.toolsUsed, lookedAt: run.lookedAt };
 }
 
 /** Everything that happens for ONE model candidate: credentials -> credits -> prompt -> data ports -> answer. */
 export async function attemptWithCandidate(
-  ports: AssistantPorts, ctx: TurnContext, candidate: ModelCandidate, messages: ChatTurnMessage[],
+  ports: AssistantPorts, ctx: TurnContext, candidate: ModelCandidate, messages: ChatTurnMessage[], hooks?: TurnHooks,
 ): Promise<AssistantTurnResult> {
   const { providerId, model } = candidate;
   const cred = await ports.credentials.resolve(ctx, providerId);
@@ -89,7 +95,7 @@ export async function attemptWithCandidate(
     const driver = ports.llm.getDriver(providerId)!;
     return await answer({
       driver, supportsTools: ports.llm.supportsTools(providerId), apiKey, model, baseUrl, system,
-      messages, ports: ports.data.create(ctx),
+      messages, ports: ports.data.create(ctx), hooks,
     });
   } catch (err) {
     throw new AssistantError(502, friendlyProviderError(providerId, err), err);
@@ -106,7 +112,7 @@ function errorKindOf(err: unknown): string {
 
 /** validate -> project scope -> model plan -> (per candidate) credentials/credits/prompt/data/answer -> map errors. */
 export async function runAssistantTurn(
-  ports: AssistantPorts, ctx: TurnContext, input: AssistantTurnInput,
+  ports: AssistantPorts, ctx: TurnContext, input: AssistantTurnInput, hooks?: TurnHooks,
 ): Promise<AssistantTurnResult> {
   const started = Date.now();
   let modelUsed: TurnEvent["modelUsed"] = null;
@@ -130,13 +136,15 @@ export async function runAssistantTurn(
 
     for (let i = 0; i < plan.length; i += 1) {
       const candidate = plan[i];
+      // Streaming: a cancelled client must not start (or pay for) another attempt.
+      if (hooks?.signal?.aborted) throw new AssistantError(499, "Request cancelled");
       try {
-        const out = await attemptWithCandidate(ports, turnCtx, candidate, messages);
+        const out = await attemptWithCandidate(ports, turnCtx, candidate, messages, hooks);
         modelUsed = { providerId: candidate.providerId, model: candidate.model };
         toolsUsed = out.toolsUsed;
         return out;
       } catch (err) {
-        if (i < plan.length - 1 && shouldFallback(err)) continue;
+        if (i < plan.length - 1 && !hooks?.hasStreamed?.() && shouldFallback(err)) continue;
         throw err;
       }
     }
