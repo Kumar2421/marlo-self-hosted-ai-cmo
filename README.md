@@ -11,7 +11,7 @@
 
 [Hosted app](https://app.marlo.mlforge.in) · [Self-host](#self-host) · [Docs](docs/README.md) · [Pricing (beta)](https://app.marlo.mlforge.in/pricing) · [Changelog](CHANGELOG.md)
 
-<img src="docs/images/demo.gif" alt="Marlo demo: add a website, watch setup run, open a finding, re-check it" width="860">
+<img src="docs/images/demo.gif" alt="Marlo demo on the live app: Context documents, each Analytics tab, a finding, and the panels collapsing and reopening" width="860">
 
 </div>
 
@@ -61,7 +61,7 @@ Marlo is in beta. This table says what to rely on today.
 | GitHub fix PRs | Beta | Hosted uses a GitHub App. Self-host uses a token you save in Settings. PRs open as drafts, and no code path merges them. |
 | Resumable setup | Beta | Progress is saved per project and resumes when you return. Setup runs in your browser, so it does not continue after you close the tab. On hosted it needs migration `20261022000300_project_setup_state.sql`. |
 | Notifications | Beta | In-app bell. Email only when Resend is configured. |
-| AI CMO chat | Beta | Read-only tools over your project data. Scoped to the active project. |
+| AI CMO chat | Beta | Read-only tools over your project data, scoped to the active project and run under your own session. Marlo picks the model and retries on a backup model if a request fails. Chats are saved on the server for 90 days, and you can delete one or all. Monthly message limits are built but off during beta. Starting an audit from chat is not available yet. |
 | CMS publish (WordPress, Webflow) | Experimental | You preview and approve every write. WordPress SEO fields need Yoast or Rank Math REST meta. Webflow field names have not been checked against live sites. |
 | Leads, outreach and social drafts | Experimental | People search needs Tavily. Gmail outreach uses your own Gmail account. X, LinkedIn and Reddit posts are drafts: "Post" opens the network's compose page. Local business search is "Coming soon" on hosted and works on self-host with your own Google Cloud key. |
 | Plans and pricing | Beta | Free, Lite and Pro are defined, but there is no payment gateway yet and enforcement is off. See [Plans and pricing](#plans-and-pricing). |
