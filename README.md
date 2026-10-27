@@ -64,7 +64,7 @@ Marlo is in beta. This table says what to rely on today.
 | AI CMO chat | Beta | Read-only tools over your project data, scoped to the active project and run under your own session. Marlo picks the model and retries on a backup model if a request fails. Chats are saved on the server for 90 days, and you can delete one or all. Monthly message limits are built but off during beta. Starting an audit from chat is not available yet. |
 | CMS publish (WordPress, Webflow) | Experimental | You preview and approve every write. WordPress SEO fields need Yoast or Rank Math REST meta. Webflow field names have not been checked against live sites. |
 | Leads, outreach and social drafts | Experimental | People search needs Tavily. Gmail outreach uses your own Gmail account. X, LinkedIn and Reddit posts are drafts: "Post" opens the network's compose page. Local business search is "Coming soon" on hosted and works on self-host with your own Google Cloud key. |
-| Docker self-host | Beta | `docker compose up -d --build` runs the SQLite self-host with a persistent volume and a non-root user. Optional `MARLO_ACCESS_PASSWORD` adds HTTP Basic access for servers other people can reach. The image is about 1.7 GB, and it is not published to a registry yet. |
+| Docker self-host | Beta | `docker compose up -d --build` runs the SQLite self-host with a persistent volume and a non-root user. Optional `MARLO_ACCESS_PASSWORD` adds HTTP Basic access for servers other people can reach. The image is about 450 MB and is published for amd64 and arm64 as `ghcr.io/kumar2421/marlo`. |
 | MCP server for AI assistants (`marlo-mcp`) | Beta | One read-only tool, `audit_site`: audits one page and returns the top findings with evidence and a fix. It calls the public audit endpoint, so it shows 3 findings per page. See [packages/marlo-mcp](packages/marlo-mcp). |
 | Plans and pricing | Beta | Free, Lite and Pro are defined, but there is no payment gateway yet and enforcement is off. See [Plans and pricing](#plans-and-pricing). |
 
@@ -113,6 +113,8 @@ git clone https://github.com/Kumar2421/okara-alternative.git
 cd okara-alternative
 docker compose up -d --build
 ```
+
+Or skip the build: `docker run -d -p 127.0.0.1:3000:3000 -v marlo-data:/app/data ghcr.io/kumar2421/marlo:latest`.
 
 Open **http://localhost:3000/dashboard** and add a model key in **Settings → LLM Providers**. Your data lives in the `marlo-data` volume. The port is bound to your machine only; to share it, set `MARLO_ACCESS_PASSWORD`, put HTTPS in front and change the port mapping. Details: [docs/self-hosting.md](docs/self-hosting.md#docker-one-command).
 
