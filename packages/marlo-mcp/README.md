@@ -28,6 +28,16 @@ For Claude Code: `claude mcp add marlo -- npx -y marlo-mcp`
 
 Requires Node.js 20 or newer.
 
+## Claude Desktop (one click)
+
+Build the bundle and open the `.mcpb` file with Claude Desktop (or drag it into Settings, Extensions):
+
+```bash
+npm run bundle   # writes dist-mcpb/marlo-mcp-<version>.mcpb
+```
+
+It asks for two optional settings: your own Marlo server and its access password. Leave both empty to use the hosted Marlo. The same file is what Smithery asks for when you add a local server.
+
 ## Use your own Marlo server
 
 By default the tool calls the hosted Marlo at `https://app.marlo.mlforge.in`, which rate limits public audits. To use your own [self-hosted](https://github.com/Kumar2421/okara-alternative/blob/main/docs/self-hosting.md) Marlo instead:
