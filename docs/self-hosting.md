@@ -74,7 +74,15 @@ cd okara-alternative
 docker compose up -d --build
 ```
 
-Open `http://localhost:3000/dashboard`. The first build takes a few minutes and the image is about 1.7 GB.
+Open `http://localhost:3000/dashboard`. The first build takes a few minutes and the image is about 450 MB.
+
+To skip the build, run the published image (amd64 and arm64) from GitHub's container registry:
+
+```bash
+docker run -d --name marlo -p 127.0.0.1:3000:3000 -v marlo-data:/app/data ghcr.io/kumar2421/marlo:latest
+```
+
+Add `-e MARLO_ACCESS_PASSWORD=...` to protect it (see below). Images are tagged `latest`, a short commit id, and the version for release tags.
 
 - **Your data** (SQLite, including saved provider keys) lives in the named volume `marlo-data`, so it survives restarts and rebuilds. Back it up with `docker run --rm -v marlo-data:/d -v "$PWD":/b busybox tar czf /b/marlo-data.tgz -C /d .`.
 - **Reachable only from your machine by default.** The compose file binds `127.0.0.1:3000`. To use it from other devices, set `MARLO_ACCESS_PASSWORD` (see below), put HTTPS in front, and change the port mapping to `3000:3000`.
