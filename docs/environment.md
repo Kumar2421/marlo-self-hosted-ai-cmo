@@ -15,6 +15,7 @@ Names only. Never commit values. Hosted values go in the Vercel project settings
 | Variable | Purpose |
 |---|---|
 | `NEXT_PUBLIC_SELF_HOST` | `true` forces self-host mode (SQLite, no Supabase) |
+| `MARLO_ACCESS_PASSWORD` | Self-host (SQLite) only. When set, every request needs HTTP Basic credentials with this password (any user name). `/api/healthz` stays open. Unset means no gate. |
 | `NEXT_PUBLIC_PLATFORM_MODE` | `true` forces hosted mode even without the self-host flag |
 | `NEXT_PUBLIC_SHOW_LLM_SETTINGS`, `NEXT_PUBLIC_SHOW_API_CREDENTIALS` | Show LLM and credential settings sections (self-host UI) |
 | `NEXT_PUBLIC_GOOGLE_AUTH_ENABLED` | Show the Google sign-in button on the login page (hosted) |
