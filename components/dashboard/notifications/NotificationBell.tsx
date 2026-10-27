@@ -80,7 +80,7 @@ export default function NotificationBell() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
-        className="relative flex h-8 w-8 items-center justify-center rounded-lg text-gray-300 hover:bg-white/10 hover:text-white"
+        className="relative flex h-11 w-11 items-center justify-center rounded-lg text-gray-300 hover:bg-white/10 hover:text-white md:h-8 md:w-8"
         title="Notifications"
       >
         <Bell size={16} aria-hidden="true" />

@@ -30,7 +30,7 @@ export default function MessageBubble({
   }
 
   return (
-    <div className="space-y-3 text-[13px] leading-relaxed text-gray-700">
+    <div className="ui-enter space-y-3 text-[13px] leading-relaxed text-gray-700">
       {msg.streaming && (
         // One calm line while the assistant works; announced politely, never the streamed text itself.
         <p role="status" aria-live="polite" className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs text-ui-subtle">

@@ -571,7 +571,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
             onClick={handleRunAudit}
             disabled={loading || setupRunning}
             title={setupRunning ? "Setup is still running" : "Re-run audit"}
-            className="flex shrink-0 items-center justify-center rounded-md bg-[#111111] px-2.5 py-1.5 text-white hover:bg-black disabled:opacity-70"
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md bg-[#111111] px-2.5 py-1.5 text-white hover:bg-black disabled:opacity-70 md:min-h-0 md:min-w-0"
           >
             {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
           </button>
@@ -913,7 +913,9 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
         ) : (
           <>
             {tab === "SEO" && (
-              <>
+              <div className="ui-enter flex flex-col">
+                {/* On phones the audit result leads and the Google connection card follows it. */}
+                <div className="max-md:-order-1">
                 <GoogleSourcesCard onReadyChange={setGoogleReady} />
                 {googleReady && (
                   <GoogleSummary
@@ -926,7 +928,9 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                     onRetry={retryTraffic}
                   />
                 )}
+                </div>
 
+                <div className="max-md:-order-2">
                 {!auditData.pageSpeed && pageSpeedAuto.state === "measuring" && (
                   <TintedNotice
                     tone="info"
@@ -1016,6 +1020,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                     </button>
                   )}
                 </Section>
+                </div>
 
                 <Section
                   title={auditData.pageSpeed || lastGoodPageSpeed ? "PageSpeed Scores" : "On-page score (our own crawl)"}
@@ -1168,7 +1173,7 @@ export default function AnalyticsPanel({ open, onToggle }: { open: boolean; onTo
                     )}
                   </div>
                 </Section>
-              </>
+              </div>
             )}
 
             {tab === "Links" && (

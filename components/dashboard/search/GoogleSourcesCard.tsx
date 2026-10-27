@@ -9,6 +9,7 @@ import { useProject } from "@/lib/project-store";
 import { useGoogleConnection } from "@/lib/query/useGoogleConnection";
 import { CONNECT_IN_TRAFFIC_HINT, RECONNECT_IN_TRAFFIC_HINT } from "@/lib/googleOAuthScopes";
 import { buildGoogleCardSummary } from "@/lib/domain/integrations/googleCardSummary";
+import { maskEmail } from "@/lib/maskEmail";
 
 type IntegrationType = "google-search-console" | "google-analytics";
 type Resource = { resourceId: string; resourceName: string; selected: boolean; usedBy?: string[] };
@@ -299,7 +300,7 @@ export default function GoogleSourcesCard({ onReadyChange }: { onReadyChange?: (
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <h4 className="text-[13px] font-semibold text-gray-900">Google data for {project?.name ?? "this project"}</h4>
         <span className="flex min-w-0 items-baseline gap-3">
-          {account.email && <span className="truncate text-xs text-gray-500">{account.email}</span>}
+          {account.email && <span className="truncate text-xs text-gray-500" title="Connected Google account">{maskEmail(account.email)}</span>}
           {summary.mode === "summary" && (
             <button
               type="button"

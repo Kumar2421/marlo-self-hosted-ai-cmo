@@ -185,7 +185,7 @@ export default function SocialNavMenu() {
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         title="Social drafts"
-        className="relative flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-gray-400 hover:bg-white/10 hover:text-white"
+        className="relative flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-gray-400 hover:bg-white/10 hover:text-white md:h-8 md:min-w-0 md:justify-start"
       >
         <MessageCircle size={16} aria-hidden="true" />
         <span className="hidden md:inline">Social</span>
