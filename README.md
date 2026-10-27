@@ -64,6 +64,8 @@ Marlo is in beta. This table says what to rely on today.
 | AI CMO chat | Beta | Read-only tools over your project data, scoped to the active project and run under your own session. Marlo picks the model and retries on a backup model if a request fails. Chats are saved on the server for 90 days, and you can delete one or all. Monthly message limits are built but off during beta. Starting an audit from chat is not available yet. |
 | CMS publish (WordPress, Webflow) | Experimental | You preview and approve every write. WordPress SEO fields need Yoast or Rank Math REST meta. Webflow field names have not been checked against live sites. |
 | Leads, outreach and social drafts | Experimental | People search needs Tavily. Gmail outreach uses your own Gmail account. X, LinkedIn and Reddit posts are drafts: "Post" opens the network's compose page. Local business search is "Coming soon" on hosted and works on self-host with your own Google Cloud key. |
+| Docker self-host | Beta | `docker compose up -d --build` runs the SQLite self-host with a persistent volume and a non-root user. Optional `MARLO_ACCESS_PASSWORD` adds HTTP Basic access for servers other people can reach. The image is about 1.7 GB, and it is not published to a registry yet. |
+| MCP server for AI assistants (`marlo-mcp`) | Beta | One read-only tool, `audit_site`: audits one page and returns the top findings with evidence and a fix. It calls the public audit endpoint, so it shows 3 findings per page. See [packages/marlo-mcp](packages/marlo-mcp). |
 | Plans and pricing | Beta | Free, Lite and Pro are defined, but there is no payment gateway yet and enforcement is off. See [Plans and pricing](#plans-and-pricing). |
 
 ## Hosted or self-host
@@ -100,9 +102,31 @@ npm run dev
 3. In **Settings → LLM Providers**, add at least one model key. The providers with drivers are Anthropic, OpenAI, Google, Mistral and Groq, plus a local Ollama or LM Studio server or any other OpenAI-compatible endpoint. Add optional keys under **Settings → API Credentials**: Tavily for web search, PageSpeed, Gemini for real GEO answers, Google Cloud, and a GitHub token for fix PRs.
 4. Add your website. Setup runs while the tab is open.
 
-Prefer Docker? `docker compose up -d --build`, then open **http://localhost:3000/dashboard**. See [docs/self-hosting.md](docs/self-hosting.md#docker-one-command).
-
 No environment variables are required in self-host mode. Optional ones, such as Gmail OAuth or Resend email, are listed in [docs/environment.md](docs/environment.md). For a production-style build, run `npm run build` and then `npm start`. For full steps and troubleshooting, see [docs/self-hosting.md](docs/self-hosting.md).
+
+### Docker
+
+No Node or npm needed:
+
+```bash
+git clone https://github.com/Kumar2421/okara-alternative.git
+cd okara-alternative
+docker compose up -d --build
+```
+
+Open **http://localhost:3000/dashboard** and add a model key in **Settings → LLM Providers**. Your data lives in the `marlo-data` volume. The port is bound to your machine only; to share it, set `MARLO_ACCESS_PASSWORD`, put HTTPS in front and change the port mapping. Details: [docs/self-hosting.md](docs/self-hosting.md#docker-one-command).
+
+### Use Marlo from your AI assistant (MCP)
+
+`marlo-mcp` lets Claude, Cursor, Windsurf and other MCP clients audit a page from chat. Add it to your client:
+
+```json
+{ "mcpServers": { "marlo": { "command": "npx", "args": ["-y", "marlo-mcp"] } } }
+```
+
+Claude Code: `claude mcp add marlo -- npx -y marlo-mcp`. Then ask: "Audit https://mysite.com and tell me what to fix first."
+
+It is read-only and audits one page. Point it at your own server with `MARLO_BASE_URL` (and `MARLO_ACCESS_PASSWORD` if you set one). See [packages/marlo-mcp/README.md](packages/marlo-mcp/README.md).
 
 ### Hosted
 
@@ -179,7 +203,8 @@ Coming next, in order: finish the core loop (findings, re-check, GEO gaps), then
 | Doc | For |
 |---|---|
 | [docs/README.md](docs/README.md) | Map of all docs |
-| [docs/self-hosting.md](docs/self-hosting.md) | Self-host step by step, SQLite or Supabase, cron recipe, troubleshooting |
+| [docs/self-hosting.md](docs/self-hosting.md) | Self-host step by step (Node or Docker), SQLite or Supabase, access password, cron recipe, troubleshooting |
+| [packages/marlo-mcp](packages/marlo-mcp/README.md) | The MCP server: install, configuration, limits |
 | [docs/architecture.md](docs/architecture.md) | Data flow, store pairs, crons, GitHub App loop, setup state, finding lifecycle |
 | [docs/plans-and-pricing.md](docs/plans-and-pricing.md) | Plan matrix, limits, how enforcement works |
 | [docs/security.md](docs/security.md) | Protections and how to report a vulnerability |
