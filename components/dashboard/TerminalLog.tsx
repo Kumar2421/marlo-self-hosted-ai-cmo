@@ -299,11 +299,11 @@ function ProjectSwitcher() {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-lg border border-white/15 px-2.5 py-1.5 text-white hover:bg-white/5"
+        className="flex min-h-11 items-center gap-2 rounded-lg border border-white/15 px-2.5 py-1.5 text-white hover:bg-white/5 md:min-h-0"
       >
         <ChevronUp size={13} className="opacity-50" />
         <span className="h-4 w-4 shrink-0 rounded-full bg-indigo-400" />
-        <span className="max-w-[100px] truncate text-[13px] font-medium md:max-w-none">{label}</span>
+        <span className="max-w-[56px] truncate text-[13px] font-medium min-[420px]:max-w-[100px] md:max-w-none">{label}</span>
         <ChevronDown size={13} className={`opacity-50 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
@@ -382,7 +382,7 @@ export default function TerminalLog() {
 
   return (
     <div ref={ref} className="relative z-30 shrink-0 bg-white px-3 pb-1 pt-2">
-      <nav aria-label="Workspace" data-testid="terminal-bar" className="theme-island flex h-12 shrink-0 items-center justify-between rounded-xl bg-[#110f0e] px-3">
+      <nav aria-label="Workspace" data-testid="terminal-bar" className="theme-island flex h-12 shrink-0 items-center justify-between rounded-xl bg-[#110f0e] px-2 md:px-3">
         <div className="flex shrink-0 items-center gap-1">
           {/* Decorative logo: its "Loading" status role must not be announced on an idle page. */}
           <span aria-hidden="true" className="contents">
@@ -396,6 +396,7 @@ export default function TerminalLog() {
           {center.mode === "status" ? (
             <p
               data-testid="header-status"
+              title={center.text}
               className={`min-w-0 truncate text-[13px] ${center.kind === "done" ? "text-[#00ab92]" : center.kind === "error" ? "text-amber-400" : "text-gray-300"}`}
             >
               {center.kind === "done" && <Check size={12} aria-hidden className="mr-1 inline shrink-0 align-[-1px]" />}

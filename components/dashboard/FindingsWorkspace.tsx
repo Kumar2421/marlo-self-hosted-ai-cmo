@@ -177,7 +177,7 @@ export default function FindingsWorkspace({
           onClick={() => list.refetch()}
           title="Refresh findings"
           aria-label="Refresh findings"
-          className="shrink-0 rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-50"
+          className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-50 md:min-h-0 md:min-w-0"
         >
           {list.isFetching ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
         </button>

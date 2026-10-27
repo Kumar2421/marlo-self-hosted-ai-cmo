@@ -36,7 +36,7 @@ export default function FixFirstStrip({
 
   const shell = "shrink-0 max-h-40 overflow-y-auto border-b border-gray-200 bg-white px-4 py-2.5";
   const label = <div className="text-xs font-semibold uppercase tracking-wide text-ui-subtle">Fix first</div>;
-  const button = "shrink-0 rounded-lg bg-[#111111] px-2.5 py-1.5 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50";
+  const button = "inline-flex min-h-11 shrink-0 items-center rounded-lg bg-[#111111] px-2.5 py-1.5 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50 md:min-h-0";
 
   if (view.kind === "loading") {
     return (

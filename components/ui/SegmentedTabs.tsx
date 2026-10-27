@@ -7,7 +7,7 @@ import { FOCUS_RING_INSET } from "./variants.ts";
 const TRACK =
   "flex shrink-0 gap-0.5 overflow-x-auto rounded-xl border border-ui-border bg-ui-surface-sunken p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
 const SEGMENT =
-  "ui-transition min-h-11 min-w-fit flex-1 cursor-pointer truncate rounded-lg border border-transparent px-2 text-center text-[12px] leading-4 font-medium md:min-h-8";
+  "ui-transition min-h-11 min-w-fit flex-1 cursor-pointer truncate rounded-lg border border-transparent px-1 text-center text-[12px] leading-4 font-medium md:min-h-8";
 const SEGMENT_ON = "border-ui-border bg-ui-surface text-ui-text shadow-ui-sm";
 const SEGMENT_OFF = "text-ui-muted hover:text-ui-text";
 

@@ -66,3 +66,17 @@ test("context-path summary lists fix-first in ranked order", async () => {
   assert.ok(line.indexOf("1.") < line.indexOf("2.") && line.indexOf("2.") < line.indexOf("3."));
   assert.doesNotMatch(line, /Verified one/);
 });
+
+test("parseChatText puts a plain space before links the model glued or thin-spaced", () => {
+  const glued = parseChatText("Fix the meta description onhttps://home.example.com now.");
+  assert.deepStrictEqual(glued, [{ kind: "p", text: "Fix the meta description on https://home.example.com now." }]);
+  const thin = parseChatText("See https://a.test and https://b.test.");
+  assert.deepStrictEqual(thin, [{ kind: "p", text: "See https://a.test and https://b.test." }]);
+  const zeroWidth = parseChatText("Open​ this page");
+  assert.deepStrictEqual(zeroWidth, [{ kind: "p", text: "Open this page" }]);
+});
+
+test("parseChatText leaves normal text and existing spacing alone", () => {
+  const ok = parseChatText("Visit https://a.test, then https://b.test/path?x=1.");
+  assert.deepStrictEqual(ok, [{ kind: "p", text: "Visit https://a.test, then https://b.test/path?x=1." }]);
+});
