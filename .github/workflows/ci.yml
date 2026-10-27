@@ -93,5 +93,8 @@ jobs:
         # pattern accepts both, and grep fails the step when the count is 0 or missing.
         shell: bash
         run: grep -aE '^[^ ]+ tests [1-9]' test.log
+      - name: MCP package tests
+        working-directory: packages/marlo-mcp
+        run: npm ci --no-audit --no-fund && npm test
       - name: Production build
         run: npm run build

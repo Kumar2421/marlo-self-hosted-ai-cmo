@@ -1,0 +1,21 @@
+{
+  "name": "marlo-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that audits a web page for SEO and AI-readiness issues with Marlo, the open-source AI CMO.",
+  "mcpName": "io.github.Kumar2421/marlo-mcp",
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "bin": { "marlo-mcp": "bin/marlo-mcp.mjs" },
+  "files": ["bin", "src", "README.md"],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^3.25.0"
+  },
+  "keywords": ["mcp", "model-context-protocol", "seo", "audit", "ai-seo", "geo", "claude", "cursor"],
+  "repository": { "type": "git", "url": "git+https://github.com/Kumar2421/okara-alternative.git", "directory": "packages/marlo-mcp" },
+  "homepage": "https://github.com/Kumar2421/okara-alternative/tree/main/packages/marlo-mcp"
+}
