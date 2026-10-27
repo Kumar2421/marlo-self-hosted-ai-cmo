@@ -1,0 +1,19 @@
+# One command self-host:  docker compose up -d   then open http://localhost:3000/dashboard
+# Your data (SQLite, including saved provider keys) lives in the named volume "marlo-data".
+services:
+  marlo:
+    build: .
+    image: marlo:local
+    restart: unless-stopped
+    ports:
+      # Bound to this machine only. To reach it from other devices, set MARLO_ACCESS_PASSWORD below,
+      # put HTTPS in front (Caddy, Traefik, your host), then change this to "3000:3000".
+      - "127.0.0.1:3000:3000"
+    environment:
+      # Empty means no password. Any non-empty value turns on HTTP Basic access for the whole app.
+      MARLO_ACCESS_PASSWORD: "${MARLO_ACCESS_PASSWORD:-}"
+    volumes:
+      - marlo-data:/app/data
+
+volumes:
+  marlo-data:

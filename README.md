@@ -100,6 +100,8 @@ npm run dev
 3. In **Settings → LLM Providers**, add at least one model key. The providers with drivers are Anthropic, OpenAI, Google, Mistral and Groq, plus a local Ollama or LM Studio server or any other OpenAI-compatible endpoint. Add optional keys under **Settings → API Credentials**: Tavily for web search, PageSpeed, Gemini for real GEO answers, Google Cloud, and a GitHub token for fix PRs.
 4. Add your website. Setup runs while the tab is open.
 
+Prefer Docker? `docker compose up -d --build`, then open **http://localhost:3000/dashboard**. See [docs/self-hosting.md](docs/self-hosting.md#docker-one-command).
+
 No environment variables are required in self-host mode. Optional ones, such as Gmail OAuth or Resend email, are listed in [docs/environment.md](docs/environment.md). For a production-style build, run `npm run build` and then `npm start`. For full steps and troubleshooting, see [docs/self-hosting.md](docs/self-hosting.md).
 
 ### Hosted

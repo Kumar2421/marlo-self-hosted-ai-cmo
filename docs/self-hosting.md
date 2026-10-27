@@ -64,9 +64,34 @@ npm start              # serves on port 3000; set PORT to change it
 
 Optional email notifications: set `RESEND_API_KEY`, `NOTIFY_FROM_EMAIL`, `NOTIFY_SIGNING_SECRET` (at least 16 characters) and `NOTIFY_TO_EMAIL` (otherwise the connected Gmail address is used). Every variable is listed in [environment.md](environment.md).
 
+### Docker (one command)
+
+If you have Docker, you do not need Node or npm:
+
+```bash
+git clone https://github.com/Kumar2421/okara-alternative.git
+cd okara-alternative
+docker compose up -d --build
+```
+
+Open `http://localhost:3000/dashboard`. The first build takes a few minutes and the image is about 1.7 GB.
+
+- **Your data** (SQLite, including saved provider keys) lives in the named volume `marlo-data`, so it survives restarts and rebuilds. Back it up with `docker run --rm -v marlo-data:/d -v "$PWD":/b busybox tar czf /b/marlo-data.tgz -C /d .`.
+- **Reachable only from your machine by default.** The compose file binds `127.0.0.1:3000`. To use it from other devices, set `MARLO_ACCESS_PASSWORD` (see below), put HTTPS in front, and change the port mapping to `3000:3000`.
+- **Health check:** `GET /api/healthz` returns `{"ok":true}` and is the only path the password never covers.
+- **Update:** `git pull && docker compose up -d --build`.
+
 ### Keep it private
 
-SQLite mode has **no sign-in**. Your provider keys are stored in `data/okara.db`. Run it on your own machine, or behind a VPN or an authenticating reverse proxy. Never put it on the open internet as is. Back up `data/okara.db` (WAL mode, so copy it while the server is stopped, or copy the `-wal` and `-shm` files with it).
+SQLite mode has **no sign-in**. Your provider keys are stored in `data/okara.db`. Run it on your own machine, or behind a VPN or an authenticating reverse proxy. Never put it on the open internet as is.
+
+To put it on a server other people can reach, set an access password. With `MARLO_ACCESS_PASSWORD` set, every page and API call needs HTTP Basic credentials: your browser asks once, any user name works, and the password is the value you set. `GET /api/healthz` stays open for health checks. Use a long random password and HTTPS (a reverse proxy such as Caddy or Traefik, or your host's TLS), because Basic credentials are only encoded, not encrypted.
+
+```bash
+MARLO_ACCESS_PASSWORD="$(openssl rand -base64 24)" npm start
+```
+
+This applies to SQLite mode only. Hosted and your-own-Supabase deployments use Supabase sign-in. Back up `data/okara.db` (WAL mode, so copy it while the server is stopped, or copy the `-wal` and `-shm` files with it).
 
 ### What you do by hand in this mode
 
