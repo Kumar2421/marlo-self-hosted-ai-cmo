@@ -23,11 +23,12 @@ export function stripInlineMarkdown(s: string): string {
 /**
  * Models sometimes emit thin, narrow or zero-width spaces, or no space at all, right before a link
  * ("description onhttps://..."). Plain spaces read correctly everywhere, so normalise them here.
+ * Joiners (U+200C, U+200D) are kept: Indic and Persian text and emoji sequences need them.
  */
 export function normalizeChatSpaces(s: string): string {
   return s
     .replace(/[   -   　]/g, " ")
-    .replace(/[​‌‍﻿]/g, "")
+    .replace(/[​﻿]/g, "")
     .replace(/([A-Za-z0-9,.;:!?)])(?=https?:\/\/)/g, "$1 ");
 }
 

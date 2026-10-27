@@ -80,3 +80,10 @@ test("parseChatText leaves normal text and existing spacing alone", () => {
   const ok = parseChatText("Visit https://a.test, then https://b.test/path?x=1.");
   assert.deepStrictEqual(ok, [{ kind: "p", text: "Visit https://a.test, then https://b.test/path?x=1." }]);
 });
+
+test("parseChatText keeps joiners that Indic text and emoji need", () => {
+  const tamil = "க்‍ஷ and க்‌ஷ";
+  assert.deepStrictEqual(parseChatText(tamil), [{ kind: "p", text: tamil }]);
+  const family = "Family \u{1F468}‍\u{1F469}‍\u{1F467} ok";
+  assert.deepStrictEqual(parseChatText(family), [{ kind: "p", text: family }]);
+});
