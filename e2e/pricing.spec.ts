@@ -40,7 +40,7 @@ test.describe("pricing page", () => {
     await expect(page.getByRole("link", { name: "Start free" })).toHaveAttribute("href", "/login");
     await expect(page.getByRole("button", { name: "Join the waitlist" })).toHaveCount(2);
     await expect(page.getByText(/Marlo is open source\./)).toBeVisible();
-    await expect(page.getByRole("link", { name: "GitHub" })).toHaveAttribute("href", /github\.com\/Kumar2421\/okara-alternative/);
+    await expect(page.getByRole("link", { name: "GitHub" })).toHaveAttribute("href", /github\.com\/Kumar2421\/marlo-self-hosted-ai-cmo/);
     await expect(page.getByRole("link", { name: "Self-host docs" })).toBeVisible();
   });
 

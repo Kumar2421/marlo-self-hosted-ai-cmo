@@ -4,7 +4,7 @@
 
 **Open-source AI CMO. Marlo audits your website, finds what's holding it back in search and AI answers, helps you fix it, and only calls a fix verified when it has evidence.**
 
-[![CI](https://github.com/Kumar2421/okara-alternative/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Kumar2421/okara-alternative/actions/workflows/ci.yml)
+[![CI](https://github.com/Kumar2421/marlo-self-hosted-ai-cmo/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Kumar2421/marlo-self-hosted-ai-cmo/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](./LICENSE)
 [![Pricing: beta](https://img.shields.io/badge/pricing-beta-orange.svg)](docs/plans-and-pricing.md)
 [![Hosted app](https://img.shields.io/badge/hosted-app.marlo.mlforge.in-black.svg)](https://app.marlo.mlforge.in)
@@ -90,8 +90,8 @@ You can also run the hosted build on your own Supabase project. See [docs/self-h
 Requires **Node.js 24.12 or newer** (`engines` in `package.json`) and git.
 
 ```bash
-git clone https://github.com/Kumar2421/okara-alternative.git
-cd okara-alternative
+git clone https://github.com/Kumar2421/marlo-self-hosted-ai-cmo.git
+cd marlo-self-hosted-ai-cmo
 npm install
 echo "NEXT_PUBLIC_SELF_HOST=true" > .env.local
 npm run dev
@@ -109,8 +109,8 @@ No environment variables are required in self-host mode. Optional ones, such as 
 No Node or npm needed:
 
 ```bash
-git clone https://github.com/Kumar2421/okara-alternative.git
-cd okara-alternative
+git clone https://github.com/Kumar2421/marlo-self-hosted-ai-cmo.git
+cd marlo-self-hosted-ai-cmo
 docker compose up -d --build
 ```
 
@@ -173,7 +173,7 @@ For data flow, cron jobs, the GitHub App loop and setup state, see [docs/archite
 - **Isolation.** Row-level security on user tables. Server-trusted tables (profiles, settings, connections) are read-only to users. Project routes check that the signed-in user owns the project.
 - **Outbound requests.** URLs that users can influence go through one guarded fetcher. It pins DNS, blocks private addresses, re-checks every redirect hop, and caps time and body size.
 - **OAuth.** Google, Gmail and GitHub connect flows use a single-use, expiring `state` value. On hosted, only the user who started a flow can complete it. Email unsubscribe links use signed, expiring HMAC tokens.
-- **Keys.** The operator's provider keys are never sent to a base URL that a user supplied ([#170](https://github.com/Kumar2421/okara-alternative/pull/170)).
+- **Keys.** The operator's provider keys are never sent to a base URL that a user supplied ([#170](https://github.com/Kumar2421/marlo-self-hosted-ai-cmo/pull/170)).
 - **External writes.** Fix PRs and CMS publishes need a signed, expiring approval. PRs are drafts, and nothing auto-merges or auto-posts.
 - **Cron routes** require a `CRON_SECRET` bearer token, compared in constant time.
 - The Content-Security-Policy header is still **report-only**.

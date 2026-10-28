@@ -10,7 +10,7 @@ Each factual claim in [README.md](../README.md) mapped to the file or PR on `mai
 | CI badge uses the `CI` workflow | `.github/workflows/ci.yml` (`name: CI`) |
 | AGPL-3.0 | `LICENSE` |
 | Pricing is beta | `lib/domain/plans/pricingView.ts` (`PRICING_BETA = true`) |
-| Hosted at app.marlo.mlforge.in; repo `Kumar2421/okara-alternative` | Owner. The repository keeps the name `okara-alternative`; the product is named Marlo |
+| Hosted at app.marlo.mlforge.in; repo `Kumar2421/marlo-self-hosted-ai-cmo` | Owner. The repository was renamed from `okara-alternative` (GitHub redirects the old URL); the product is named Marlo |
 | Self-host: every feature unlocked, no plan limits | `lib/entitlements.ts` (`plan: "selfhost"`, `UNLIMITED_CHECK`), `lib/domain/plans/planPolicy.ts` (`resolvePlan`: selfHost → pro), `lib/domain/geo/dailyCap.ts` (self-host uncapped) |
 | Inspired by Okara, not affiliated | Previous README; owner |
 

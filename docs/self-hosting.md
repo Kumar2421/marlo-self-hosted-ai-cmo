@@ -31,8 +31,8 @@ There are two ways to self-host:
 ### Steps
 
 ```bash
-git clone https://github.com/Kumar2421/okara-alternative.git
-cd okara-alternative
+git clone https://github.com/Kumar2421/marlo-self-hosted-ai-cmo.git
+cd marlo-self-hosted-ai-cmo
 npm install
 echo "NEXT_PUBLIC_SELF_HOST=true" > .env.local
 npm run dev            # development server on http://localhost:3000
@@ -69,8 +69,8 @@ Optional email notifications: set `RESEND_API_KEY`, `NOTIFY_FROM_EMAIL`, `NOTIFY
 If you have Docker, you do not need Node or npm:
 
 ```bash
-git clone https://github.com/Kumar2421/okara-alternative.git
-cd okara-alternative
+git clone https://github.com/Kumar2421/marlo-self-hosted-ai-cmo.git
+cd marlo-self-hosted-ai-cmo
 docker compose up -d --build
 ```
 
