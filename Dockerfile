@@ -3,10 +3,13 @@
 
 FROM node:24-bookworm-slim AS build
 WORKDIR /app
-# better-sqlite3 ships prebuilt binaries; the toolchain is only a fallback when none matches.
+# better-sqlite3 13 compiles from source during npm ci (node-gyp rebuild), so it needs a toolchain.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends python3 make g++ \
  && rm -rf /var/lib/apt/lists/*
+# node-gyp would otherwise download the Node headers from nodejs.org, which timed out in CI once
+# (HeadersTimeoutError, v1.0.0 publish). The official Node image already ships them.
+ENV npm_config_nodedir=/usr/local
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY . .
