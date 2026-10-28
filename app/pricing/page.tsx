@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/pricing" },
 };
 
-const REPO_URL = "https://github.com/Kumar2421/okara-alternative";
+const REPO_URL = "https://github.com/Kumar2421/marlo-self-hosted-ai-cmo";
 const SELF_HOST_DOCS_URL = `${REPO_URL}#self-host`;
 
 export default function PricingPage() {
