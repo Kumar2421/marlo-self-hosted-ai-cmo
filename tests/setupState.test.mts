@@ -41,9 +41,9 @@ test("a state that was only derived (startedAt null) is never auto-resumed", () 
 
 test("done steps are not run again; pending ones keep their order", () => {
   let s = newSetupState(T0, true);
-  for (const k of ["audit", "description", "competitors", "leads", "product-info"] as const) s = apply(s, { step: k, status: "done" });
+  for (const k of ["audit", "offer-model", "description", "competitors", "leads", "product-info"] as const) s = apply(s, { step: k, status: "done" });
   assert.deepEqual(nextStepsToRun(s, T0), ["marketing-strategy", "competitor-analysis", "competitor-comparison", "content-strategy", "design-guide"]);
-  assert.equal(summarizeSetup(s, T0).text, "5 of 10 ready");
+  assert.equal(summarizeSetup(s, T0).text, "6 of 11 ready");
 });
 
 test("a failed source blocks its dependents but they stay pending for a later retry", () => {
@@ -118,7 +118,7 @@ test("summary counts ready steps, ignores skipped, reports failures", () => {
   s = apply(s, { step: "competitor-analysis", status: "skipped" });
   s = apply(s, { step: "competitor-comparison", status: "skipped" });
   s = apply(s, { step: "description", status: "failed", error: "x" });
-  assert.equal(summarizeSetup(s, T0).text, "1 of 8 ready, 1 failed");
+  assert.equal(summarizeSetup(s, T0).text, "1 of 9 ready, 1 failed");
 });
 
 test("legacy project with every document counts as done and is not auto-resumed", () => {
@@ -173,4 +173,31 @@ test("normalize drops unknown keys and repairs garbage", () => {
   assert.equal(s.steps.leads.status, "pending");
   assert.equal("bogus" in s.steps, false);
   assert.equal(normalizeSetupState(null, T0).steps.audit.status, "pending");
+});
+
+test("the offer-model step runs right after the audit and needs only the audit", () => {
+  assert.equal(SETUP_STEPS[0], "audit");
+  assert.equal(SETUP_STEPS[1], "offer-model");
+  let s = newSetupState(T0, true);
+  s = apply(s, { step: "audit", status: "failed", error: "unreachable" });
+  assert.ok(!nextStepsToRun(s, T0).includes("offer-model"), "a failed audit blocks it like every other step");
+  s = apply(s, { step: "audit", status: "done", retry: true });
+  assert.equal(nextStepsToRun(s, T0)[0], "offer-model");
+});
+
+test("a failed offer-model step never hides the rest of setup and is optional on the Finish setup card", () => {
+  let s = newSetupState(T0, true);
+  s = apply(s, { step: "audit", status: "done" });
+  s = apply(s, { step: "offer-model", status: "failed", error: "connect a model in Settings" });
+  assert.ok(nextStepsToRun(s, T0).includes("description"));
+  const rows = setupCardRows(s, T0).filter((r) => r.key === "offer-model");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].optional, true);
+});
+
+test("a legacy project is not nagged about the offer model; one that has it reads as done", () => {
+  const legacy = deriveSetupState({ hasAudit: true, hasDescription: true, hasCompetitors: true, documents: [] }, T0);
+  assert.equal(legacy.steps["offer-model"].status, "skipped");
+  const withOffer = deriveSetupState({ hasAudit: true, hasDescription: true, hasCompetitors: true, hasOfferModel: true, documents: [] }, T0);
+  assert.equal(withOffer.steps["offer-model"].status, "done");
 });

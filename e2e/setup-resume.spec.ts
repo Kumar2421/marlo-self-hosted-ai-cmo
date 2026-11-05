@@ -72,6 +72,7 @@ test("2. reload mid-setup resumes only the missing and interrupted steps, in ord
     project: true,
     state: stateOf({
       audit: "done",
+      "offer-model": "done",
       description: "done",
       competitors: "done",
       leads: "done",
@@ -84,11 +85,11 @@ test("2. reload mid-setup resumes only the missing and interrupted steps, in ord
   await expect.poll(() => SETUP_STEPS.every((k) => mock.state()?.steps[k].status === "done"), { timeout: 30_000 }).toBe(true);
 
   const log = await statusLog(page);
-  await expect(log).toContainText("Resuming setup (5 of 10 done)...");
+  await expect(log).toContainText("Resuming setup (6 of 11 done)...");
 
   // Only the 5 unfinished steps ran, once each, in order; the done ones were not requested again.
   expect(stepsRun(mock)).toEqual(["marketing-strategy", "competitor-analysis", "competitor-comparison", "content-strategy", "design-guide"]);
-  for (const k of ["audit", "description", "competitors", "leads", "product-info"] as const) expect(mock.count(STEP_CALL[k]), k).toBe(0);
+  for (const k of ["audit", "offer-model", "description", "competitors", "leads", "product-info"] as const) expect(mock.count(STEP_CALL[k]), k).toBe(0);
   for (const k of ["marketing-strategy", "competitor-analysis", "competitor-comparison", "content-strategy", "design-guide"] as const) {
     expect(mock.count(STEP_CALL[k]), k).toBe(1);
   }
@@ -135,6 +136,7 @@ test("4. a step running in another tab is never run here; this tab polls, then f
     project: true,
     state: stateOf({
       audit: "done",
+      "offer-model": "done",
       description: "done",
       competitors: "done",
       leads: "done",
@@ -155,7 +157,7 @@ test("4. a step running in another tab is never run here; this tab polls, then f
 
   // The other tab finishes its step and goes away: this tab picks up the remaining steps.
   mock.setState(
-    stateOf({ audit: "done", description: "done", competitors: "done", leads: "done", "product-info": "done" }),
+    stateOf({ audit: "done", "offer-model": "done", description: "done", competitors: "done", leads: "done", "product-info": "done" }),
   );
   await expect.poll(() => SETUP_STEPS.every((k) => mock.state()?.steps[k].status === "done"), { timeout: 30_000 }).toBe(true);
   expect(stepsRun(mock)).toEqual(["marketing-strategy", "competitor-analysis", "competitor-comparison", "content-strategy", "design-guide"]);

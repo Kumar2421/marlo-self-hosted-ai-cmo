@@ -5,11 +5,12 @@
 
 import type { DocKey } from "./setupRun.ts";
 
-export type SetupStepKey = "audit" | "description" | "competitors" | "leads" | DocKey;
+export type SetupStepKey = "audit" | "offer-model" | "description" | "competitors" | "leads" | DocKey;
 
-/** Execution order. Mirrors project-store.tsx: crawl, description, competitors, leads, then the documents. */
+/** Execution order. Mirrors project-store.tsx: crawl, offer model, description, competitors, leads, then the documents. */
 export const SETUP_STEPS: readonly SetupStepKey[] = [
   "audit",
+  "offer-model",
   "description",
   "competitors",
   "leads",
@@ -23,6 +24,7 @@ export const SETUP_STEPS: readonly SetupStepKey[] = [
 
 export const SETUP_STEP_LABELS: Record<SetupStepKey, string> = {
   audit: "Site audit",
+  "offer-model": "Who buys from you",
   description: "Description",
   competitors: "Competitors",
   leads: "Starter leads",
@@ -60,6 +62,7 @@ export function isSetupStatus(v: unknown): v is SetupStatus {
 /** What each step needs to have succeeded first. Documents reuse the prerequisites
  * from setupRun.ts; everything needs the crawl, as in the creation flow. */
 const NEEDS: Partial<Record<SetupStepKey, SetupStepKey[]>> = {
+  "offer-model": ["audit"],
   description: ["audit"],
   competitors: ["audit"],
   leads: ["audit"],
@@ -200,6 +203,8 @@ export type SetupFacts = {
   hasAudit: boolean;
   hasDescription: boolean;
   hasCompetitors: boolean;
+  /** An Offer Model was saved for the project. Optional: stores that do not look it up leave it out. */
+  hasOfferModel?: boolean;
   /** Document keys that already have saved content. */
   documents: DocKey[];
 };
@@ -213,6 +218,9 @@ export function deriveSetupState(f: SetupFacts, now: Date): SetupState {
   const at = now.toISOString();
   const set = (k: SetupStepKey, status: SetupStatus) => (state.steps[k] = { status, at });
   if (f.hasAudit) set("audit", "done");
+  // A project that predates the Offer Model is not nagged about it: the lead profile wizard still works from its documents.
+  if (f.hasOfferModel) set("offer-model", "done");
+  else if (f.hasAudit) set("offer-model", "skipped");
   if (f.hasDescription) set("description", "done");
   if (f.hasCompetitors) set("competitors", "done");
   for (const k of SETUP_STEPS) if ((f.documents as string[]).includes(k)) set(k, "done");
@@ -247,7 +255,7 @@ export function docKeyOfType(docType: string): DocKey | null {
 /** Prefix of the note stored on a pending step that was not attempted because its source failed. */
 export const WAITING_PREFIX = "waiting on ";
 
-const OPTIONAL_STEPS: readonly SetupStepKey[] = ["competitors", "leads", "competitor-analysis", "competitor-comparison"];
+const OPTIONAL_STEPS: readonly SetupStepKey[] = ["offer-model", "competitors", "leads", "competitor-analysis", "competitor-comparison"];
 
 export type SetupCardRow = {
   key: SetupStepKey;

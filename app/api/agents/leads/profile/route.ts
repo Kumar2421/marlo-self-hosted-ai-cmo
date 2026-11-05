@@ -5,6 +5,8 @@ import { normalizeProfile, profileProblems, suggestProfile, type LeadProfile } f
 import { getLeadProfile, saveLeadProfile } from "@/lib/domain/leads/leadProfileStore";
 import { getLeadProfile as getLeadProfileSupabase, saveLeadProfile as saveLeadProfileSupabase } from "@/lib/domain/leads/leadProfileStoreSupabase";
 import { getAuthenticatedProjectContext } from "@/lib/domain/shared/project-context";
+import { getOfferModel as getOfferModelSqlite } from "@/lib/domain/offer/offerModelStore";
+import { getOfferModel as getOfferModelSupabase } from "@/lib/domain/offer/offerModelStoreSupabase";
 
 type ProjectBits = { name: string; category: string | null };
 
@@ -42,14 +44,18 @@ export async function GET() {
   if ("response" in auth) return auth.response;
   const { userId, projectId, project, supabase } = auth.context;
 
+  // What Marlo read from the site. Shown as evidence in the wizard and used to pre-fill a new profile.
+  const offer = supabase && userId ? await getOfferModelSupabase(supabase, userId, projectId) : getOfferModelSqlite(getDb(), projectId);
+
   const stored = supabase && userId ? await getLeadProfileSupabase(supabase, userId, projectId) : getLeadProfile(getDb(), projectId);
-  if (stored) return NextResponse.json({ profile: stored, suggestion: null });
+  if (stored) return NextResponse.json({ profile: stored, suggestion: null, offer });
 
   const bits = project as unknown as ProjectBits;
   const inputs = await loadSuggestionInputs({ userId, projectId, supabase });
   return NextResponse.json({
     profile: null,
-    suggestion: suggestProfile({ ...inputs, category: bits.category, name: bits.name }),
+    suggestion: suggestProfile({ ...inputs, category: bits.category, name: bits.name, offer }),
+    offer,
   });
 }
 

@@ -61,6 +61,7 @@ export function supabaseSetupStateStore(db: SupabaseClient, userId: string, proj
         hasAudit: (audits.data ?? []).length > 0,
         hasDescription: Boolean((proj.data as { description?: string } | null)?.description?.trim()),
         hasCompetitors: (comps.data ?? []).length > 0,
+        hasOfferModel: rows.some((r) => r.doc_type === "offer_model" && typeof r.content === "string" && r.content.trim() !== ""),
         documents: rows
           .filter((r) => typeof r.content === "string" && r.content.trim())
           .map((r) => docKeyOfType(r.doc_type))

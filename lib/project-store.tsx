@@ -650,10 +650,49 @@ async function runSetupSteps(ctx: SetupRunCtx, steps: SetupStepKey[]): Promise<{
     }
   };
 
+  // Reads the site for who buys from the project, to pre-fill the lead profile. It only needs the crawl, so it
+  // is its own lane. Optional: a site that does not say is a normal result, and a failure never blocks the rest.
+  const offerModelLane = async (): Promise<void> => {
+    if (!want.has("offer-model")) return;
+    const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
+    const chosen = primaryModel && providerId ? { model: primaryModel, providerId } : null;
+    // Hosted falls back to the platform's managed model on the server; self-host has no model of its own.
+    if (!FEATURES.PLATFORM_MODE && !chosen) {
+      hooks.settle("offer-model", "failed", "connect a model in Settings");
+      return;
+    }
+    if (!(await hooks.claim("offer-model"))) {
+      ctl.stopped = true;
+      return;
+    }
+    try {
+      log("Reading your site to work out who buys from you...");
+      const res = await fetch(`/api/project/${project.id}/offer-model`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(chosen ?? {}),
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.offer) logDone(`Understood your offer: ${data.offer.whoPays || data.offer.sells}. Review it when you set up your lead profile.`);
+        else log("Your site doesn't say clearly who buys from you. You can fill that in when you set up your lead profile.");
+        hooks.settle("offer-model", "done");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        log(`Couldn't work out who buys from you (${err.error ?? `HTTP ${res.status}`}). You can fill it in when you set up your lead profile.`);
+        hooks.settle("offer-model", "failed", String(err.error ?? `HTTP ${res.status}`));
+      }
+    } catch {
+      log("Couldn't reach the service that reads your offer. You can fill it in when you set up your lead profile.");
+      hooks.settle("offer-model", "failed", "offer service unreachable");
+    }
+  };
+
   // Lane errors must never reject the documents' wait on them.
   const hasCompetitorsP = descriptionAndCompetitors().catch(() => false);
   const leadsP = leadsLane().catch(() => {});
-  const lanesDone: Promise<void> = Promise.all([hasCompetitorsP, leadsP]).then(() => {});
+  const offerP = offerModelLane().catch(() => {});
+  const lanesDone: Promise<void> = Promise.all([hasCompetitorsP, leadsP, offerP]).then(() => {});
 
   const docSteps = new Set(steps.filter(isDocStep));
   if (docSteps.size === 0) {
