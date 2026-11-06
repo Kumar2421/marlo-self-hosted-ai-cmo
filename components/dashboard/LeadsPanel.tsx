@@ -27,7 +27,7 @@ import { initialsOf } from "@/components/ui/premium";
 import { useLockedFeature } from "@/components/plan/usePlan";
 import { LockedLine } from "@/components/plan/LockedLine";
 import type { LeadSearchTarget } from "@/lib/domain/leads/leadProfile";
-import { LEAD_FILTERS, countLeads, defaultFilter, filterLabel, filterLeads, profileSummary, type LeadFilter } from "@/lib/domain/leads/leadListView";
+import { LEAD_FILTERS, channelLabel, countLeads, leadQualification, defaultFilter, filterLabel, filterLeads, profileSummary, type LeadFilter } from "@/lib/domain/leads/leadListView";
 import {
   sortByFitScore,
   suggestCategory,
@@ -753,7 +753,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
             <div
               className="@container mx-3 my-2 flex items-center gap-0.5 overflow-x-auto rounded-xl border border-ui-border bg-ui-surface-sunken p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               role="tablist"
-              aria-label="Filter leads by email"
+              aria-label="Filter leads"
               onKeyDown={onFilterKeyDown}
             >
               {LEAD_FILTERS.map((value) => (
@@ -778,7 +778,11 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
             </div>
             {visibleLeads.length === 0 ? (
               <p id="leads-filter-panel" role="tabpanel" aria-labelledby={`leads-filter-${activeFilter}`} className="px-4 py-6 text-center text-[12px] text-gray-500">
-                {activeFilter === "with" ? "No leads with an email yet. " : "No leads without an email. "}
+                {activeFilter === "qualified"
+                  ? "No qualified leads yet. A qualified lead has a way to reach them, a reason it fits you and a source page. "
+                  : activeFilter === "with"
+                    ? "No leads with an email yet. "
+                    : "No leads without an email. "}
                 <button type="button" onClick={() => setFilter("all")} className="font-medium text-gray-800 underline underline-offset-2">
                   Show all {leadCounts.all}
                 </button>
@@ -788,6 +792,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                 {visibleLeads.map((lead) => {
                   const source = websiteHref(lead.source_url);
                   const meta = [lead.title, lead.company].filter(Boolean).join(" · ") || lead.email || "";
+                  const qualification = leadQualification(lead);
                   return (
                     <div key={lead.id} className="group">
                       <div className="flex min-h-14 items-center gap-2 px-3 py-1.5">
@@ -806,6 +811,11 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                         <div className="min-w-0 flex-1">
                           <span className="block truncate text-[13px] leading-5 font-semibold text-ui-text">{lead.name}</span>
                           {meta && <span className="block truncate text-xs leading-4 text-ui-muted">{meta}</span>}
+                          {lead.fit_reason ? (
+                            <span className="block truncate text-xs leading-4 text-ui-subtle" title={lead.fit_reason} data-testid="lead-why">
+                              Why: {lead.fit_reason}
+                            </span>
+                          ) : null}
                         </div>
                         <div className="flex shrink-0 items-center gap-1.5">
                           {lead.last_reply_snippet && (
@@ -828,6 +838,13 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                               <Phone size={12} aria-label={`Phone ${lead.phone}`} />
                             </span>
                           )}
+                          {qualification.channels
+                            .filter((c) => c !== "email")
+                            .map((c) => (
+                              <StatusChip key={c} tone="success" title={`Reachable on ${channelLabel(c)}`}>
+                                {channelLabel(c)}
+                              </StatusChip>
+                            ))}
                           {lead.email ? (
                             <StatusChip
                               tone="success"

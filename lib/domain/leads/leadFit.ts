@@ -61,6 +61,28 @@ export function scoreProfile(p: ParsedLinkedInProfile, target: FitTarget, profil
   return { score, keep, roleHits };
 }
 
+type FitProfile = Pick<LeadProfile, "roles" | "industries" | "locations"> | null | undefined;
+
+/**
+ * One plain sentence on why this profile fits, built only from words that actually matched (never invented):
+ * "Head of Sales at Acme. Matches your 'sales' role; based in Chennai." Empty when nothing matched.
+ */
+export function describeFit(p: ParsedLinkedInProfile, target: FitTarget, profile?: FitProfile): string {
+  const words = wordSet(`${p.headline} ${p.title} ${p.description}`);
+  const matchedRole = [...new Set([...fitTokens(target.role), ...fitTokens((profile?.roles ?? []).join(" "))])].filter((w) => words.has(w));
+  const matchedIndustry = [...new Set([...fitTokens(target.companyOrIndustry), ...fitTokens((profile?.industries ?? []).join(" "))])].filter((w) => words.has(w));
+  const locationWords = wordSet(p.location);
+  const matchedPlace = fitTokens(`${target.location} ${(profile?.locations ?? []).join(" ")}`).filter((w) => locationWords.has(w));
+
+  const parts: string[] = [];
+  if (matchedRole.length) parts.push(`role matches "${matchedRole.slice(0, 3).join(" ")}"`);
+  if (matchedIndustry.length) parts.push(`works in "${matchedIndustry.slice(0, 3).join(" ")}"`);
+  if (matchedPlace.length) parts.push(`based in ${p.location}`);
+  if (parts.length === 0) return "";
+  const who = [p.title, p.company].filter(Boolean).join(" at ");
+  return `${who ? `${who}. ` : ""}${parts[0][0].toUpperCase()}${parts.join("; ").slice(1)}.`;
+}
+
 /** Same person under two URL spellings, or the same name at the same company. */
 function dedupeKeys(p: ParsedLinkedInProfile): string[] {
   const keys = [`url:${p.sourceUrl.toLowerCase()}`];
@@ -81,7 +103,7 @@ export function dedupeProfiles<T extends ParsedLinkedInProfile>(profiles: T[]): 
   return out;
 }
 
-export type RankedProfile = ParsedLinkedInProfile & { score: number };
+export type RankedProfile = ParsedLinkedInProfile & { score: number; fitReason: string };
 
 /**
  * Keep the relevant profiles, dedupe, sort by score (stable, so the search
@@ -95,7 +117,7 @@ export function rankProfiles(
   const scored: RankedProfile[] = [];
   for (const p of profiles) {
     const fit = scoreProfile(p, target, profile);
-    if (fit.keep) scored.push({ ...p, score: fit.score });
+    if (fit.keep) scored.push({ ...p, score: fit.score, fitReason: describeFit(p, target, profile) });
   }
   const sorted = scored
     .map((p, index) => ({ p, index }))

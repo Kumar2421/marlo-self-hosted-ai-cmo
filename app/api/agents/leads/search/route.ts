@@ -5,6 +5,7 @@ import { LeadsAgent, type ExtractedLead } from "@/lib/domain/leads/LeadsAgent";
 import { runPaidLeadSearch } from "@/lib/domain/leads/paidLeadSearch";
 import { getLeadProfile } from "@/lib/domain/leads/leadProfileStore";
 import { getLeadProfile as getLeadProfileSupabase } from "@/lib/domain/leads/leadProfileStoreSupabase";
+import { personLeadFields } from "@/lib/domain/leads/leadRow";
 import { verifyMissingEmails } from "@/lib/domain/leads/verifyMissingEmails";
 import { getActiveProjectId } from "@/lib/domain/shared/getActiveProjectId";
 import { FEATURES } from "@/lib/features";
@@ -158,15 +159,7 @@ export async function POST(req: NextRequest) {
             return {
               user_id: user.id,
               project_id: activeId,
-              name: lead.name,
-              title: lead.title,
-              company: lead.company,
-              location: lead.location,
-              email,
-              email_verified: emailVerified,
-              source_url: lead.sourceUrl,
-              query,
-              created_at: now,
+              ...personLeadFields(lead, { email, emailGuessed: emailVerified, query, now }),
             };
           });
 
@@ -240,16 +233,17 @@ export async function POST(req: NextRequest) {
 
     const now = new Date().toISOString();
     const insert = db.prepare(
-      `INSERT INTO leads (id, project_id, name, title, company, location, email, email_verified, source_url, query, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO leads (id, project_id, name, title, company, location, email, email_verified, source_url, fit_reason, query, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const saved = leads.map((lead, index) => {
       const id = `lead_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
       const verifiedEmail = verifiedEmails.get(index);
       const email = lead.email ?? verifiedEmail ?? null;
       const emailVerified = !lead.email && !!verifiedEmail;
-      insert.run(id, activeId, lead.name, lead.title, lead.company, lead.location, email, emailVerified ? 1 : 0, lead.sourceUrl, query, now);
-      return { id, project_id: activeId, ...lead, email, email_verified: emailVerified, query, created_at: now };
+      const fields = personLeadFields(lead, { email, emailGuessed: emailVerified, query, now });
+      insert.run(id, activeId, fields.name, fields.title, fields.company, fields.location, email, emailVerified ? 1 : 0, fields.source_url, fields.fit_reason, query, now);
+      return { id, project_id: activeId, ...lead, email, email_verified: emailVerified, fit_reason: fields.fit_reason, query, created_at: now };
     });
 
     return NextResponse.json({ leads: saved });

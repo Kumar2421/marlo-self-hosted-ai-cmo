@@ -31,9 +31,11 @@ export type ExtractedLead = {
   location: string;
   email: string | null;
   sourceUrl: string | null;
+  /** Why this lead fits the search; empty when the matcher found nothing specific to say. */
+  fitReason: string;
 };
 
-function toLead(p: ParsedLinkedInProfile, company: string | null): ExtractedLead {
+function toLead(p: ParsedLinkedInProfile & { fitReason?: string }, company: string | null): ExtractedLead {
   return {
     name: p.name,
     title: p.title,
@@ -41,6 +43,7 @@ function toLead(p: ParsedLinkedInProfile, company: string | null): ExtractedLead
     location: p.location,
     email: null,
     sourceUrl: p.sourceUrl,
+    fitReason: p.fitReason ?? "",
   };
 }
 

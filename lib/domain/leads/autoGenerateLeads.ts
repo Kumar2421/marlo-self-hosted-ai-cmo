@@ -4,6 +4,7 @@ import { LeadsAgent } from "@/lib/domain/leads/LeadsAgent";
 import { isConfirmed, pickSearch } from "@/lib/domain/leads/leadProfile";
 import { getLeadProfile } from "@/lib/domain/leads/leadProfileStoreSupabase";
 import { verifyMissingEmails } from "@/lib/domain/leads/verifyMissingEmails";
+import { personLeadFields } from "./leadRow.ts";
 import { createLeadDedupe } from "./leadDedupe.ts";
 import { platformKeyFor, PLATFORM_DEFAULT_MODELS } from "@/lib/llm/platformKeys";
 
@@ -109,15 +110,7 @@ export async function generateAutoLeads(
     rows.push({
       user_id: userId,
       project_id: project.id,
-      name: lead.name,
-      title: lead.title,
-      company: lead.company,
-      location: lead.location,
-      email,
-      email_verified: !lead.email && !!verifiedEmail,
-      source_url: lead.sourceUrl,
-      query: queryLabel,
-      created_at: now,
+      ...personLeadFields(lead, { email, emailGuessed: !lead.email && !!verifiedEmail, query: queryLabel, now }),
       auto_generated: true,
     });
     // Reserve this row's own identity so a duplicate later in the same

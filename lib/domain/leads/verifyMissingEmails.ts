@@ -1,4 +1,5 @@
 import type { ExtractedLead } from "@/lib/domain/leads/LeadsAgent";
+import { guessingEnabled } from "@/lib/domain/leads/guessPolicy";
 import { guessAndVerifyEmail } from "@/lib/domain/leads/emailVerify";
 
 const SMTP_VERIFY_CONCURRENCY = 5;
@@ -9,6 +10,9 @@ const SMTP_VERIFY_CONCURRENCY = 5;
  * Shared by the manual search route and the auto-generation path so both
  * stay in sync instead of drifting copies. */
 export async function verifyMissingEmails(leads: ExtractedLead[]): Promise<Map<number, string>> {
+  // Guessed addresses are off by default: a pattern the mail server accepts is not a contact (it can bounce or
+  // reach nobody), and a lead only counts as qualified with an address found on a page. See qualify.ts.
+  if (!guessingEnabled()) return new Map();
   const verified = new Map<number, string>();
   const candidates = leads
     .map((lead, index) => ({ lead, index }))
