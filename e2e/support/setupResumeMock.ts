@@ -138,6 +138,9 @@ export async function mockSetupApi(page: Page, opts: SetupMockOptions) {
       return Promise.resolve(ok());
     };
     if (path === "/api/agents/seo/audit" && method === "POST") return step("audit", () => json(route, { meta: { title: "Acme Invoice" } }));
+    if (path === `/api/project/${PROJECT_ID}/offer-model` && method === "POST") {
+      return step("offer-model", () => json(route, { offer: { whoPays: "freelancers", sells: "invoicing", evidence: {} } }));
+    }
     if (path === `/api/project/${PROJECT_ID}/generate-description` && method === "POST") {
       return step("description", () => json(route, { description: "Invoicing for freelancers." }));
     }
@@ -184,6 +187,7 @@ export async function mockSetupApi(page: Page, opts: SetupMockOptions) {
 /** Request path for a step: where the app POSTs to run it. */
 export const STEP_CALL: Record<SetupStepKey, string> = {
   audit: "POST /api/agents/seo/audit",
+  "offer-model": `POST /api/project/${PROJECT_ID}/offer-model`,
   description: `POST /api/project/${PROJECT_ID}/generate-description`,
   competitors: "POST /api/project/competitors/discover",
   leads: `POST /api/project/${PROJECT_ID}/generate-leads`,

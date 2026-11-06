@@ -60,6 +60,7 @@ export function sqliteSetupStateStore(db: Database.Database, projectId: string):
         hasAudit: Boolean(audit),
         hasDescription: Boolean(project?.description?.trim()),
         hasCompetitors: comps.n > 0,
+        hasOfferModel: docs.some((d) => d.doc_type === "offer_model"),
         documents: docs.map((d) => docKeyOfType(d.doc_type)).filter((k): k is NonNullable<typeof k> => k !== null),
       };
     },

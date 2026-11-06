@@ -337,6 +337,15 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
   // confirmed, the panel shows an inline "Tell us who you sell to" prompt with the button instead.
   const showWizard = wizardOpen;
 
+  // A suggestion cached before setup finished would miss the Offer Model, so re-read it before the wizard mounts.
+  function openWizard() {
+    if (leadProfile.profile) {
+      setWizardOpen(true);
+      return;
+    }
+    void leadProfile.refresh().finally(() => setWizardOpen(true));
+  }
+
   function closeWizard() {
     setWizardOpen(false);
   }
@@ -539,7 +548,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                   profile={leadProfile.profile}
                   searching={searching}
                   disabled={!project}
-                  onEdit={() => setWizardOpen(true)}
+                  onEdit={openWizard}
                   onSearch={(target) => handleSearch({ ...target, useProfile: true })}
                   collapsed={!profileExpanded}
                   summary={profileSummary(leadProfile.profile)}
@@ -585,15 +594,17 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                 <Users size={18} className="mx-auto mb-2 text-gray-300" />
                 <p className="text-[13px] font-semibold text-gray-900">Tell us who you sell to</p>
                 <p className="mx-auto mt-1 max-w-[240px] text-[12px] leading-4 text-gray-500">
-                  A two-minute profile so every lead fits your product, not just a job title.
+                  {leadProfile.offer
+                    ? "Marlo read your site and drafted who buys from you. Check it, change anything that is wrong, then confirm."
+                    : "A two-minute profile so every lead fits your product, not just a job title."}
                 </p>
                 <button
                   type="button"
-                  onClick={() => setWizardOpen(true)}
+                  onClick={openWizard}
                   disabled={!project}
                   className="mt-3 rounded-lg bg-[#111111] px-4 py-1.5 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50"
                 >
-                  Set up lead profile
+                  {leadProfile.offer ? "Review who buys from you" : "Set up lead profile"}
                 </button>
               </div>
             )}
@@ -616,7 +627,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
             hasProfile={Boolean(confirmedProfile)}
             onEditProfile={() => {
               setMode("person");
-              setWizardOpen(true);
+              openWizard();
             }}
             searching={searching}
             disabled={!project}
@@ -634,6 +645,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
           open
           onClose={closeWizard}
           initial={leadProfile.profile ?? leadProfile.suggestion}
+          offer={leadProfile.offer}
           saving={leadProfile.save.isPending}
           error={leadProfile.save.error instanceof Error ? leadProfile.save.error.message : null}
           onConfirm={confirmProfile}

@@ -5,6 +5,7 @@ import { getLeadProfile, saveLeadProfile } from "../lib/domain/leads/leadProfile
 import {
   applyExclusions, describeProfile, emptyProfile, isConfirmed, LIMITS, normalizeProfile, pickSearch, profileProblems, suggestProfile,
 } from "../lib/domain/leads/leadProfile.ts";
+import { normalizeOfferModel } from "../lib/domain/offer/offerModel.ts";
 
 const base = { marketingStrategy: null, productInfo: null, category: "Project management software", name: "Acme", competitors: [] as string[] };
 
@@ -34,9 +35,11 @@ test("normalizeProfile keeps only known company sizes and an explicit boolean fo
   assert.equal(normalizeProfile({ webRelated: true }).webRelated, true);
 });
 
-test("a profile needs a role and a kind of company before it can be confirmed", () => {
-  assert.equal(profileProblems(emptyProfile()).length, 2);
-  assert.equal(profileProblems(normalizeProfile({ roles: ["Founder"] })).length, 1);
+test("a profile needs a job title or a kind of company or customer before it can be confirmed", () => {
+  assert.equal(profileProblems(emptyProfile()).length, 1);
+  assert.equal(profileProblems(normalizeProfile({ roles: ["Founder"] })).length, 0);
+  // A buyer with no job title (a clinic, a shop's customer) is enough.
+  assert.equal(profileProblems(normalizeProfile({ industries: ["Dental clinics"] })).length, 0);
   assert.equal(profileProblems(normalizeProfile({ roles: ["Founder"], industries: ["SaaS"] })).length, 0);
 });
 
@@ -44,7 +47,8 @@ test("isConfirmed needs a confirmation time AND a valid profile", () => {
   const ok = normalizeProfile({ roles: ["Founder"], industries: ["SaaS"], confirmedAt: "2026-10-10T00:00:00Z" });
   assert.equal(isConfirmed(ok), true);
   assert.equal(isConfirmed({ ...ok, confirmedAt: null }), false);
-  assert.equal(isConfirmed({ ...ok, roles: [] }), false);
+  assert.equal(isConfirmed({ ...ok, roles: [] }), true);
+  assert.equal(isConfirmed({ ...ok, roles: [], industries: [] }), false);
   assert.equal(isConfirmed(null), false);
 });
 
@@ -61,11 +65,35 @@ test("suggestProfile reads the ICP, adds competitors as exclusions and starts un
   assert.equal(p.confirmedAt, null);
 });
 
-test("suggestProfile with no ICP falls back to the category and still needs a role from the user", () => {
+test("suggestProfile with no ICP falls back to the category as the kind of company", () => {
   const p = suggestProfile(base);
   assert.deepEqual(p.industries, ["Project management software"]);
   assert.deepEqual(p.roles, []);
-  assert.ok(profileProblems(p).length > 0);
+  assert.equal(profileProblems(p).length, 0);
+});
+
+test("suggestProfile prefers what the site says (the offer model) and falls back to the docs for gaps", () => {
+  const offer = normalizeOfferModel({
+    sells: "Custom software",
+    whoPays: "small businesses in Tamil Nadu",
+    roles: [],
+    industries: [],
+    locations: ["Tamil Nadu"],
+    problem: "Teams run on spreadsheets and lose track of deals.",
+    webRelated: false,
+  });
+  const p = suggestProfile({ ...base, offer });
+  assert.deepEqual(p.industries, ["small businesses in Tamil Nadu"]);
+  assert.deepEqual(p.locations, ["Tamil Nadu"]);
+  assert.equal(p.problem, "Teams run on spreadsheets and lose track of deals.");
+  assert.equal(p.confirmedAt, null);
+  assert.equal(profileProblems(p).length, 0);
+});
+
+test("suggestProfile ignores an offer model that learned nothing about who buys", () => {
+  const empty = normalizeOfferModel({ archetype: "other" });
+  assert.deepEqual(suggestProfile({ ...base, offer: empty }), suggestProfile(base));
+  assert.deepEqual(suggestProfile({ ...base, offer: null }), suggestProfile(base));
 });
 
 test("suggestProfile pulls the problem from the product info and guesses if it is web related", () => {

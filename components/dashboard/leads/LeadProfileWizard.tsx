@@ -6,6 +6,7 @@ import SidePanel from "@/components/shared/SidePanel";
 import {
   COMPANY_SIZES, describeProfile, emptyProfile, LIMITS, normalizeProfile, profileProblems, type CompanySize, type LeadProfile,
 } from "@/lib/domain/leads/leadProfile";
+import { archetypeLabel, type EvidenceField, type OfferModel } from "@/lib/domain/offer/offerModel";
 import ChipInput from "./ChipInput";
 
 const ROLE_SUGGESTIONS = ["Founder", "CEO", "CTO", "CMO", "Head of Marketing", "Head of Growth", "VP Sales", "Marketing Manager", "Product Manager", "Operations Manager"];
@@ -20,6 +21,50 @@ function Field({ title, hint, children }: { title: string; hint?: string; childr
       <h3 className="text-[13px] font-semibold text-gray-900">{title}</h3>
       {hint && <p className="mb-2 mt-0.5 text-[12px] leading-4 text-gray-500">{hint}</p>}
       {children}
+    </section>
+  );
+}
+
+/** Only real web links are rendered, whatever the stored value says. */
+function safeHref(url: string): string | null {
+  return /^https?:\/\//i.test(url) ? url : null;
+}
+
+/** Where an answer came from: a quote from the user's own site, or an honest "not found". Nothing when no site was read. */
+function EvidenceNote({ offer, field }: { offer: OfferModel | null; field: EvidenceField }) {
+  if (!offer) return null;
+  const ev = offer.evidence[field];
+  if (!ev) return <p className="mb-2 text-xs text-ui-subtle">Not found on your site. Add it if you know it.</p>;
+  const href = safeHref(ev.url);
+  return (
+    <p className="mb-2 text-xs leading-4 text-ui-subtle" data-testid={`evidence-${field}`}>
+      <span className="line-clamp-2">From your site: &ldquo;{ev.quote}&rdquo;</span>
+      {href && (
+        <a href={href} target="_blank" rel="noopener noreferrer" className="underline">
+          Open the page
+        </a>
+      )}
+    </p>
+  );
+}
+
+/** What Marlo understood about the offer, with the quote behind each line, shown first so the user can correct it. */
+function Understood({ offer }: { offer: OfferModel }) {
+  const rows: { label: string; value: string; field: EvidenceField }[] = [
+    { label: "You sell", value: offer.sells, field: "sells" },
+    { label: "Who pays", value: offer.whoPays, field: "whoPays" },
+  ];
+  return (
+    <section className="mb-6 rounded-xl border border-gray-200 p-3" data-testid="offer-understood">
+      <h3 className="text-[13px] font-semibold text-gray-900">What Marlo read on your site</h3>
+      <p className="mb-2 mt-0.5 text-[12px] leading-4 text-gray-500">{archetypeLabel(offer.archetype)}. Check each answer and change anything that is wrong.</p>
+      {rows.map((row) => (
+        <div key={row.field} className="mt-2">
+          <div className="text-xs font-semibold uppercase tracking-wide text-ui-subtle">{row.label}</div>
+          <div className="mt-0.5 text-[13px] text-gray-800">{row.value || "—"}</div>
+          <EvidenceNote offer={offer} field={row.field} />
+        </div>
+      ))}
     </section>
   );
 }
@@ -42,6 +87,7 @@ export default function LeadProfileWizard({
   open,
   onClose,
   initial,
+  offer = null,
   saving,
   error,
   onConfirm,
@@ -49,6 +95,8 @@ export default function LeadProfileWizard({
   open: boolean;
   onClose: () => void;
   initial: LeadProfile | null;
+  /** What Marlo read from the site, when it did. Gives each answer a quote and a "not found" note. */
+  offer?: OfferModel | null;
   saving: boolean;
   error: string | null;
   onConfirm: (profile: LeadProfile) => void;
@@ -59,7 +107,8 @@ export default function LeadProfileWizard({
 
   const clean = normalizeProfile(draft);
   const problems = profileProblems(clean);
-  const canNext = step === 0 ? clean.roles.length > 0 : step === 1 ? clean.industries.length > 0 : true;
+  // A job title is optional (a clinic or a shop's customer has none); step 2 needs a title or a kind of company.
+  const canNext = step === 1 ? clean.roles.length > 0 || clean.industries.length > 0 : true;
   const last = step === STEPS.length - 1;
 
   const toggleSize = (size: CompanySize) =>
@@ -118,14 +167,19 @@ export default function LeadProfileWizard({
   return (
     <SidePanel open={open} onClose={onClose} width="md" title="Set up your lead profile" subtitle={`Step ${step + 1} of ${STEPS.length}`} toolbar={progress} footer={footer}>
       {step === 0 && (
-        <Field title="Who do you want to reach?" hint="The job titles of the people who decide to buy what you sell.">
-          <ChipInput label="Job titles" value={draft.roles} onChange={(roles) => update({ roles })} suggestions={ROLE_SUGGESTIONS} placeholder="e.g. Head of Marketing" max={LIMITS.roles} />
-        </Field>
+        <>
+          {offer && <Understood offer={offer} />}
+          <Field title="Who do you want to reach?" hint="The job titles of the people who decide to buy what you sell. Skip this if your customers have no job title; name them on the next step.">
+            <EvidenceNote offer={offer} field="roles" />
+            <ChipInput label="Job titles" value={draft.roles} onChange={(roles) => update({ roles })} suggestions={ROLE_SUGGESTIONS} placeholder="e.g. Head of Marketing" max={LIMITS.roles} />
+          </Field>
+        </>
       )}
 
       {step === 1 && (
         <>
-          <Field title="What kind of companies do they work at?" hint="The industries or types of company you sell to.">
+          <Field title="What kind of companies or customers?" hint="The industries, types of company or kinds of customer you sell to.">
+            <EvidenceNote offer={offer} field="industries" />
             <ChipInput label="Company types" value={draft.industries} onChange={(industries) => update({ industries })} suggestions={INDUSTRY_SUGGESTIONS} placeholder="e.g. SaaS" max={LIMITS.industries} />
           </Field>
           <Field title="How big?" hint="Optional. Pick all that fit.">
@@ -146,6 +200,7 @@ export default function LeadProfileWizard({
             </div>
           </Field>
           <Field title="Where?" hint="Optional. Leave empty to search anywhere.">
+            <EvidenceNote offer={offer} field="locations" />
             <ChipInput label="Locations" value={draft.locations} onChange={(locations) => update({ locations })} suggestions={LOCATION_SUGGESTIONS} placeholder="e.g. India" max={LIMITS.locations} />
           </Field>
         </>
@@ -154,6 +209,7 @@ export default function LeadProfileWizard({
       {step === 2 && (
         <>
           <Field title="What problem do you solve for them?" hint="One or two sentences. It helps pick people who actually need this, and later shapes your outreach.">
+            <EvidenceNote offer={offer} field="problem" />
             <textarea
               value={draft.problem}
               onChange={(e) => update({ problem: e.target.value.slice(0, LIMITS.problemLength) })}
@@ -183,7 +239,7 @@ export default function LeadProfileWizard({
             Here is who we will look for: <strong className="text-gray-900">{describeProfile(clean) || "—"}</strong>.
           </p>
           <div className="overflow-hidden rounded-xl border border-gray-200">
-            <Summary label="Job titles" value={clean.roles.join(", ")} />
+            <Summary label="Job titles" value={clean.roles.length ? clean.roles.join(", ") : "Any"} />
             <Summary label="Company types" value={clean.industries.join(", ")} />
             <Summary label="Company size" value={clean.sizes.length ? clean.sizes.map((s) => `${s} people`).join(", ") : "Any"} />
             <Summary label="Locations" value={clean.locations.length ? clean.locations.join(", ") : "Anywhere"} />

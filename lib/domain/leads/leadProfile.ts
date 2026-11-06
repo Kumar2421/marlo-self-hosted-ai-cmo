@@ -1,4 +1,5 @@
 import { deriveLeadTarget } from "./leadTarget.ts";
+import type { OfferModel } from "../offer/offerModel.ts";
 
 export const COMPANY_SIZES = ["1-10", "11-50", "51-200", "201-1000", "1000+"] as const;
 export type CompanySize = (typeof COMPANY_SIZES)[number];
@@ -67,10 +68,12 @@ export function normalizeProfile(input: unknown): LeadProfile {
 
 /** What still blocks confirming; empty means ready. */
 export function profileProblems(profile: LeadProfile): string[] {
-  const problems: string[] = [];
-  if (profile.roles.length === 0) problems.push("Add at least one job title to reach.");
-  if (profile.industries.length === 0) problems.push("Add at least one kind of company.");
-  return problems;
+  // A buyer may be a person with a job title, or a kind of business or customer with no title at all
+  // (a clinic, a shop, a freelancer's client). Either is enough to search on.
+  if (profile.roles.length === 0 && profile.industries.length === 0) {
+    return ["Say who you want to reach: a job title, or a kind of company or customer."];
+  }
+  return [];
 }
 
 export function isConfirmed(profile: LeadProfile | null | undefined): profile is LeadProfile {
@@ -90,7 +93,10 @@ export function suggestProfile(input: {
   name: string;
   /** Competitor domains already found for the project; they must never come back as leads. */
   competitors: string[];
+  /** What Marlo read from the site itself. When it says who buys, it leads; the document rules fill the gaps. */
+  offer?: OfferModel | null;
 }): LeadProfile {
+  const offer = input.offer && (input.offer.whoPays || input.offer.roles.length > 0 || input.offer.industries.length > 0) ? input.offer : null;
   const target = deriveLeadTarget({
     marketingStrategy: input.marketingStrategy,
     productInfo: input.productInfo,
@@ -99,6 +105,17 @@ export function suggestProfile(input: {
   });
   const problem = firstProblemSentence(input.productInfo) ?? firstProblemSentence(input.marketingStrategy) ?? "";
   const webText = `${input.category ?? ""} ${input.productInfo ?? ""}`;
+  if (offer) {
+    return normalizeProfile({
+      roles: offer.roles.length > 0 ? offer.roles : target.roles,
+      // The site's own words for who it serves. "Who pays" stands in when it names no kind of company.
+      industries: offer.industries.length > 0 ? offer.industries : offer.whoPays ? [offer.whoPays] : target.industry ? [target.industry] : [],
+      locations: offer.locations.length > 0 ? offer.locations : target.location ? [target.location] : [],
+      problem: offer.problem || problem,
+      exclude: input.competitors,
+      webRelated: offer.webRelated || WEB_WORDS.test(webText),
+    });
+  }
   return normalizeProfile({
     roles: target.roles,
     // With no ICP, the category is a weak but honest starting point.
