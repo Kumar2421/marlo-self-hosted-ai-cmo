@@ -50,7 +50,7 @@ type Lead = {
   created_at: string;
   phone?: string | null;
   place_id?: string | null;
-  lead_type?: "person" | "business";
+  lead_type?: "person" | "business" | "company";
   email_status?: "sent" | "failed" | null;
   emailed_at?: string | null;
   gmail_thread_id?: string | null;
@@ -300,8 +300,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
     setSearching(true);
     const filters = [q.role, q.companyOrIndustry, q.location].filter(Boolean).join(" · ") || "(no filters)";
     log(`Searching leads: ${filters}...`);
-    log("Running real web searches (Tavily) and extracting real people from the results...");
-    log("Then SMTP-verifying a guessed email for any lead search didn't find one for — this can take a minute...");
+    log("Running real web searches and extracting real people from the results...");
     try {
       const res = await fetch("/api/agents/leads/search", {
         method: "POST",
@@ -317,12 +316,8 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
       const found: Lead[] = data.leads ?? [];
       setLeads((prev) => [...found, ...prev]);
 
-      const foundEmail = found.filter((l) => l.email && !l.email_verified).length;
-      const verifiedEmail = found.filter((l) => l.email_verified).length;
-      const noEmail = found.length - foundEmail - verifiedEmail;
-      logDone(
-        `Found ${found.length} lead${found.length === 1 ? "" : "s"} — ${foundEmail} email${foundEmail === 1 ? "" : "s"} from search, ${verifiedEmail} guessed and accepted by the mail server, ${noEmail} with no email.`
-      );
+      const reachable = found.filter((l) => leadQualification(l).qualified).length;
+      logDone(`Found ${found.length} lead${found.length === 1 ? "" : "s"} — ${reachable} qualified (a way to reach them, a reason they fit, a source page).`);
       show(`Found ${found.length} lead${found.length === 1 ? "" : "s"}.`);
     } catch {
       log("⚠ Failed to search leads.");
@@ -360,6 +355,39 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
         },
       },
     );
+  }
+
+  /** Web search for companies that match the profile; only ones that show an email or WhatsApp on their own site are saved. */
+  async function handleCompanySearch() {
+    if (searching) return;
+    setSearching(true);
+    log("Searching the web for companies that match your profile...");
+    log("Reading each company's own site for an email or WhatsApp number. Only reachable companies are kept...");
+    try {
+      const res = await fetch("/api/agents/leads/company-search", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        log(`⚠ ${data.error ?? "Failed to search companies"}`);
+        show(data.error || "Failed to search companies.");
+        return;
+      }
+      const found: Lead[] = data.leads ?? [];
+      const foundIds = new Set(found.map((l) => l.id));
+      setLeads((prev) => [...found, ...prev.filter((l) => !foundIds.has(l.id))]);
+      setFilter("qualified");
+      if (found.length > 0) {
+        logDone(`Saved ${found.length} ${found.length === 1 ? "company" : "companies"} you can reach.`);
+        show(`Found ${found.length} ${found.length === 1 ? "company" : "companies"}.`);
+      } else {
+        logDone(data.message ?? "No new companies matched your profile this time.");
+        show(data.message ?? "No new companies this time.");
+      }
+    } catch {
+      log("⚠ Failed to search companies.");
+      show("Failed to search companies.");
+    } finally {
+      setSearching(false);
+    }
   }
 
   async function handleBizSearch() {
@@ -550,6 +578,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                   disabled={!project}
                   onEdit={openWizard}
                   onSearch={(target) => handleSearch({ ...target, useProfile: true })}
+                  onSearchCompanies={handleCompanySearch}
                   collapsed={!profileExpanded}
                   summary={profileSummary(leadProfile.profile)}
                   onToggle={() => setProfileOpen(!profileExpanded)}
@@ -791,7 +820,10 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
               <div id="leads-filter-panel" role="tabpanel" aria-labelledby={`leads-filter-${activeFilter}`} className="divide-y divide-ui-border">
                 {visibleLeads.map((lead) => {
                   const source = websiteHref(lead.source_url);
-                  const meta = [lead.title, lead.company].filter(Boolean).join(" · ") || lead.email || "";
+                  const meta =
+                    lead.lead_type === "company"
+                      ? (lead.website ?? "").replace(/^https?:\/\//, "").replace(/\/$/, "") || lead.email || ""
+                      : [lead.title, lead.company].filter(Boolean).join(" · ") || lead.email || "";
                   const qualification = leadQualification(lead);
                   return (
                     <div key={lead.id} className="group">
@@ -812,7 +844,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                           <span className="block truncate text-[13px] leading-5 font-semibold text-ui-text">{lead.name}</span>
                           {meta && <span className="block truncate text-xs leading-4 text-ui-muted">{meta}</span>}
                           {lead.fit_reason ? (
-                            <span className="block truncate text-xs leading-4 text-ui-subtle" title={lead.fit_reason} data-testid="lead-why">
+                            <span className="line-clamp-2 text-xs leading-4 text-ui-subtle" title={lead.fit_reason} data-testid="lead-why">
                               Why: {lead.fit_reason}
                             </span>
                           ) : null}
@@ -854,11 +886,11 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                               Email
                               <span className="sr-only"> found: {lead.email}</span>
                             </StatusChip>
-                          ) : (
+                          ) : qualification.channels.length === 0 ? (
                             <StatusChip tone="neutral" title="No email found">
                               No email
                             </StatusChip>
-                          )}
+                          ) : null}
                           {source && (
                             <a
                               href={source}
@@ -905,7 +937,11 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
       </div>
 
       <div className="flex shrink-0 items-center justify-between border-t border-gray-200 px-4 py-2.5 text-xs text-ui-subtle">
-        <span>Guessed emails are unverified guesses, not confirmed addresses.</span>
+        <span>
+          {leads.some((l) => l.email_verified)
+            ? "Some older emails were guessed, not found on a page. They are never counted as qualified."
+            : "Qualified leads have a way to reach them, a reason they fit and a source page."}
+        </span>
         <div className="flex items-center gap-3">
           {gmail.canRead && (
             <button
