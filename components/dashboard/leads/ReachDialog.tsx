@@ -34,6 +34,8 @@ export default function ReachDialog({
   onWriteEmail,
   onMarkContacted,
   contacted,
+  onMarkReplied,
+  replied,
 }: {
   lead: ReachableLead;
   projectName: string;
@@ -43,6 +45,9 @@ export default function ReachDialog({
   /** Hosted accounts only; omitted where lead status cannot be saved. */
   onMarkContacted?: () => Promise<void>;
   contacted?: boolean;
+  /** Optional and manual: a WhatsApp or LinkedIn reply happens outside Marlo, so the user may record it. */
+  onMarkReplied?: () => Promise<void>;
+  replied?: boolean;
 }) {
   const channels = leadQualification(lead).channels;
   const [sender] = useSenderProfile();
@@ -51,6 +56,7 @@ export default function ReachDialog({
   const [copied, setCopied] = useState(false);
   const [opened, setOpened] = useState(false);
   const [marking, setMarking] = useState(false);
+  const [markingReply, setMarkingReply] = useState(false);
 
   const ctx = { lead, sender, projectName, offer };
   const draftFor = (c: ReachChannel) => drafts[c] ?? buildReachMessage(c, ctx);
@@ -79,6 +85,16 @@ export default function ReachDialog({
       await onMarkContacted();
     } finally {
       setMarking(false);
+    }
+  }
+
+  async function markReplied() {
+    if (!onMarkReplied) return;
+    setMarkingReply(true);
+    try {
+      await onMarkReplied();
+    } finally {
+      setMarkingReply(false);
     }
   }
 
@@ -152,8 +168,22 @@ export default function ReachDialog({
             )}
           </div>
 
-          {contacted ? (
-            <p className="text-xs text-ui-subtle" data-testid="reach-contacted">Marked as contacted.</p>
+          {replied ? (
+            <p className="text-xs text-ui-subtle" data-testid="reach-replied">Marked as replied.</p>
+          ) : contacted ? (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-ui-border bg-ui-surface-sunken px-3 py-2">
+              <span className="text-xs text-ui-muted" data-testid="reach-contacted">Marked as contacted.</span>
+              {onMarkReplied && (
+                <button
+                  type="button"
+                  onClick={markReplied}
+                  disabled={markingReply}
+                  className="shrink-0 rounded-lg border border-ui-border bg-ui-surface px-2.5 py-1 text-xs font-medium text-ui-text hover:bg-ui-surface-sunken disabled:opacity-50"
+                >
+                  {markingReply ? "Saving..." : "They replied"}
+                </button>
+              )}
+            </div>
           ) : (
             opened &&
             onMarkContacted && (

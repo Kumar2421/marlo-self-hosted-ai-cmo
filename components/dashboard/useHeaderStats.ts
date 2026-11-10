@@ -6,7 +6,8 @@ import { useProject } from "@/lib/project-store";
 import { useGoogleServices } from "@/lib/query/useGoogleConnection";
 import { buildTrafficView, type TrafficResponseLike } from "@/lib/domain/analytics/trafficView";
 import { countFindings } from "@/lib/domain/findings/findingDisplay";
-import type { StatInput, StatsInput } from "@/lib/domain/navbar/headerCenter";
+import type { OutreachInput, StatInput, StatsInput } from "@/lib/domain/navbar/headerCenter";
+import { outcomeLine, type OutcomeSummary } from "@/lib/domain/leads/outcomes";
 import { useFindings } from "./findings/useFindings";
 
 /**
@@ -23,6 +24,7 @@ export function useHeaderStats(): StatsInput {
   const findings = useFindings({ enabled: false }).list;
   const traffic = useQuery<TrafficResponseLike>({ queryKey: qk.traffic(pid), enabled: false });
   const leads = useQuery<number>({ queryKey: qk.leadsCount(pid), enabled: false });
+  const outcomes = useQuery<OutcomeSummary>({ queryKey: qk.leadOutcomes(pid), enabled: false });
   const google = useGoogleServices(pid);
 
   const findingsStat: StatInput = findings.data
@@ -46,5 +48,7 @@ export function useHeaderStats(): StatsInput {
 
   const leadsStat: StatInput = typeof leads.data === "number" ? { state: "ready", value: leads.data } : { state: "pending" };
 
-  return { clicks: clicksStat, findings: findingsStat, leads: leadsStat };
+  const outreach: OutreachInput = outcomes.data ? { state: "ready", ...outcomeLine(outcomes.data) } : { state: "pending" };
+
+  return { clicks: clicksStat, findings: findingsStat, leads: leadsStat, outreach };
 }

@@ -15,6 +15,7 @@ import { useGmailStatus } from "./leads/useGmailStatus";
 import { useLeadProfile } from "./leads/useLeadProfile";
 import LeadProfileWizard from "./leads/LeadProfileWizard";
 import ReachDialog from "./leads/ReachDialog";
+import { computeOutcomes, stampReached } from "@/lib/domain/leads/outcomes";
 import LeadProfileSearch from "./leads/LeadProfileSearch";
 import BusinessSearchForm from "./leads/BusinessSearchForm";
 import BusinessResults, { type BusinessSearchError } from "./leads/BusinessResults";
@@ -192,6 +193,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
   useEffect(() => {
     if (loading || !pid || loadedFor.current !== pid) return;
     queryClient.setQueryData(qk.leadsCount(pid), leads.length);
+    queryClient.setQueryData(qk.leadOutcomes(pid), computeOutcomes(leads));
   }, [leads, loading, pid, queryClient]);
 
   const loadLeads = useCallback(async () => {
@@ -354,6 +356,12 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
       {
         onSuccess: ({ profile: saved }) => {
           closeWizard();
+          // A profile with no job titles sells to businesses in general: find companies first. A people search
+          // needs a role to mean anything, so it only runs automatically when the profile names one.
+          if (saved.roles.length === 0 && saved.industries.length > 0) {
+            void handleCompanySearch();
+            return;
+          }
           void handleSearch({ role: saved.roles[0] ?? "", companyOrIndustry: saved.industries[0] ?? "", location: saved.locations[0] ?? "", useProfile: true });
         },
       },
@@ -455,7 +463,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
   /** Optimistic status change; the server's tags replace the guess, and a failure rolls it back. */
   async function handleBusinessStatus(id: string, status: LeadStatus) {
     const before = leads.find((l) => l.id === id)?.tags ?? null;
-    const optimistic = tagsWithStatus(before, status);
+    const optimistic = stampReached(tagsWithStatus(before, status), status, new Date());
     setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, tags: optimistic } : l)));
     try {
       const res = await fetch("/api/agents/leads/status", {
@@ -726,6 +734,8 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
             setComposeOpen(true);
           }}
           onMarkContacted={FEATURES.PLATFORM_MODE ? () => handleBusinessStatus(reachLeadId, "contacted") : undefined}
+          onMarkReplied={FEATURES.PLATFORM_MODE ? () => handleBusinessStatus(reachLeadId, "replied") : undefined}
+          replied={statusFromTags(leads.find((l) => l.id === reachLeadId)?.tags) === "replied"}
           contacted={statusFromTags(leads.find((l) => l.id === reachLeadId)?.tags) === "contacted"}
         />
       ) : null}
@@ -901,44 +911,51 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                           <ExternalLink size={12} />
                         </a>
                       )}
+                            <span className="ml-auto flex items-center gap-1.5" data-testid="lead-actions">
+                            {lead.last_reply_snippet && (
+                              <span title="Replied" className="text-blue-600">
+                                <Reply size={13} aria-label="Replied" />
+                              </span>
+                            )}
+                            {lead.email_status === "sent" && (
+                              <span title="Email sent" className="text-ui-accent-strong">
+                                <Mail size={13} aria-label="Email sent" />
+                              </span>
+                            )}
+                            {lead.email_status === "failed" && (
+                              <span title="Send failed" className="text-red-600">
+                                <AlertTriangle size={13} aria-label="Send failed" />
+                              </span>
+                            )}
+                            {lead.phone && (
+                              <span title={lead.phone} className="text-ui-subtle">
+                                <Phone size={12} aria-label={`Phone ${lead.phone}`} />
+                              </span>
+                            )}
+                            {statusFromTags(lead.tags) === "replied" && !lead.last_reply_snippet && (
+                              <span title="Replied" className="text-blue-600">
+                                <Reply size={13} aria-label="Replied" />
+                              </span>
+                            )}
+                            {statusFromTags(lead.tags) === "contacted" && (
+                              <span title="Contacted" className="text-ui-accent-strong">
+                                <Check size={13} aria-label="Contacted" />
+                              </span>
+                            )}
+                            {qualification.channels.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setReachLeadId(lead.id)}
+                                aria-label={`Reach ${lead.name}`}
+                                className="ui-transition min-h-11 shrink-0 rounded-lg border border-ui-border px-2 text-xs font-medium text-ui-text hover:bg-ui-surface-sunken md:min-h-7"
+                              >
+                                Reach
+                              </button>
+                            )}
+                            </span>
                           </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-1.5">
-                          {lead.last_reply_snippet && (
-                            <span title="Replied" className="text-blue-600">
-                              <Reply size={13} aria-label="Replied" />
-                            </span>
-                          )}
-                          {lead.email_status === "sent" && (
-                            <span title="Email sent" className="text-ui-accent-strong">
-                              <Mail size={13} aria-label="Email sent" />
-                            </span>
-                          )}
-                          {lead.email_status === "failed" && (
-                            <span title="Send failed" className="text-red-600">
-                              <AlertTriangle size={13} aria-label="Send failed" />
-                            </span>
-                          )}
-                          {lead.phone && (
-                            <span title={lead.phone} className="text-ui-subtle">
-                              <Phone size={12} aria-label={`Phone ${lead.phone}`} />
-                            </span>
-                          )}
-                          {statusFromTags(lead.tags) === "contacted" && (
-                            <span title="Contacted" className="text-ui-accent-strong">
-                              <Check size={13} aria-label="Contacted" />
-                            </span>
-                          )}
-                          {qualification.channels.length > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => setReachLeadId(lead.id)}
-                              aria-label={`Reach ${lead.name}`}
-                              className="ui-transition min-h-11 shrink-0 rounded-lg border border-ui-border px-2 text-xs font-medium text-ui-text hover:bg-ui-surface-sunken md:min-h-7"
-                            >
-                              Reach
-                            </button>
-                          )}
                           <button
                             onClick={() => handleRemove(lead.id)}
                             title="Remove"

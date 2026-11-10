@@ -10,7 +10,10 @@ export type StatInput =
 
 export type StatKey = "clicks" | "findings" | "leads";
 
-export type StatsInput = Record<StatKey, StatInput>;
+/** The outreach progress line, already worded by the Leads panel's outcome logic. */
+export type OutreachInput = { state: "ready"; display: string; title: string } | { state: "pending" };
+
+export type StatsInput = Record<StatKey, StatInput> & { outreach?: OutreachInput };
 
 export type StatItem = {
   key: StatKey;
@@ -59,6 +62,11 @@ const LABELS: Record<StatKey, { label: string; title: string }> = {
 
 const ORDER: StatKey[] = ["clicks", "findings", "leads"];
 
+/** The Leads slot, once outreach progress is known: one line replaces the bare lead count. */
+export function outreachItem(input: Extract<OutreachInput, { state: "ready" }>): StatItem {
+  return { key: "leads", label: "Outreach", display: input.display, title: input.title, action: null };
+}
+
 export function statItem(key: StatKey, input: StatInput): StatItem {
   const { label, title } = LABELS[key];
   switch (input.state) {
@@ -87,5 +95,8 @@ export function headerCenter(status: HeaderStatus, stats: StatsInput): HeaderCen
   if (status.kind === "running" || status.kind === "done" || status.kind === "error") {
     return { mode: "status", kind: status.kind, text: status.text };
   }
-  return { mode: "stats", items: ORDER.map((key) => statItem(key, stats[key])) };
+  return {
+    mode: "stats",
+    items: ORDER.map((key) => (key === "leads" && stats.outreach?.state === "ready" ? outreachItem(stats.outreach) : statItem(key, stats[key]))),
+  };
 }

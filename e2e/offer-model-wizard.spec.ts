@@ -96,8 +96,21 @@ test("a buyer with no job title can go through all four steps and be confirmed",
   await expect(page.getByTestId("evidence-problem").getByRole("link")).toHaveCount(0); // javascript: URL is not a link
   await next.click();
 
+  // With no job title the first search after confirming is the company search, never a LinkedIn people search.
+  const searches = { companies: 0, people: 0 };
+  await page.route("**/api/agents/leads/company-search", (route) => {
+    searches.companies += 1;
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ leads: [], dropped: { noContact: 0, noFit: 0 }, duplicates: 0, message: "No new companies matched your profile this time." }) });
+  });
+  await page.route("**/api/agents/leads/search", (route) => {
+    if (route.request().method() === "POST") searches.people += 1;
+    return route.fallback();
+  });
+
   await page.getByRole("button", { name: "Confirm and find leads" }).click();
   await expect.poll(() => puts.length).toBe(1);
+  await expect.poll(() => searches.companies).toBe(1);
+  expect(searches.people).toBe(0);
   expect(puts[0].confirm).toBe(true);
   expect(puts[0].profile.roles).toEqual([]);
   expect(puts[0].profile.industries).toEqual(["small clinics and retail shops"]);
