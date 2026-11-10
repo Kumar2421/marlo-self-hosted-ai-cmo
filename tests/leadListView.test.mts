@@ -7,6 +7,7 @@ import {
   filterLeads,
   hasEmail,
   isQualified,
+  LEAD_FILTERS,
   leadQualification,
   profileSummary,
 } from "../lib/domain/leads/leadListView.ts";
@@ -81,4 +82,10 @@ test("defaultFilter opens on Qualified when any lead qualifies; filter and label
   assert.equal(defaultFilter(list), "qualified");
   assert.deepEqual(filterLeads(list, "qualified").map((l) => l.id), ["1"]);
   assert.equal(filterLabel("qualified", countLeads(list)), "Qualified (1)");
+});
+
+test("there are at most three filter tabs, because a fourth scrolls the tab bar in the narrowest Leads panel", () => {
+  assert.ok(LEAD_FILTERS.length <= 3);
+  assert.deepEqual([...LEAD_FILTERS], ["qualified", "all", "with"]);
+  assert.deepEqual(filterLeads([{ id: "x", email: null }, { id: "y", email: "a@b.co" }], "without").map((l) => l.id), ["x"]); // still a valid filter
 });

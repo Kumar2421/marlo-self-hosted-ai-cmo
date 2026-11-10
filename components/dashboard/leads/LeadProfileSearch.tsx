@@ -61,16 +61,18 @@ export default function LeadProfileSearch({
   const canSearchCompanies = Boolean(onSearchCompanies) && profile.industries.length > 0;
   const canSearchPeople = profile.roles.length > 0 || !canSearchCompanies;
   const companiesPrimary = !canSearchPeople;
+  // Two buttons do not fit beside the summary in the narrowest panel, so they take their own row under it.
+  const bothButtons = canSearchCompanies && canSearchPeople;
 
   if (collapsed) {
     return (
-      <div className="flex min-h-9 items-center gap-2 rounded-xl border border-gray-200 bg-white px-2.5 py-1" data-testid="lead-profile-summary">
+      <div className="flex min-h-9 flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white px-2.5 py-1" data-testid="lead-profile-summary">
         <button
           type="button"
           onClick={onToggle}
           aria-expanded={false}
           title="Show the lead profile"
-          className="flex min-h-9 min-w-0 flex-1 items-center gap-1.5 text-left text-[12px] text-gray-700"
+          className={`flex min-h-9 min-w-0 flex-1 items-center gap-1.5 text-left text-[12px] text-gray-700 ${bothButtons ? "basis-full" : ""}`}
         >
           <Target size={13} className="shrink-0 text-ui-faint" />
           <span className="min-w-0 line-clamp-2 break-words font-medium leading-4 text-gray-900">
@@ -84,7 +86,7 @@ export default function LeadProfileSearch({
             type="button"
             onClick={onSearchCompanies}
             disabled={searching || disabled}
-            className={`flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-[12px] font-medium disabled:opacity-50 ${
+            className={`flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-[12px] font-medium disabled:opacity-50 ${bothButtons ? "flex-1" : "shrink-0"} ${
               companiesPrimary ? "bg-[#111111] text-white hover:bg-black" : "border border-gray-200 text-gray-800 hover:bg-gray-50"
             }`}
           >
@@ -97,7 +99,7 @@ export default function LeadProfileSearch({
             type="button"
             onClick={search}
             disabled={searching || disabled}
-            className="flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#111111] px-3 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50"
+            className={`flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-[#111111] px-3 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50 ${bothButtons ? "flex-1" : "shrink-0"}`}
           >
             {searching ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
             {searching ? "Searching..." : "Find leads"}

@@ -2,6 +2,7 @@ import type { SearchProvider, SearchHit } from "../../websearch/searchProvider.t
 import type { Enrichment } from "../local/websiteContact.ts";
 import { fitTokens } from "../leadFit.ts";
 import { qualifyLead } from "../qualify.ts";
+import { pickOutreachEmail } from "./companyEmail.ts";
 import { pickCompanySites, type CompanyCandidate } from "./companySites.ts";
 
 /**
@@ -143,7 +144,7 @@ export async function searchCompanyLeads(ports: CompanySearchPorts, input: Compa
       droppedNoFit += 1;
       return null;
     }
-    const email = enrichment.emails[0] ?? null;
+    const email = pickOutreachEmail(enrichment.emails);
     const sourceUrl = enrichment.contactUrl ?? c.website;
     if (!qualifyLead({ email, whatsapp: enrichment.whatsapp, sourceUrl, fitReason }).qualified) {
       droppedNoContact += 1;
