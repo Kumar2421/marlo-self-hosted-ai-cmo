@@ -13,6 +13,7 @@ import { getLeadProfile as getLeadProfileSupabase } from "@/lib/domain/leads/lea
 import { runPaidLeadSearch } from "@/lib/domain/leads/paidLeadSearch";
 import { searchCompanyLeads, type CompanyLeadDraft, type CompanySearchResult } from "@/lib/domain/leads/company/companyLeads";
 import { insertCompanyLeads } from "@/lib/domain/leads/company/companyStoreSqlite";
+import { companyLeadFields } from "@/lib/domain/leads/company/companyRow";
 import { hostOf } from "@/lib/domain/leads/company/companySites";
 import { enrichBusiness } from "@/lib/domain/leads/local/websiteContact";
 import { tavilyProvider } from "@/lib/domain/websearch/searchProvider";
@@ -22,26 +23,6 @@ import { tavilyProvider } from "@/lib/domain/websearch/searchProvider";
 export const maxDuration = 60;
 
 const SEARCH_AGENT_TYPE = "lead_search";
-
-function leadFields(d: CompanyLeadDraft, query: string, now: string) {
-  return {
-    name: d.name,
-    title: "",
-    company: d.name,
-    lead_type: "company",
-    email: d.email,
-    email_verified: false,
-    email_quality: d.emailQuality,
-    whatsapp: d.whatsapp,
-    contact_url: d.contactUrl,
-    website: d.website,
-    description: d.description,
-    source_url: d.sourceUrl,
-    fit_reason: d.fitReason,
-    query,
-    created_at: now,
-  };
-}
 
 function summary(result: CompanySearchResult, saved: number) {
   return {
@@ -158,7 +139,7 @@ async function runSearch(opts: {
       );
       return last.leads;
     },
-    save: (drafts) => opts.saveRows(drafts.map((d) => leadFields(d, query, now))),
+    save: (drafts) => opts.saveRows(drafts.map((d) => companyLeadFields(d, query, now))),
     charge: opts.paid?.charge ?? (async () => true),
   });
   if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status });

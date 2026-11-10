@@ -7,6 +7,10 @@ import { verifyMissingEmails } from "@/lib/domain/leads/verifyMissingEmails";
 import { personLeadFields } from "./leadRow.ts";
 import { createLeadDedupe } from "./leadDedupe.ts";
 import { platformKeyFor, PLATFORM_DEFAULT_MODELS } from "@/lib/llm/platformKeys";
+import { runAutoCompanyLeads, usesCompanySearch } from "./company/autoCompanyLeads.ts";
+import { hostOf } from "./company/companySites.ts";
+import { enrichBusiness } from "./local/websiteContact.ts";
+import { tavilyProvider } from "../websearch/searchProvider.ts";
 
 // Free tier always runs on the platform's own key/model, never a user's BYOK
 // connection — same reasoning as the "Managed by Marlo" cards: it's a free
@@ -59,16 +63,20 @@ export async function generateAutoLeads(
   project: { id: string; name: string; category: string | null },
   limit: number
 ): Promise<AutoLeadResult> {
-  const apiKey = platformKeyFor(AUTO_LEAD_PROVIDER_ID);
-  const model = PLATFORM_DEFAULT_MODELS[AUTO_LEAD_PROVIDER_ID];
-  const driver = getDriver(AUTO_LEAD_PROVIDER_ID);
-  if (!apiKey || !model || !driver) return nothing("not_configured");
-
   const tavilyKey = process.env.TAVILY_API_KEY?.trim() || "";
   if (!tavilyKey) return nothing("no_tavily");
 
   const profile = await getLeadProfile(db, userId, project.id);
   if (!isConfirmed(profile)) return nothing("profile_needed");
+
+  // A profile with no job title sells to businesses: the free daily leads are companies found on the web, which
+  // needs no model. Only a profile that names a role runs the LinkedIn people search below.
+  if (usesCompanySearch(profile)) return generateAutoCompanyLeads(db, userId, project, profile, tavilyKey, limit);
+
+  const apiKey = platformKeyFor(AUTO_LEAD_PROVIDER_ID);
+  const model = PLATFORM_DEFAULT_MODELS[AUTO_LEAD_PROVIDER_ID];
+  const driver = getDriver(AUTO_LEAD_PROVIDER_ID);
+  if (!apiKey || !model || !driver) return nothing("not_configured");
 
   const search = pickSearch(profile, new Date());
   const runTarget = { role: search.role, industry: search.companyOrIndustry, location: search.location, source: "lead-profile" };
@@ -123,6 +131,33 @@ export async function generateAutoLeads(
   const { error } = await db.from("leads").insert(rows);
   if (error) return nothing("save_failed", runTarget, error.message.slice(0, 200));
   return { added: rows.length, reason: null, message: null, target: runTarget };
+}
+
+async function generateAutoCompanyLeads(
+  db: SupabaseClient,
+  userId: string,
+  project: { id: string },
+  profile: NonNullable<Awaited<ReturnType<typeof getLeadProfile>>>,
+  tavilyKey: string,
+  limit: number,
+): Promise<AutoLeadResult> {
+  const { data: projectRow } = await db.from("projects").select("url").eq("id", project.id).maybeSingle();
+  const result = await runAutoCompanyLeads(
+    {
+      provider: tavilyProvider(tavilyKey),
+      knownHosts: async () => {
+        const { data } = await db.from("leads").select("website").eq("project_id", project.id).not("website", "is", null);
+        return new Set((data ?? []).map((r) => hostOf(String(r.website ?? ""))).filter((h): h is string => Boolean(h)));
+      },
+      enrich: (site) => enrichBusiness(site),
+      save: async (rows) => {
+        const { error } = await db.from("leads").insert(rows.map((r) => ({ ...r, user_id: userId, project_id: project.id })));
+        return error ? { ok: false, error: error.message } : { ok: true };
+      },
+    },
+    { profile, ownHost: hostOf(String(projectRow?.url ?? "")) ?? undefined, limit },
+  );
+  return { added: result.added, reason: result.reason, message: result.message, target: result.target };
 }
 
 /** Back-compat wrapper: just the count. */
