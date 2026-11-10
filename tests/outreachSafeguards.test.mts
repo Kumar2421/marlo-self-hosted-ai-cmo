@@ -316,7 +316,11 @@ test("token: sign/verify round trip with email and leadId; wrong scope, tamperin
   const [body, sig] = t.split(".");
   const forged = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(body, "base64url").toString()), m: "victim@x.com" })).toString("base64url");
   assert.equal(verifyToken(`${forged}.${sig}`, "lead-unsubscribe", SECRET), null);
-  assert.equal(verifyToken(`${body}.${sig.slice(0, -2)}AA`, "lead-unsubscribe", SECRET), null);
+  // Change a character in the middle of the signature to one guaranteed different. (A fixed replacement at the end was
+  // a no-op about 1 run in 1000, and the last base64 character carries only 4 meaningful bits.)
+  const mid = Math.floor(sig.length / 2);
+  const swapped = `${sig.slice(0, mid)}${sig[mid] === "A" ? "B" : "A"}${sig.slice(mid + 1)}`;
+  assert.equal(verifyToken(`${body}.${swapped}`, "lead-unsubscribe", SECRET), null);
   const old = signToken({ userId: USER, scope: "lead-unsubscribe", email: "a@b.com", ttlSeconds: 10, now: new Date(NOW.getTime() - 60_000) }, SECRET);
   assert.equal(verifyToken(old, "lead-unsubscribe", SECRET, NOW), null);
   assert.equal(signToken({ userId: USER, scope: "lead-unsubscribe", email: "a@b.com" }, "short"), null);
