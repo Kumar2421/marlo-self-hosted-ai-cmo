@@ -67,3 +67,21 @@ test("unavailable numbers are an em dash or a Connect Google link, never zero", 
     assert.match(item.title, title);
   }
 });
+
+test("once outreach progress is known it replaces the bare lead count, and nothing else changes", () => {
+  const c = headerCenter({ kind: "idle" } as never, { ...ready, outreach: { state: "ready", display: "Day 2 of 7 · 5 reached · 1 replied", title: "Outreach: full sentence" } });
+  assert.equal(c.mode, "stats");
+  if (c.mode !== "stats") return;
+  assert.deepEqual(c.items.map((i) => i.key), ["clicks", "findings", "leads"]);
+  const leads = c.items[2];
+  assert.equal(leads.label, "Outreach");
+  assert.equal(leads.display, "Day 2 of 7 · 5 reached · 1 replied");
+  assert.equal(leads.title, "Outreach: full sentence");
+  assert.equal(c.items[0].display, "1.2K");
+});
+
+test("while outreach progress is pending the plain lead count still shows", () => {
+  const c = headerCenter({ kind: "idle" } as never, { ...ready, outreach: { state: "pending" } });
+  if (c.mode !== "stats") throw new Error("expected stats");
+  assert.equal(c.items[2].label, "Leads");
+});

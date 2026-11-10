@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { FEATURES } from "@/lib/features";
 import { getAuthenticatedProjectContext } from "@/lib/domain/shared/project-context";
 import { isLeadStatus, tagsLiteral, tagsWithStatus } from "@/lib/domain/leads/local/businessLead";
+import { stampReached } from "@/lib/domain/leads/outcomes";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -45,7 +46,8 @@ export async function PUT(req: NextRequest) {
     if (!row) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
 
     const previous = (row.tags as string[] | null) ?? null;
-    const tags = tagsWithStatus(previous, status);
+    // The first time a lead is contacted or replied, a date tag records it so the 7-day window has a start.
+    const tags = stampReached(tagsWithStatus(previous, status), status, new Date());
     const base = supabase
       .from("leads")
       .update({ tags })
