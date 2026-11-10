@@ -58,3 +58,17 @@ test("the same lead gets the offer line on WhatsApp where there is room for it",
   const m = buildReachMessage("whatsapp", { lead: person, sender, projectName: "P", offer });
   assert.match(m, /We offer/);
 });
+
+test("a hiring or new-location signal in the saved reason becomes the opener, named for what the site says", () => {
+  const hiring = { ...company, fit_reason: 'Company site mentions "dental clinics". Signals: hiring now.' };
+  const m = buildReachMessage("whatsapp", { lead: hiring, sender, projectName: "P", offer: null });
+  assert.match(m, /I noticed you're hiring on smile\.test\./);
+  assert.doesNotMatch(m, /I came across/);
+  const opened = { ...company, fit_reason: "Signals: new location." };
+  assert.match(buildReachMessage("whatsapp", { lead: opened, sender, projectName: "P" }), /I noticed your new location on smile\.test\./);
+});
+
+test("without a signal the opener is unchanged", () => {
+  const m = buildReachMessage("whatsapp", { lead: { ...company, fit_reason: 'Company site mentions "dental clinics".' }, sender, projectName: "P" });
+  assert.match(m, /I came across smile\.test\./);
+});

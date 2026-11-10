@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { assertPublicHttpUrlResolved, type LookupFn } from "../../net/ssrf.ts";
+import { detectSignals, mergeSignals, type SignalId } from "../company/buyingSignals.ts";
 
 /**
  * Public contact details from a business website: emails, a WhatsApp number, the contact page
@@ -13,6 +14,8 @@ export type ContactExtract = {
   whatsapp: string | null;
   contactUrl: string | null;
   description: string | null;
+  /** Buying signals the page states (hiring, a new location). Optional so older callers are unaffected. */
+  signals?: SignalId[];
 };
 
 export type EnrichmentStatus = "ok" | "no_website" | "blocked" | "failed";
@@ -171,6 +174,10 @@ export function extractContact(html: string, baseUrl: string): ContactExtract {
     const whatsapp = extractWhatsapp($);
     const contactUrl = extractContactUrl($, base);
     const description = extractDescription($);
+    const pageLinks = $("a[href]")
+      .toArray()
+      .slice(0, 400)
+      .map((el) => ({ href: ($(el).attr("href") ?? "").trim(), text: $(el).text().replace(/\s+/g, " ").trim().slice(0, 80) }));
 
     $("script, style, noscript, template").remove();
     // Block-level boundaries become spaces so adjacent elements never fuse into one token.
@@ -184,6 +191,7 @@ export function extractContact(html: string, baseUrl: string): ContactExtract {
       whatsapp,
       contactUrl,
       description,
+      signals: detectSignals(visible.slice(0, 60_000), pageLinks),
     };
   } catch {
     return empty;
@@ -323,6 +331,7 @@ export async function enrichBusiness(website: string | null, deps: EnrichDeps = 
     let whatsapp = first.whatsapp;
     let description = first.description;
     let contactUrl = first.contactUrl;
+    let signals = mergeSignals(first.signals);
     for (const url of extraUrls) {
       const page = await fetchPage(url, deps);
       if (page.kind !== "ok") continue;
@@ -331,6 +340,7 @@ export async function enrichBusiness(website: string | null, deps: EnrichDeps = 
       whatsapp = whatsapp ?? more.whatsapp;
       description = description ?? more.description;
       contactUrl = contactUrl ?? page.url;
+      signals = mergeSignals(signals, more.signals);
     }
 
     return {
@@ -339,6 +349,7 @@ export async function enrichBusiness(website: string | null, deps: EnrichDeps = 
       whatsapp,
       contactUrl,
       description,
+      signals,
     };
   } catch {
     return withStatus("failed");
