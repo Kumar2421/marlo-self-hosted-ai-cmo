@@ -356,6 +356,12 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
       {
         onSuccess: ({ profile: saved }) => {
           closeWizard();
+          // A profile with no job titles sells to businesses in general: find companies first. A people search
+          // needs a role to mean anything, so it only runs automatically when the profile names one.
+          if (saved.roles.length === 0 && saved.industries.length > 0) {
+            void handleCompanySearch();
+            return;
+          }
           void handleSearch({ role: saved.roles[0] ?? "", companyOrIndustry: saved.industries[0] ?? "", location: saved.locations[0] ?? "", useProfile: true });
         },
       },
