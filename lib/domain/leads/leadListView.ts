@@ -8,7 +8,8 @@ import { qualifyLead, type Channel, type Qualification } from "./qualify.ts";
 export type LeadFilter = "qualified" | "all" | "with" | "without";
 
 /** The filter tabs, in display order. Qualified first: those are the leads worth acting on. */
-export const LEAD_FILTERS: readonly LeadFilter[] = ["qualified", "all", "with", "without"];
+// "without" stays a valid filter but has no tab: a fourth tab does not fit the narrowest Leads panel, and "All" shows those leads.
+export const LEAD_FILTERS: readonly LeadFilter[] = ["qualified", "all", "with"];
 
 type EmailLead = {
   email: string | null | undefined;

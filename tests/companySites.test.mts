@@ -38,3 +38,21 @@ test("company name comes from the title's first segment, else the host", () => {
   assert.equal(companyNameFrom("", "acme.test"), "Acme");
   assert.equal(companyNameFrom("x".repeat(90), "acme.test"), "Acme");
 });
+
+test("lead databases, news, booking sites and government or school domains are not companies", () => {
+  const urls = ["https://leadiq.com/dental", "https://www.businessinsider.com/x", "https://www.dubailand.gov.ae/en", "https://www.nasa.gov/", "https://iitm.ac.in/", "https://www.booking.com/hotel/in/x", "https://dp.nic.in/", "https://real.test/"];
+  assert.deepEqual(pickCompanySites(urls.map((u) => hit(u))).map((c) => c.host), ["real.test"]);
+});
+
+test("generic page titles fall back to the site's brand, real names are kept", () => {
+  assert.equal(companyNameFrom("Contact Us", "mhrealestate.ae"), "Mhrealestate");
+  assert.equal(companyNameFrom("Need Help? Contact Us for Support", "dp.ae"), "Dp");
+  assert.equal(companyNameFrom("Apollo Dental Contact Numbers", "apollodental.in"), "Apollodental");
+  assert.equal(companyNameFrom("Dental Clinic in Ramapuram", "chennaidentalclinic.in"), "Chennaidentalclinic");
+  assert.equal(companyNameFrom("Best Dental Clinic in Chennai | Acme", "acme.test"), "Acme");
+  assert.equal(companyNameFrom("Acharya Dental: Best Dental Clinic in Chennai", "acharyadental.com"), "Acharya Dental");
+  assert.equal(companyNameFrom("Dent In", "dentindentalcentre.com"), "Dent In");
+  assert.equal(companyNameFrom("Wellness in motion", "wim.test"), "Wellness in motion");
+  assert.equal(companyNameFrom("Primrose Real Estate", "primrose.test"), "Primrose Real Estate");
+  assert.equal(companyNameFrom("A very long descriptive title that is clearly not a company name at all", "acme-co.test"), "Acme co");
+});

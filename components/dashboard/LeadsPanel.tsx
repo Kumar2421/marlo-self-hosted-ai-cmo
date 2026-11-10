@@ -867,6 +867,41 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                               Why: {lead.fit_reason}
                             </span>
                           ) : null}
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5" data-testid="lead-chips">
+                      {qualification.channels
+                        .filter((c) => c !== "email")
+                        .map((c) => (
+                          <StatusChip key={c} tone="success" title={`Reachable on ${channelLabel(c)}`}>
+                            {channelLabel(c)}
+                          </StatusChip>
+                        ))}
+                      {lead.email ? (
+                        <StatusChip
+                          tone="success"
+                          dot
+                          title={`${lead.email}${lead.email_verified ? " (guessed; the mail server accepted it, which is not a guarantee it exists)" : " (found in real search results)"}`}
+                        >
+                          Email
+                          <span className="sr-only"> found: {lead.email}</span>
+                        </StatusChip>
+                      ) : qualification.channels.length === 0 ? (
+                        <StatusChip tone="neutral" title="No email found">
+                          No email
+                        </StatusChip>
+                      ) : null}
+                      {source && (
+                        <a
+                          href={source}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Open source"
+                          aria-label={`Open source for ${lead.name}`}
+                          className="flex h-6 w-6 items-center justify-center text-ui-subtle hover:text-ui-text"
+                        >
+                          <ExternalLink size={12} />
+                        </a>
+                      )}
+                          </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-1.5">
                           {lead.last_reply_snippet && (
@@ -888,39 +923,6 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                             <span title={lead.phone} className="text-ui-subtle">
                               <Phone size={12} aria-label={`Phone ${lead.phone}`} />
                             </span>
-                          )}
-                          {qualification.channels
-                            .filter((c) => c !== "email")
-                            .map((c) => (
-                              <StatusChip key={c} tone="success" title={`Reachable on ${channelLabel(c)}`}>
-                                {channelLabel(c)}
-                              </StatusChip>
-                            ))}
-                          {lead.email ? (
-                            <StatusChip
-                              tone="success"
-                              dot
-                              title={`${lead.email}${lead.email_verified ? " (guessed; the mail server accepted it, which is not a guarantee it exists)" : " (found in real search results)"}`}
-                            >
-                              Email
-                              <span className="sr-only"> found: {lead.email}</span>
-                            </StatusChip>
-                          ) : qualification.channels.length === 0 ? (
-                            <StatusChip tone="neutral" title="No email found">
-                              No email
-                            </StatusChip>
-                          ) : null}
-                          {source && (
-                            <a
-                              href={source}
-                              target="_blank"
-                              rel="noreferrer"
-                              title="Open source"
-                              aria-label={`Open source for ${lead.name}`}
-                              className="flex h-11 w-6 items-center justify-center text-ui-subtle hover:text-ui-text md:h-9"
-                            >
-                              <ExternalLink size={12} />
-                            </a>
                           )}
                           {statusFromTags(lead.tags) === "contacted" && (
                             <span title="Contacted" className="text-ui-accent-strong">
