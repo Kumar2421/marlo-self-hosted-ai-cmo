@@ -16,6 +16,7 @@ import { useLeadProfile } from "./leads/useLeadProfile";
 import LeadProfileWizard from "./leads/LeadProfileWizard";
 import ReachDialog from "./leads/ReachDialog";
 import { computeOutcomes, stampReached } from "@/lib/domain/leads/outcomes";
+import { nextStep } from "@/lib/domain/leads/nextStep";
 import LeadProfileSearch from "./leads/LeadProfileSearch";
 import BusinessSearchForm from "./leads/BusinessSearchForm";
 import BusinessResults, { type BusinessSearchError } from "./leads/BusinessResults";
@@ -180,6 +181,15 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
     document.getElementById(`leads-filter-${LEAD_FILTERS[next]}`)?.focus();
   };
   const profileExpanded = profileOpen ?? personLeads.length === 0;
+  // One sentence on what to do next, until the first message is reached; then the top bar carries progress.
+  const outcomeSummary = computeOutcomes(personLeads);
+  const guidance = nextStep({
+    profileConfirmed: Boolean(confirmedProfile),
+    companiesFirst: Boolean(confirmedProfile && confirmedProfile.roles.length === 0 && confirmedProfile.industries.length > 0),
+    leadCount: personLeads.length,
+    qualified: outcomeSummary.qualified,
+    reached: outcomeSummary.reached,
+  });
   const businessById = new Map(businessLeads.map((l) => [l.id, l]));
   const resultIdSet = new Set(bizResultIds);
   const bizResults = bizResultIds.map((id) => businessById.get(id)).filter((l): l is Lead => Boolean(l));
@@ -804,7 +814,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
         ) : personLeads.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
             <Search size={18} className="text-gray-300" />
-            <p className="max-w-[240px] text-[12px] text-gray-500">No leads yet - set up your profile then Find leads</p>
+            <p className="max-w-[260px] text-[12px] leading-5 text-gray-500" data-testid="next-step">{guidance?.text ?? "No leads yet."}</p>
           </div>
         ) : (
           <>
@@ -834,6 +844,9 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                 </button>
               ))}
             </div>
+            {guidance?.id === "reach" && (
+              <p className="mx-3 mb-1 text-xs leading-4 text-ui-muted" data-testid="next-step">{guidance.text}</p>
+            )}
             {visibleLeads.length === 0 ? (
               <p id="leads-filter-panel" role="tabpanel" aria-labelledby={`leads-filter-${activeFilter}`} className="px-4 py-6 text-center text-[12px] text-gray-500">
                 {activeFilter === "qualified"
