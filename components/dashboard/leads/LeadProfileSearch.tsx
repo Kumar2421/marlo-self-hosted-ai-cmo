@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Loader2, Search, Target } from "lucide-react";
+import { Building2, ChevronDown, Loader2, Search, Target } from "lucide-react";
 import { describeProfile, type LeadProfile, type LeadSearchTarget } from "@/lib/domain/leads/leadProfile";
 
 function Pick({ label, options, value, onChange }: { label: string; options: string[]; value: string; onChange: (v: string) => void }) {
@@ -35,6 +35,7 @@ export default function LeadProfileSearch({
   disabled,
   onEdit,
   onSearch,
+  onSearchCompanies,
   collapsed = false,
   summary,
   onToggle,
@@ -44,6 +45,8 @@ export default function LeadProfileSearch({
   disabled: boolean;
   onEdit: () => void;
   onSearch: (target: LeadSearchTarget) => void;
+  /** Finds company websites that match the profile and keeps the ones with a contact. */
+  onSearchCompanies?: () => void;
   /** One-line mode: a summary plus the Find leads button. The picks below keep their values. */
   collapsed?: boolean;
   summary?: string;
@@ -54,6 +57,10 @@ export default function LeadProfileSearch({
   const [location, setLocation] = useState(profile.locations[0] ?? "");
 
   const search = () => onSearch({ role, companyOrIndustry: industry, location });
+  // A profile with no job titles sells to businesses in general: companies are the search, people need a role.
+  const canSearchCompanies = Boolean(onSearchCompanies) && profile.industries.length > 0;
+  const canSearchPeople = profile.roles.length > 0 || !canSearchCompanies;
+  const companiesPrimary = !canSearchPeople;
 
   if (collapsed) {
     return (
@@ -72,15 +79,30 @@ export default function LeadProfileSearch({
             <span className="font-normal text-gray-500 hover:text-gray-900 hover:underline">Edit</span>
           </span>
         </button>
-        <button
-          type="button"
-          onClick={search}
-          disabled={searching || disabled}
-          className="flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#111111] px-3 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50"
-        >
-          {searching ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
-          {searching ? "Searching..." : "Find leads"}
-        </button>
+        {canSearchCompanies && (
+          <button
+            type="button"
+            onClick={onSearchCompanies}
+            disabled={searching || disabled}
+            className={`flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-[12px] font-medium disabled:opacity-50 ${
+              companiesPrimary ? "bg-[#111111] text-white hover:bg-black" : "border border-gray-200 text-gray-800 hover:bg-gray-50"
+            }`}
+          >
+            {searching && companiesPrimary ? <Loader2 size={12} className="animate-spin" /> : <Building2 size={12} />}
+            {searching && companiesPrimary ? "Searching..." : "Find companies"}
+          </button>
+        )}
+        {canSearchPeople && (
+          <button
+            type="button"
+            onClick={search}
+            disabled={searching || disabled}
+            className="flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#111111] px-3 text-[12px] font-medium text-white hover:bg-black disabled:opacity-50"
+          >
+            {searching ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+            {searching ? "Searching..." : "Find leads"}
+          </button>
+        )}
       </div>
     );
   }
@@ -113,15 +135,32 @@ export default function LeadProfileSearch({
         <Pick label="Location" options={profile.locations} value={location} onChange={setLocation} />
       </div>
 
-      <button
-        type="button"
-        onClick={search}
-        disabled={searching || disabled}
-        className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#111111] py-1.5 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50"
-      >
-        {searching ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
-        {searching ? "Searching..." : "Find leads"}
-      </button>
+      <div className="mt-3 flex flex-col gap-2">
+        {canSearchCompanies && (
+          <button
+            type="button"
+            onClick={onSearchCompanies}
+            disabled={searching || disabled}
+            className={`flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-[13px] font-medium disabled:opacity-50 ${
+              companiesPrimary ? "bg-[#111111] text-white hover:bg-black" : "border border-gray-200 text-gray-800 hover:bg-gray-50"
+            }`}
+          >
+            {searching && companiesPrimary ? <Loader2 size={13} className="animate-spin" /> : <Building2 size={13} />}
+            {searching && companiesPrimary ? "Searching..." : "Find companies"}
+          </button>
+        )}
+        {canSearchPeople && (
+          <button
+            type="button"
+            onClick={search}
+            disabled={searching || disabled}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#111111] py-1.5 text-[13px] font-medium text-white hover:bg-black disabled:opacity-50"
+          >
+            {searching ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
+            {searching ? "Searching..." : "Find leads"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
