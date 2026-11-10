@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/query/keys";
-import { Users, ChevronLeft, Loader2, RefreshCw, X, ExternalLink, Mail, Search, Phone, Building2, Reply, AlertTriangle } from "lucide-react";
+import { Users, ChevronLeft, Loader2, RefreshCw, X, ExternalLink, Mail, Search, Phone, Building2, Reply, AlertTriangle, Check } from "lucide-react";
 import CollapsedRail, { RailButton } from "./CollapsedRail";
 import { useToast } from "./Toast";
 import { useProject } from "@/lib/project-store";
@@ -14,6 +14,7 @@ import GmailOutreachBar from "./leads/GmailOutreachBar";
 import { useGmailStatus } from "./leads/useGmailStatus";
 import { useLeadProfile } from "./leads/useLeadProfile";
 import LeadProfileWizard from "./leads/LeadProfileWizard";
+import ReachDialog from "./leads/ReachDialog";
 import LeadProfileSearch from "./leads/LeadProfileSearch";
 import BusinessSearchForm from "./leads/BusinessSearchForm";
 import BusinessResults, { type BusinessSearchError } from "./leads/BusinessResults";
@@ -31,6 +32,7 @@ import { LEAD_FILTERS, channelLabel, countLeads, leadQualification, defaultFilte
 import {
   sortByFitScore,
   suggestCategory,
+  statusFromTags,
   suggestLocation,
   tagsWithStatus,
   websiteHref,
@@ -135,6 +137,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
   const [wizardOpen, setWizardOpen] = useState(false);
   const [googleCloudConnected, setGoogleCloudConnected] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [reachLeadId, setReachLeadId] = useState<string | null>(null);
   const [checkingReplies, setCheckingReplies] = useState(false);
   const [followUpDraft, setFollowUpDraft] = useState<{ leadId: string; subject: string; body: string } | null>(null);
   const [draftingFollowUp, setDraftingFollowUp] = useState<string | null>(null);
@@ -711,6 +714,22 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
         />
       )}
 
+      {reachLeadId && leads.find((l) => l.id === reachLeadId) ? (
+        <ReachDialog
+          lead={leads.find((l) => l.id === reachLeadId)!}
+          projectName={project?.name ?? ""}
+          offer={leadProfile.offer ? { sells: leadProfile.offer.sells, whoPays: leadProfile.offer.whoPays } : null}
+          onClose={() => setReachLeadId(null)}
+          onWriteEmail={() => {
+            setSelected(new Set([reachLeadId]));
+            setReachLeadId(null);
+            setComposeOpen(true);
+          }}
+          onMarkContacted={FEATURES.PLATFORM_MODE ? () => handleBusinessStatus(reachLeadId, "contacted") : undefined}
+          contacted={statusFromTags(leads.find((l) => l.id === reachLeadId)?.tags) === "contacted"}
+        />
+      ) : null}
+
       {followUpDraft && (
         <OutreachPanel
           leads={leads.filter((l) => l.id === followUpDraft.leadId)}
@@ -902,6 +921,21 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                             >
                               <ExternalLink size={12} />
                             </a>
+                          )}
+                          {statusFromTags(lead.tags) === "contacted" && (
+                            <span title="Contacted" className="text-ui-accent-strong">
+                              <Check size={13} aria-label="Contacted" />
+                            </span>
+                          )}
+                          {qualification.channels.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setReachLeadId(lead.id)}
+                              aria-label={`Reach ${lead.name}`}
+                              className="ui-transition min-h-11 shrink-0 rounded-lg border border-ui-border px-2 text-xs font-medium text-ui-text hover:bg-ui-surface-sunken md:min-h-7"
+                            >
+                              Reach
+                            </button>
                           )}
                           <button
                             onClick={() => handleRemove(lead.id)}
