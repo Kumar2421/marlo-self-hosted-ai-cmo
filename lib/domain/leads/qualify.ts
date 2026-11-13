@@ -6,7 +6,9 @@
  * A guessed email (pattern + mail-server check) is never reachable here: it may bounce or reach nobody.
  */
 
-export type Channel = "email" | "whatsapp" | "linkedin";
+import { isRedditPostUrl } from "./intent/redditPosts.ts";
+
+export type Channel = "email" | "whatsapp" | "linkedin" | "reddit";
 
 export type QualifyInput = {
   /** Email as stored. Only counts when it was found on a page (see emailGuessed). */
@@ -60,6 +62,8 @@ export function qualifyLead(input: QualifyInput): Qualification {
   if (email && EMAIL_RE.test(email) && !input.emailGuessed) channels.push("email");
   if (normalizeWhatsapp(input.whatsapp)) channels.push("whatsapp");
   if (isLinkedInProfileUrl(input.linkedinUrl) || isLinkedInProfileUrl(input.sourceUrl)) channels.push("linkedin");
+  // A Reddit post someone wrote asking for help: the user can answer it, from their own account.
+  if (isRedditPostUrl(input.sourceUrl)) channels.push("reddit");
 
   const missing: string[] = [];
   if (channels.length === 0) missing.push(input.emailGuessed && email ? "Only a guessed email, which may bounce" : "No way to reach them yet");

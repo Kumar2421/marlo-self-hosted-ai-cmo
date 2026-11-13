@@ -37,7 +37,7 @@ export function isQualified(lead: EmailLead): boolean {
   return leadQualification(lead).qualified;
 }
 
-const CHANNEL_LABEL: Record<Channel, string> = { email: "Email", whatsapp: "WhatsApp", linkedin: "LinkedIn" };
+const CHANNEL_LABEL: Record<Channel, string> = { email: "Email", whatsapp: "WhatsApp", linkedin: "LinkedIn", reddit: "Reddit" };
 export function channelLabel(channel: Channel): string {
   return CHANNEL_LABEL[channel];
 }

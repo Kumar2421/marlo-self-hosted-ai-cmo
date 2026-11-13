@@ -54,7 +54,7 @@ type Lead = {
   created_at: string;
   phone?: string | null;
   place_id?: string | null;
-  lead_type?: "person" | "business" | "company";
+  lead_type?: "person" | "business" | "company" | "intent";
   email_status?: "sent" | "failed" | null;
   emailed_at?: string | null;
   gmail_thread_id?: string | null;
@@ -411,6 +411,44 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
     }
   }
 
+  /** Public posts where someone asks for what the user sells. Each one the model keeps has an exact quote from the post. */
+  async function handleRequestSearch() {
+    if (searching) return;
+    setSearching(true);
+    log("Searching public Reddit posts for people asking for what you sell...");
+    log("Dropping sellers, then asking the model which posts are real requests. Only posts with a quote are kept...");
+    try {
+      const providerId = primaryModel ? findProviderForModel(primaryModel) : null;
+      const res = await fetch("/api/agents/leads/intent-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: primaryModel ?? undefined, providerId: providerId ?? undefined }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        log(`⚠ ${data.error ?? "Failed to search requests"}`);
+        show(data.error || "Failed to search requests.");
+        return;
+      }
+      const found: Lead[] = data.leads ?? [];
+      const foundIds = new Set(found.map((l) => l.id));
+      setLeads((prev) => [...found, ...prev.filter((l) => !foundIds.has(l.id))]);
+      setFilter("qualified");
+      if (found.length > 0) {
+        logDone(`Saved ${found.length} ${found.length === 1 ? "request" : "requests"} you can answer.`);
+        show(`Found ${found.length} ${found.length === 1 ? "request" : "requests"}.`);
+      } else {
+        logDone(data.message ?? "No requests found this time.");
+        show(data.message ?? "No requests found this time.");
+      }
+    } catch {
+      log("⚠ Failed to search requests.");
+      show("Failed to search requests.");
+    } finally {
+      setSearching(false);
+    }
+  }
+
   async function handleBizSearch() {
     const query = { category: bizCategory.trim(), location: bizLocation.trim() };
     setBizRetry("search");
@@ -600,6 +638,7 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                   onEdit={openWizard}
                   onSearch={(target) => handleSearch({ ...target, useProfile: true })}
                   onSearchCompanies={handleCompanySearch}
+                  onSearchRequests={leadProfile.offer?.sells ? handleRequestSearch : undefined}
                   collapsed={!profileExpanded}
                   summary={profileSummary(leadProfile.profile)}
                   onToggle={() => setProfileOpen(!profileExpanded)}
