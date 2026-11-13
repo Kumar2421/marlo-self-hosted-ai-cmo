@@ -2,6 +2,7 @@ import type { SearchProvider, SearchHit } from "../../websearch/searchProvider.t
 import type { Enrichment } from "../local/websiteContact.ts";
 import { fitTokens } from "../leadFit.ts";
 import { qualifyLead } from "../qualify.ts";
+import { signalsSentence, type SignalId } from "./buyingSignals.ts";
 import { pickOutreachEmail } from "./companyEmail.ts";
 import { pickCompanySites, type CompanyCandidate } from "./companySites.ts";
 
@@ -24,7 +25,9 @@ export type CompanyLeadDraft = {
   description: string | null;
   /** The page a user can open to see the contact. */
   sourceUrl: string;
+  /** Includes a "Signals: ..." sentence when the site states one. */
   fitReason: string;
+  signals: SignalId[];
 };
 
 export type CompanySearchPorts = {
@@ -144,6 +147,7 @@ export async function searchCompanyLeads(ports: CompanySearchPorts, input: Compa
       droppedNoFit += 1;
       return null;
     }
+    const signals = enrichment.signals ?? [];
     const email = pickOutreachEmail(enrichment.emails);
     const sourceUrl = enrichment.contactUrl ?? c.website;
     if (!qualifyLead({ email, whatsapp: enrichment.whatsapp, sourceUrl, fitReason }).qualified) {
@@ -160,10 +164,17 @@ export async function searchCompanyLeads(ports: CompanySearchPorts, input: Compa
       contactUrl: enrichment.contactUrl,
       description: enrichment.description,
       sourceUrl,
-      fitReason,
+      fitReason: [fitReason, signalsSentence(signals)].filter(Boolean).join(" "),
+      signals,
     };
   });
 
-  const leads = drafts.filter((d): d is CompanyLeadDraft => d !== null).slice(0, maxLeads);
+  // Companies that state a buying signal come first, so the daily cap keeps the warmest ones. Stable otherwise.
+  const leads = drafts
+    .filter((d): d is CompanyLeadDraft => d !== null)
+    .map((d, i) => ({ d, i }))
+    .sort((a, b) => b.d.signals.length - a.d.signals.length || a.i - b.i)
+    .map(({ d }) => d)
+    .slice(0, maxLeads);
   return { leads, droppedNoContact, droppedNoFit, duplicates };
 }

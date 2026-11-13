@@ -76,3 +76,26 @@ test("enrichment past the time budget is skipped", async () => {
   const res = await searchCompanyLeads(slow, { profile, budgetMs: 30 });
   assert.equal(res.leads.length, 0);
 });
+
+test("a signal the site states is saved in the reason and ranks that company first under the cap", async () => {
+  const hits = ["a", "b", "c"].map((n) => ({ title: `Dental ${n}`, url: `https://${n}.test/`, content: "dental clinics Chennai" }));
+  const perSite: Record<string, unknown> = {
+    "https://a.test/": enriched({ emails: ["info@a.test"] }),
+    "https://b.test/": enriched({ emails: ["info@b.test"], signals: ["hiring", "new_location"] }),
+    "https://c.test/": enriched({ emails: ["info@c.test"], signals: ["hiring"] }),
+  };
+  const res = await searchCompanyLeads(
+    { provider: { id: "f", search: async () => hits }, knownHosts: async () => new Set<string>(), enrich: (async (site: string) => perSite[site]) as never },
+    { profile, maxLeads: 2 },
+  );
+  assert.deepEqual(res.leads.map((l) => l.host), ["b.test", "c.test"]);
+  assert.match(res.leads[0].fitReason, /Signals: hiring now; new location\./);
+  assert.deepEqual(res.leads[0].signals, ["hiring", "new_location"]);
+  assert.doesNotMatch(res.leads[1].fitReason, /new location/);
+});
+
+test("a company with no signal has no Signals sentence", async () => {
+  const res = await searchCompanyLeads(ports([{ title: "Smile Dental", url: "https://smile.test/", content: "dental clinics Chennai" }], () => enriched({ emails: ["a@smile.test"] })), { profile });
+  assert.doesNotMatch(res.leads[0].fitReason, /Signals/);
+  assert.deepEqual(res.leads[0].signals, []);
+});

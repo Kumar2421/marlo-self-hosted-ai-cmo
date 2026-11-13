@@ -1,3 +1,4 @@
+import { signalsFromReason } from "./company/buyingSignals.ts";
 import { isLinkedInProfileUrl, normalizeWhatsapp } from "./qualify.ts";
 
 /**
@@ -17,6 +18,8 @@ export type ReachLead = {
   title?: string | null;
   lead_type?: string | null;
   website?: string | null;
+  /** The saved fit reason; a "Signals: ..." sentence in it gives the opener. */
+  fit_reason?: string | null;
 };
 
 export type ReachContext = {
@@ -72,7 +75,10 @@ export function buildReachMessage(channel: ReachChannel, ctx: ReachContext): str
   let hook = "";
   if (isCompany) {
     const host = hostOf(lead.website);
-    hook = host ? `I came across ${host}.` : "";
+    const signals = signalsFromReason(lead.fit_reason);
+    // A signal the site itself states is a better, checkable opener than "I came across your site".
+    const noticed = signals.includes("hiring") ? "you're hiring" : signals.includes("new_location") ? "your new location" : "";
+    hook = noticed ? `I noticed ${noticed}${host ? ` on ${host}` : ""}.` : host ? `I came across ${host}.` : "";
   } else if (lead.title && lead.company) {
     hook = `I saw you're ${lead.title} at ${lead.company}.`;
   } else if (lead.company) {
