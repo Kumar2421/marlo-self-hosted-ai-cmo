@@ -141,3 +141,45 @@ test("a failing search or classifier never throws, and the cap limits saved lead
   const f = flow(hits, async (p) => ({ ok: true, requests: (p as { id: string }[]).map((x) => ({ id: x.id, quote: "Looking for help" })) }));
   assert.equal((await searchIntentLeads(f.ports, { offer, maxLeads: 2 })).leads.length, 2);
 });
+
+// ---- saved focus and reply drafts
+
+test("a saved keyword and subreddit add queries on top of the website's own, capped at five", () => {
+  const base = buildIntentQueries({ sells: "custom software" });
+  assert.equal(base.length, 3);
+  const q = buildIntentQueries({ sells: "custom software" }, [], { keywords: ["crm for clinics"], subreddits: ["r/smallbusiness"] });
+  assert.equal(q.length, 5);
+  assert.deepEqual(q.slice(0, 3), base);
+  assert.equal(q[3], "looking for crm for clinics");
+  assert.equal(q[4], "r/smallbusiness looking for crm for clinics");
+  assert.equal(buildIntentQueries({ sells: "x" }, [], { subreddits: ["bad name!", "ok_sub"] })[3], "r/ok_sub looking for x");
+  assert.equal(buildIntentQueries({ sells: "x" }, [], { keywords: ["  "], subreddits: [] }).length, 3);
+});
+
+test("kept requests get a drafted reply, and a request the model could not help with keeps none", async () => {
+  const hits = [hit("clinicowners/comments/fffff1/a/", "Looking for a CRM for my clinic"), hit("clinicowners/comments/fffff2/b/", "Need a website designer for my clinic")];
+  let drafted: { id: string; subreddit: string; quote: string }[] = [];
+  const f = flow(hits, async (p) => ({ ok: true, requests: (p as { id: string }[]).map((x) => ({ id: x.id, quote: "for my clinic" })) }));
+  const res = await searchIntentLeads(
+    { ...f.ports, draft: async (reqs) => { drafted = reqs; return new Map([["p1", "A helpful reply that is long enough to be shown to the user as a draft."]]); } },
+    { offer },
+  );
+  assert.equal(drafted.length, 2);
+  assert.equal(drafted[0].subreddit, "clinicowners");
+  assert.equal(res.leads[0].reply, "A helpful reply that is long enough to be shown to the user as a draft.");
+  assert.equal(res.leads[1].reply, null);
+});
+
+test("a drafting failure never fails the search: the requests are still saved, with no reply", async () => {
+  const hits = [hit("clinicowners/comments/ggggg1/a/", "Looking for a CRM for my clinic")];
+  const f = flow(hits, async (p) => ({ ok: true, requests: (p as { id: string }[]).map((x) => ({ id: x.id, quote: "Looking for a CRM" })) }));
+  const res = await searchIntentLeads({ ...f.ports, draft: async () => { throw new Error("model down"); } }, { offer });
+  assert.equal(res.leads.length, 1);
+  assert.equal(res.leads[0].reply, null);
+});
+
+test("without a draft port nothing is drafted and the search behaves as before", async () => {
+  const hits = [hit("clinicowners/comments/hhhhh1/a/", "Looking for a CRM for my clinic")];
+  const f = flow(hits, async (p) => ({ ok: true, requests: (p as { id: string }[]).map((x) => ({ id: x.id, quote: "Looking for a CRM" })) }));
+  assert.equal((await searchIntentLeads(f.ports, { offer })).leads[0].reply, null);
+});

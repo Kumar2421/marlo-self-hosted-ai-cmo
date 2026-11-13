@@ -87,3 +87,10 @@ test("without a signal the opener is unchanged", () => {
   const m = buildReachMessage("whatsapp", { lead: { ...company, fit_reason: 'Company site mentions "dental clinics".' }, sender, projectName: "P" });
   assert.match(m, /I came across smile\.test\./);
 });
+
+test("a request's saved reply is the Reddit draft as it is; without one the template is used", () => {
+  const lead = { name: "Looking for a CRM", lead_type: "intent", reply: "  Start by listing what you track and pick a tool that does those well.  " };
+  assert.equal(buildReachMessage("reddit", { lead, sender, projectName: "P", offer }), "Start by listing what you track and pick a tool that does those well.");
+  assert.match(buildReachMessage("reddit", { lead: { ...lead, reply: null }, sender, projectName: "P", offer }), /^Happy to help with this\./);
+  assert.match(buildReachMessage("reddit", { lead: { ...lead, reply: "   " }, sender, projectName: "P", offer }), /^Happy to help with this\./);
+});

@@ -20,6 +20,8 @@ export type ReachLead = {
   website?: string | null;
   /** The saved fit reason; a "Signals: ..." sentence in it gives the opener. */
   fit_reason?: string | null;
+  /** A reply the user already has (a request's model-written draft). Used as is for Reddit when present. */
+  reply?: string | null;
 };
 
 export type ReachContext = {
@@ -64,6 +66,8 @@ function hostOf(website: string | null | undefined): string {
  * rather than pushing. The user reads the subreddit's rules, edits it and posts it from their own account.
  */
 function buildRedditReply(ctx: ReachContext): string {
+  const saved = (ctx.lead.reply ?? "").trim();
+  if (saved) return saved.slice(0, REACH_LIMITS.reddit);
   const me = (ctx.sender.name ?? "").trim();
   const business = (ctx.sender.company ?? "").trim() || ctx.projectName.trim();
   const disclosure = me ? `Full disclosure: I'm ${me}${business ? ` from ${business}` : ""}, so I'm biased.` : business ? `Full disclosure: I work on ${business}, so I'm biased.` : "";
