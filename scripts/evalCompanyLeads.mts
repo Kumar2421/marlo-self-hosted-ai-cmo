@@ -53,7 +53,7 @@ for (const c of CASES.filter((x) => !only || x.id === only)) {
   );
   const secs = Math.round((Date.now() - started) / 100) / 10;
   console.log(`\n## ${c.id}  ${secs}s  sites read ${sitesRead}  kept ${res.leads.length}  no contact ${res.droppedNoContact}  no fit ${res.droppedNoFit}`);
-  for (const l of res.leads) console.log(`  - ${l.name.padEnd(30)} ${l.host.padEnd(30)} ${l.email ?? (l.whatsapp ? `whatsapp ${l.whatsapp}` : "")}`);
+  for (const l of res.leads) console.log(`  - ${l.name.padEnd(30)} ${l.host.padEnd(30)} ${l.email ?? (l.whatsapp ? `whatsapp ${l.whatsapp}` : "")}${l.signals.length ? `  [${l.signals.join(", ")}]` : ""}`);
   report.push({ id: c.id, secs, sitesRead, kept: res.leads.length, droppedNoContact: res.droppedNoContact, droppedNoFit: res.droppedNoFit, leads: res.leads });
 }
 if (jsonPath) writeFileSync(jsonPath, JSON.stringify(report, null, 2));

@@ -17,6 +17,7 @@ import LeadProfileWizard from "./leads/LeadProfileWizard";
 import ReachDialog from "./leads/ReachDialog";
 import { computeOutcomes, stampReached } from "@/lib/domain/leads/outcomes";
 import { nextStep } from "@/lib/domain/leads/nextStep";
+import { reasonWithoutSignals, signalsFromReason } from "@/lib/domain/leads/company/buyingSignals";
 import LeadProfileSearch from "./leads/LeadProfileSearch";
 import BusinessSearchForm from "./leads/BusinessSearchForm";
 import BusinessResults, { type BusinessSearchError } from "./leads/BusinessResults";
@@ -926,10 +927,15 @@ export default function LeadsPanel({ open, onToggle }: { open: boolean; onToggle
                           {meta && <span className="block truncate text-xs leading-4 text-ui-muted">{meta}</span>}
                           {lead.fit_reason ? (
                             <span className="line-clamp-2 text-xs leading-4 text-ui-subtle" title={lead.fit_reason} data-testid="lead-why">
-                              Why: {lead.fit_reason}
+                              Why: {reasonWithoutSignals(lead.fit_reason)}
                             </span>
                           ) : null}
                           <div className="mt-1 flex flex-wrap items-center gap-1.5" data-testid="lead-chips">
+                      {signalsFromReason(lead.fit_reason).map((sig) => (
+                        <StatusChip key={sig} tone="neutral" title="Stated on the company's own site">
+                          {sig === "hiring" ? "Hiring" : "New location"}
+                        </StatusChip>
+                      ))}
                       {qualification.channels
                         .filter((c) => c !== "email")
                         .map((c) => (

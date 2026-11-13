@@ -73,3 +73,17 @@ test("a Reddit reply with no sender name uses the project name, and with no offe
   assert.match(r, /Full disclosure: I work on Acme Invoice, so I'm biased\./);
   assert.doesNotMatch(r, /We do/);
 });
+
+test("a hiring or new-location signal in the saved reason becomes the opener, named for what the site says", () => {
+  const hiring = { ...company, fit_reason: 'Company site mentions "dental clinics". Signals: hiring now.' };
+  const m = buildReachMessage("whatsapp", { lead: hiring, sender, projectName: "P", offer: null });
+  assert.match(m, /I noticed you're hiring on smile\.test\./);
+  assert.doesNotMatch(m, /I came across/);
+  const opened = { ...company, fit_reason: "Signals: new location." };
+  assert.match(buildReachMessage("whatsapp", { lead: opened, sender, projectName: "P" }), /I noticed your new location on smile\.test\./);
+});
+
+test("without a signal the opener is unchanged", () => {
+  const m = buildReachMessage("whatsapp", { lead: { ...company, fit_reason: 'Company site mentions "dental clinics".' }, sender, projectName: "P" });
+  assert.match(m, /I came across smile\.test\./);
+});
