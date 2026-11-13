@@ -15,7 +15,10 @@ import { getOfferModel as getOfferModelSupabase } from "@/lib/domain/offer/offer
 import { runPaidLeadSearch } from "@/lib/domain/leads/paidLeadSearch";
 import { insertCompanyLeads } from "@/lib/domain/leads/company/companyStoreSqlite";
 import { classifyRequests } from "@/lib/domain/leads/intent/IntentClassifier";
-import { searchIntentLeads, type IntentLeadDraft, type IntentResult } from "@/lib/domain/leads/intent/intentSearch";
+import { searchIntentLeads, type IntentFocus, type IntentLeadDraft, type IntentResult } from "@/lib/domain/leads/intent/intentSearch";
+import { draftReplies } from "@/lib/domain/leads/intent/replyDrafter";
+import { getRedditSettings as getRedditSettingsSqlite } from "@/lib/domain/reddit/redditSettingsStore";
+import { getRedditSettings as getRedditSettingsSupabase } from "@/lib/domain/reddit/redditSettingsStoreSupabase";
 import { canonicalPostUrl } from "@/lib/domain/leads/intent/redditPosts";
 import { tavilyProvider } from "@/lib/domain/websearch/searchProvider";
 
@@ -38,6 +41,7 @@ function leadFields(d: IntentLeadDraft, query: string, now: string): Row {
     email: null,
     email_verified: false,
     website: null,
+    description: d.reply,
     source_url: d.url,
     fit_reason: d.reason,
     query,
@@ -76,14 +80,17 @@ export async function POST(req: NextRequest) {
     const { data: setting } = await db.from("user_settings").select("value").eq("user_id", user.id).eq("key", "active_project_id").maybeSingle();
     const projectId: string | null = setting?.value ?? null;
     if (!projectId) return NextResponse.json({ error: "No active project. Link a website first." }, { status: 422 });
-    const { data: project } = await db.from("projects").select("id").eq("id", projectId).eq("owner_id", user.id).maybeSingle();
+    const { data: project } = await db.from("projects").select("id, name").eq("id", projectId).eq("owner_id", user.id).maybeSingle();
     if (!project) return NextResponse.json({ error: "No project with that id" }, { status: 404 });
 
     const offer = await getOfferModelSupabase(db, user.id, projectId);
     if (!offer?.sells) return NextResponse.json({ error: NO_OFFER }, { status: 422 });
     const profile = await getLeadProfileSupabase(db, user.id, projectId);
+    const reddit = await getRedditSettingsSupabase(db, user.id, projectId).catch(() => null);
 
     return run({
+      productName: String(project.name ?? ""),
+      focus: { keywords: reddit?.keywords ?? [], subreddits: reddit?.subreddits ?? [] },
       llm: { driver, apiKey, model },
       tavilyKey,
       offer: { sells: offer.sells, whoPays: offer.whoPays || undefined },
@@ -131,8 +138,18 @@ export async function POST(req: NextRequest) {
   const offer = getOfferModelSqlite(db, projectId);
   if (!offer?.sells) return NextResponse.json({ error: NO_OFFER }, { status: 422 });
   const profile = getLeadProfileSqlite(db, projectId);
+  const reddit = (() => {
+    try {
+      return getRedditSettingsSqlite(db, projectId);
+    } catch {
+      return null;
+    }
+  })();
+  const projectRow = db.prepare("SELECT name FROM projects WHERE id = ?").get(projectId) as { name: string } | undefined;
 
   return run({
+    productName: projectRow?.name ?? "",
+    focus: { keywords: reddit?.keywords ?? [], subreddits: reddit?.subreddits ?? [] },
     llm: { driver, apiKey: conn.api_key, model: bodyModel, baseUrl: conn.base_url ?? undefined },
     tavilyKey: keyRow.value,
     offer: { sells: offer.sells, whoPays: offer.whoPays || undefined },
@@ -153,6 +170,8 @@ export async function POST(req: NextRequest) {
 }
 
 async function run(opts: {
+  productName: string;
+  focus: IntentFocus;
   llm: Llm;
   tavilyKey: string;
   offer: { sells: string; whoPays?: string };
@@ -174,8 +193,9 @@ async function run(opts: {
           provider: tavilyProvider(opts.tavilyKey),
           knownUrls: opts.knownUrls,
           classify: (posts) => classifyRequests({ ...opts.llm, offer: opts.offer, posts, timeoutMs: MODEL_TIMEOUT_MS }),
+          draft: (requests) => draftReplies({ ...opts.llm, product: { name: opts.productName, sells: opts.offer.sells, whoPays: opts.offer.whoPays }, requests, timeoutMs: MODEL_TIMEOUT_MS }),
         },
-        { offer: opts.offer, locations: opts.locations },
+        { offer: opts.offer, locations: opts.locations, focus: opts.focus },
       );
       return last.leads;
     },

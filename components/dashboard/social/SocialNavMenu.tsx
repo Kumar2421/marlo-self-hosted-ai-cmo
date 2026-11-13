@@ -8,6 +8,7 @@ import {
   SOCIAL_NAV_PLATFORMS,
   countDraftsToReview,
   formatDraftsToReview,
+  formatRedditActivity,
   hasUnreviewedDrafts,
 } from "@/lib/domain/social/socialNav";
 import type { DailyDraftSettings } from "@/lib/domain/social/dailyDraftSettings";
@@ -16,6 +17,7 @@ import { qk } from "@/lib/query/keys";
 import { useProject } from "@/lib/project-store";
 import { useClickOutside } from "../useClickOutside";
 import { useSocialDraftList } from "./useSocialDrafts";
+import { useRedditRequestCounts } from "./useRedditRequests";
 import { useSocialPanel } from "./SocialPanelProvider";
 import PlatformIcon from "./PlatformIcon";
 
@@ -93,11 +95,13 @@ export default function SocialNavMenu() {
   const linkedinList = useSocialDraftList("linkedin", "current", true, COUNT_STALE_MS);
   const redditList = useSocialDraftList("reddit", "current", true, COUNT_STALE_MS);
   const lists: Record<PlatformId, typeof xList> = { x: xList, linkedin: linkedinList, reddit: redditList };
+  // Replies to answer count toward the Reddit badge too: they are the part of Reddit that needs a person today.
+  const redditReplies = useRedditRequestCounts(true, COUNT_STALE_MS);
 
   const counts: Partial<Record<PlatformId, number>> = {
     x: countDraftsToReview(xList.data),
     linkedin: countDraftsToReview(linkedinList.data),
-    reddit: countDraftsToReview(redditList.data),
+    reddit: countDraftsToReview(redditList.data) + redditReplies.toAnswer,
   };
   const anyUnreviewed = hasUnreviewedDrafts(counts);
 
@@ -212,7 +216,9 @@ export default function SocialNavMenu() {
                 ? "Couldn't load drafts"
                 : loading
                   ? "Checking drafts..."
-                  : formatDraftsToReview(counts[platform] ?? 0);
+                  : platform === "reddit"
+                    ? formatRedditActivity(countDraftsToReview(redditList.data), redditReplies.toAnswer)
+                    : formatDraftsToReview(counts[platform] ?? 0);
               return (
                 <button
                   key={platform}

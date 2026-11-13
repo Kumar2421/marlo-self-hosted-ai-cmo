@@ -12,6 +12,7 @@ import { useSenderProfile } from "./outreach/useSenderProfile";
 
 export type ReachableLead = ReachLead & {
   id: string;
+  description?: string | null;
   email: string | null;
   email_verified?: number | boolean | null;
   email_quality?: string | null;
@@ -59,7 +60,8 @@ export default function ReachDialog({
   const [marking, setMarking] = useState(false);
   const [markingReply, setMarkingReply] = useState(false);
 
-  const ctx = { lead, sender, projectName, offer };
+  // A request carries its model-written reply in `description`; every other lead drafts from the template.
+  const ctx = { lead: { ...lead, reply: lead.lead_type === "intent" ? lead.description : null }, sender, projectName, offer };
   const draftFor = (c: ReachChannel) => drafts[c] ?? buildReachMessage(c, ctx);
   const text = channel === "email" ? "" : draftFor(channel);
   const limit = channel === "email" ? 0 : REACH_LIMITS[channel];

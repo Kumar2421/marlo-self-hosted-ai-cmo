@@ -9,6 +9,8 @@ import { getPlatformConfig } from "@/lib/domain/social/platforms";
 import { isNoSubredditError } from "@/lib/domain/social/errorDetection";
 import { useSocialDraftList, useSocialDraftActions, type AnyDraft, type SocialPlatform, type DraftView } from "./useSocialDrafts";
 import DraftPreviewCard from "./DraftPreviewCard";
+import RedditRepliesPanel, { RedditModeTabs } from "./RedditRepliesPanel";
+import { useRedditRequestCounts } from "./useRedditRequests";
 import { useLockedFeature } from "@/components/plan/usePlan";
 import { LockedLine } from "@/components/plan/LockedLine";
 import type { FeatureId } from "@/lib/domain/plans/planMatrix";
@@ -213,6 +215,9 @@ function UnlockedSocialWriterPanel({ platform, onClose }: { platform: SocialPlat
   const { show } = useToast();
   const [view, setView] = useState<DraftView>("current");
   const [selected, setSelected] = useState<AnyDraft | null>(null);
+  // Reddit has two jobs: write posts, and answer threads where someone asks for what you sell.
+  const [mode, setMode] = useState<"posts" | "replies">("posts");
+  const replyCounts = useRedditRequestCounts(platform === "reddit");
   const list = useSocialDraftList(platform, view);
   const { generate } = useSocialDraftActions(platform);
   const config = getPlatformConfig(platform);
@@ -231,11 +236,15 @@ function UnlockedSocialWriterPanel({ platform, onClose }: { platform: SocialPlat
     });
   };
 
+  if (platform === "reddit" && mode === "replies") {
+    return <RedditRepliesPanel onClose={onClose} onSwitchMode={setMode} />;
+  }
+
   if (selected) {
     return <DraftDetail key={selected.id} draft={selected} platform={platform} onClose={() => setSelected(null)} onChange={setSelected} />;
   }
 
-  const toolbar = (
+  const draftTabs = (
     <div role="tablist" aria-label="Draft lists" className="flex gap-1">
       {(["current", "archived"] as const).map((name) => (
         <button
@@ -251,6 +260,16 @@ function UnlockedSocialWriterPanel({ platform, onClose }: { platform: SocialPlat
       ))}
     </div>
   );
+
+  const toolbar =
+    platform === "reddit" ? (
+      <div className="flex flex-col gap-2">
+        <RedditModeTabs mode={mode} onChange={setMode} replies={replyCounts.toAnswer} />
+        {draftTabs}
+      </div>
+    ) : (
+      draftTabs
+    );
 
   const generateButton = (
     <button type="button" onClick={runGenerate} disabled={generate.isPending} className={`${BTN_PRIMARY} w-full justify-center py-2 sm:w-auto`}>

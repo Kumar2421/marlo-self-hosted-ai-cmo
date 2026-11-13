@@ -44,6 +44,14 @@ export function formatDraftsToReview(count: number): string {
   return count === 1 ? "1 draft to review" : `${count} drafts to review`;
 }
 
+/** The Reddit menu line: post drafts to review and replies to answer, e.g. "2 drafts to review · 3 replies to answer". */
+export function formatRedditActivity(drafts: number, replies: number): string {
+  const parts: string[] = [];
+  if (drafts > 0) parts.push(formatDraftsToReview(drafts));
+  if (replies > 0) parts.push(replies === 1 ? "1 reply to answer" : `${replies} replies to answer`);
+  return parts.length > 0 ? parts.join(" · ") : formatDraftsToReview(0);
+}
+
 /** True when any network has at least one draft waiting for review (drives the single badge dot). */
 export function hasUnreviewedDrafts(counts: Partial<Record<PlatformId, number>>): boolean {
   return SOCIAL_NAV_PLATFORMS.some((platform) => (counts[platform] ?? 0) > 0);

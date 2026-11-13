@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   countDraftsToReview,
   formatDraftsToReview,
+  formatRedditActivity,
   hasUnreviewedDrafts,
   isSocialPlatform,
   resolveSocialPlatform,
@@ -55,4 +56,11 @@ test("hasUnreviewedDrafts is true when any network has a draft", () => {
   assert.equal(hasUnreviewedDrafts({}), false);
   assert.equal(hasUnreviewedDrafts({ x: 0, reddit: 2 }), true);
   assert.equal(hasUnreviewedDrafts({ linkedin: 1 }), true);
+});
+
+test("the Reddit menu line shows post drafts and replies together, and the empty wording when there are none", () => {
+  assert.equal(formatRedditActivity(0, 0), "No drafts to review");
+  assert.equal(formatRedditActivity(2, 0), "2 drafts to review");
+  assert.equal(formatRedditActivity(0, 1), "1 reply to answer");
+  assert.equal(formatRedditActivity(1, 3), "1 draft to review · 3 replies to answer");
 });

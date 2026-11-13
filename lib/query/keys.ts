@@ -57,5 +57,7 @@ export const qk = {
   linkedInDraftsAll: (projectId: string | undefined) => [...scope(projectId), "linkedin-drafts"] as const,
   redditDrafts: (projectId: string | undefined, view: "current" | "archived") => [...scope(projectId), "reddit-drafts", view] as const,
   redditDraftsAll: (projectId: string | undefined) => [...scope(projectId), "reddit-drafts"] as const,
+  /** Reddit requests (leads of type "intent") for the Social page's Replies tab and the Social menu count. */
+  redditRequests: (projectId: string | undefined) => [...scope(projectId), "reddit-requests"] as const,
   searchOverview: (projectId: string | undefined) => [...scope(projectId), "search-overview"] as const,
 };
