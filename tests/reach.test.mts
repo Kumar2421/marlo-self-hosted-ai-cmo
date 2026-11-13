@@ -59,6 +59,21 @@ test("the same lead gets the offer line on WhatsApp where there is room for it",
   assert.match(m, /We offer/);
 });
 
+test("a Reddit reply starts by being useful, discloses who is writing, and invites questions instead of pushing", () => {
+  const r = buildReachMessage("reddit", { lead: { name: "Looking for a designer", lead_type: "intent" }, sender, projectName: "P", offer });
+  assert.match(r, /^Happy to help with this\./);
+  assert.match(r, /Full disclosure: I'm Senthil from MLForge, so I'm biased\./);
+  assert.match(r, /We do custom software and CRM for small clinics\./);
+  assert.match(r, /Happy to answer questions here/);
+  assert.ok(r.length <= REACH_LIMITS.reddit);
+});
+
+test("a Reddit reply with no sender name uses the project name, and with no offer has no offer line", () => {
+  const r = buildReachMessage("reddit", { lead: { name: "x", lead_type: "intent" }, sender: {}, projectName: "Acme Invoice" });
+  assert.match(r, /Full disclosure: I work on Acme Invoice, so I'm biased\./);
+  assert.doesNotMatch(r, /We do/);
+});
+
 test("a hiring or new-location signal in the saved reason becomes the opener, named for what the site says", () => {
   const hiring = { ...company, fit_reason: 'Company site mentions "dental clinics". Signals: hiring now.' };
   const m = buildReachMessage("whatsapp", { lead: hiring, sender, projectName: "P", offer: null });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, ChevronDown, Loader2, Search, Target } from "lucide-react";
+import { Building2, ChevronDown, Loader2, MessageSquareText, Search, Target } from "lucide-react";
 import { describeProfile, type LeadProfile, type LeadSearchTarget } from "@/lib/domain/leads/leadProfile";
 
 function Pick({ label, options, value, onChange }: { label: string; options: string[]; value: string; onChange: (v: string) => void }) {
@@ -36,6 +36,7 @@ export default function LeadProfileSearch({
   onEdit,
   onSearch,
   onSearchCompanies,
+  onSearchRequests,
   collapsed = false,
   summary,
   onToggle,
@@ -47,6 +48,8 @@ export default function LeadProfileSearch({
   onSearch: (target: LeadSearchTarget) => void;
   /** Finds company websites that match the profile and keeps the ones with a contact. */
   onSearchCompanies?: () => void;
+  /** Finds public posts where someone asks for what the user sells. Only offered once Marlo has read the offer. */
+  onSearchRequests?: () => void;
   /** One-line mode: a summary plus the Find leads button. The picks below keep their values. */
   collapsed?: boolean;
   summary?: string;
@@ -105,6 +108,18 @@ export default function LeadProfileSearch({
             {searching ? "Searching..." : "Find leads"}
           </button>
         )}
+        {onSearchRequests && (
+          <button
+            type="button"
+            onClick={onSearchRequests}
+            disabled={searching || disabled}
+            title="Public posts where someone asks for what you sell"
+            className="flex min-h-9 basis-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 text-[12px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            <MessageSquareText size={12} />
+            Find requests
+          </button>
+        )}
       </div>
     );
   }
@@ -160,6 +175,18 @@ export default function LeadProfileSearch({
           >
             {searching ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
             {searching ? "Searching..." : "Find leads"}
+          </button>
+        )}
+        {onSearchRequests && (
+          <button
+            type="button"
+            onClick={onSearchRequests}
+            disabled={searching || disabled}
+            title="Public posts where someone asks for what you sell"
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 py-1.5 text-[13px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            <MessageSquareText size={13} />
+            Find requests
           </button>
         )}
       </div>

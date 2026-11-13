@@ -7,10 +7,10 @@ import { isLinkedInProfileUrl, normalizeWhatsapp } from "./qualify.ts";
  * open the profile). Pure, so every rule is unit-tested.
  */
 
-export type ReachChannel = "whatsapp" | "linkedin";
+export type ReachChannel = "whatsapp" | "linkedin" | "reddit";
 
 /** LinkedIn connection notes are capped at 300 characters; WhatsApp has room but short messages get answered. */
-export const REACH_LIMITS: Record<ReachChannel, number> = { whatsapp: 600, linkedin: 300 };
+export const REACH_LIMITS: Record<ReachChannel, number> = { whatsapp: 600, linkedin: 300, reddit: 1500 };
 
 export type ReachLead = {
   name: string;
@@ -59,11 +59,33 @@ function hostOf(website: string | null | undefined): string {
 }
 
 /**
+ * A reply to a public post where someone asked for help. It opens by being useful, says who is writing and why (Reddit
+ * communities expect that, and many ban hidden promotion), keeps the offer to one optional line, and invites questions
+ * rather than pushing. The user reads the subreddit's rules, edits it and posts it from their own account.
+ */
+function buildRedditReply(ctx: ReachContext): string {
+  const me = (ctx.sender.name ?? "").trim();
+  const business = (ctx.sender.company ?? "").trim() || ctx.projectName.trim();
+  const disclosure = me ? `Full disclosure: I'm ${me}${business ? ` from ${business}` : ""}, so I'm biased.` : business ? `Full disclosure: I work on ${business}, so I'm biased.` : "";
+  const sells = (ctx.offer?.sells ?? "").trim();
+  const whoPays = (ctx.offer?.whoPays ?? "").trim();
+  const offer = sells ? `We do ${sells}${whoPays ? ` for ${whoPays}` : ""}.` : "";
+  const close = "Happy to answer questions here, or to share what I'd look at first in your situation.";
+  const limit = REACH_LIMITS.reddit;
+  for (const parts of [["Happy to help with this.", disclosure, offer, close], ["Happy to help with this.", disclosure, close]]) {
+    const text = parts.filter(Boolean).join(" ");
+    if (text.length <= limit) return text;
+  }
+  return `Happy to help with this. ${close}`.slice(0, limit);
+}
+
+/**
  * A short message in the sender's voice. Required: greeting, who is writing, a closing question. Optional, dropped
  * (the offer line first, then the hook) when the channel's length limit would be exceeded. Never states a fact that
  * is not in the lead, the sender profile or the Offer Model.
  */
 export function buildReachMessage(channel: ReachChannel, ctx: ReachContext): string {
+  if (channel === "reddit") return buildRedditReply(ctx);
   const { lead, sender } = ctx;
   const isCompany = lead.lead_type === "company" || lead.lead_type === "business";
   const business = (sender.company ?? "").trim() || ctx.projectName.trim();

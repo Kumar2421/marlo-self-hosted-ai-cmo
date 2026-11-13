@@ -7,6 +7,7 @@ import { SegmentedTabs } from "@/components/ui/SegmentedTabs";
 import { channelLabel, leadQualification } from "@/lib/domain/leads/leadListView";
 import type { Channel } from "@/lib/domain/leads/qualify";
 import { REACH_LIMITS, buildReachMessage, linkedInProfileUrl, waLink, type ReachChannel, type ReachLead } from "@/lib/domain/leads/reach";
+import { canonicalPostUrl } from "@/lib/domain/leads/intent/redditPosts";
 import { useSenderProfile } from "./outreach/useSenderProfile";
 
 export type ReachableLead = ReachLead & {
@@ -66,6 +67,8 @@ export default function ReachDialog({
 
   const waHref = channel === "whatsapp" ? waLink(lead.whatsapp, text) : null;
   const liUrl = channel === "linkedin" ? linkedInProfileUrl(lead.source_url) : null;
+  const redditUrl = channel === "reddit" ? canonicalPostUrl(lead.source_url) : null;
+  const openUrl = liUrl ?? redditUrl;
 
   async function copyAndOpen() {
     try {
@@ -74,7 +77,7 @@ export default function ReachDialog({
     } catch {
       setCopied(false);
     }
-    if (liUrl) window.open(liUrl, "_blank", "noopener,noreferrer");
+    if (openUrl) window.open(openUrl, "_blank", "noopener,noreferrer");
     setOpened(true);
   }
 
@@ -163,6 +166,17 @@ export default function ReachDialog({
                     {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied. Opening LinkedIn" : "Copy message and open LinkedIn"}
                     <ExternalLink size={12} />
                   </button>
+                )}
+                {channel === "reddit" && redditUrl && (
+                  <>
+                    <p className="text-xs leading-4 text-ui-muted" data-testid="reddit-tip">
+                      Read the subreddit&apos;s rules first: many ban promotion. Answer the question helpfully, then post this from your own account.
+                    </p>
+                    <button type="button" onClick={copyAndOpen} className={ACTION_CLASS}>
+                      {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied. Opening the post" : "Copy reply and open the post"}
+                      <ExternalLink size={12} />
+                    </button>
+                  </>
                 )}
               </>
             )}
