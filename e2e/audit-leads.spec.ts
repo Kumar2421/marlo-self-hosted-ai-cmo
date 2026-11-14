@@ -52,7 +52,7 @@ async function mockAudit(page: Page, leadsAvailable: boolean) {
 
 async function runAudit(page: Page) {
   await page.goto("/audit");
-  await page.getByPlaceholder("https://yourwebsite.com").fill("https://www.acme-booking.test");
+  await page.getByPlaceholder("yourwebsite.com").fill("https://www.acme-booking.test");
   await page.getByRole("button", { name: "Run free audit" }).click();
   await expect(page.getByTestId("audit-result")).toBeVisible();
 }

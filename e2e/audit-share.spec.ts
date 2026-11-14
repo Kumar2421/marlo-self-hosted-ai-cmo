@@ -47,7 +47,7 @@ test("running an audit shows the score, the findings and a link to share", async
   await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: baseURL! });
   await mockAudit(page, { id: "k7m2q9x4t8wn", path: "/audit/r/k7m2q9x4t8wn", ownerToken: "owner-token-owner-token-1234" });
   await page.goto("/audit");
-  await page.getByPlaceholder("https://yourwebsite.com").fill("https://www.acme-plumbing.test");
+  await page.getByPlaceholder("yourwebsite.com").fill("https://www.acme-plumbing.test");
   await page.getByRole("button", { name: "Run free audit" }).click();
 
   await expect(page.getByTestId("audit-host")).toHaveText("acme-plumbing.test");

@@ -8,21 +8,8 @@ import AuditResultView, { SignupCard } from "@/components/audit/AuditResultView"
 import AuditLeadsBlock from "@/components/audit/AuditLeadsBlock";
 import ShareBar, { rememberOwnerToken } from "@/components/audit/ShareBar";
 import { trackAuditEvent } from "@/components/audit/trackAuditEvent";
+import { normalizeAuditUrl } from "@/lib/domain/audit/normalizeAuditUrl";
 import { hostOf, type ReportFinding } from "@/lib/domain/seo/publicReportShared";
-
-/** Same bounds as the server's own check (lib/domain/seo/SEOAgent.ts
- * assertPublicHttpUrl) -- this is just a client-side pre-filter so a
- * malformed ?url= doesn't auto-submit garbage; the server remains the real
- * gate against private/local addresses. */
-function parsePublicHttpUrl(raw: string): string | null {
-  try {
-    const parsed = new URL(raw);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
-    return parsed.toString();
-  } catch {
-    return null;
-  }
-}
 
 type AuditResult = {
   url: string;
@@ -35,7 +22,7 @@ type AuditResult = {
 
 export default function AuditPage() {
   const searchParams = useSearchParams();
-  const [url, setUrl] = useState(() => parsePublicHttpUrl(searchParams.get("url") ?? "") ?? "");
+  const [url, setUrl] = useState(() => normalizeAuditUrl(searchParams.get("url")) ?? "");
   const [result, setResult] = useState<AuditResult | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -93,7 +80,13 @@ export default function AuditPage() {
 
   function runAudit(event: FormEvent) {
     event.preventDefault();
-    void runAuditFor(url);
+    const target = normalizeAuditUrl(url);
+    if (!target) {
+      setError("Enter a website address, like example.com.");
+      return;
+    }
+    setUrl(target);
+    void runAuditFor(target);
   }
 
   // A personalized outreach link (?url=<their site>) should land on their
@@ -103,8 +96,17 @@ export default function AuditPage() {
   // navigation/param changes within the same mount.
   useEffect(() => {
     if (autoRanRef.current) return;
-    const prefilled = parsePublicHttpUrl(searchParams.get("url") ?? "");
-    if (!prefilled) return;
+    const given = searchParams.get("url");
+    const prefilled = normalizeAuditUrl(given);
+    if (!prefilled) {
+      // A link that carried something that is not a website address: say so instead of showing an unexplained empty form.
+      if (given && given.trim()) {
+        autoRanRef.current = true;
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setError("That does not look like a website address. Enter one like example.com.");
+      }
+      return;
+    }
     autoRanRef.current = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void runAuditFor(prefilled);
@@ -143,8 +145,10 @@ export default function AuditPage() {
           <input
             value={url}
             onChange={(event) => setUrl(event.target.value)}
-            placeholder="https://yourwebsite.com"
-            type="url"
+            placeholder="yourwebsite.com"
+            type="text"
+            inputMode="url"
+            autoComplete="url"
             required
             className="h-12 flex-1 rounded-lg border border-black/15 bg-white px-4 text-sm outline-none focus:border-black"
           />
