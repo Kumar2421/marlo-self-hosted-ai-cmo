@@ -140,6 +140,16 @@ async function storeContract(make: () => ReturnType<typeof memoryReportStore>) {
   assert.equal(await store.saveLeads(report.id, ownerToken, []), true);
   assert.deepEqual((await store.get(report.id))!.leads, [], "an empty list means looked for, none found");
 
+  assert.equal((await store.get(report.id))!.posts, null, "no sample posts until someone asks for them");
+  const firstPosts = { x: { text: "Our audit found three quick wins." }, linkedin: { hookLine: "Most sites lose readers in the first line.", body: "Here is what we checked." } };
+  assert.equal(await store.savePosts(report.id, "wrong-token-wrong-token-wrong", firstPosts), false);
+  assert.equal((await store.get(report.id))!.posts, null, "a wrong token saves no posts");
+  assert.equal(await store.savePosts(report.id, ownerToken, firstPosts), true);
+  assert.deepEqual((await store.get(report.id))!.posts, firstPosts);
+  const secondPosts = { x: null, linkedin: { hookLine: "A second pass.", body: "Replaces the first." } };
+  assert.equal(await store.savePosts(report.id, ownerToken, secondPosts), true);
+  assert.deepEqual((await store.get(report.id))!.posts, secondPosts, "saving again replaces the posts");
+
   assert.equal(await store.get("zzzzzzzzzzzz"), null);
   assert.equal(await store.remove(report.id, "wrong-token-wrong-token-wrong"), false);
   assert.ok(await store.get(report.id), "a wrong token removes nothing");
@@ -160,7 +170,7 @@ test("sqlite store follows the contract", async () => {
   await storeContract(() => {
     const db = new Database(":memory:");
     db.exec(`CREATE TABLE public_audit_reports (id TEXT PRIMARY KEY, url TEXT NOT NULL, host TEXT NOT NULL, score INTEGER NOT NULL,
-      summary TEXT NOT NULL, findings TEXT NOT NULL, leads TEXT, owner_token_hash TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)`);
+      summary TEXT NOT NULL, findings TEXT NOT NULL, leads TEXT, posts TEXT, owner_token_hash TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)`);
     return sqliteReportStore(db);
   });
 });

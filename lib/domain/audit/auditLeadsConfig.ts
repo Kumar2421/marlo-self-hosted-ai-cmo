@@ -6,3 +6,11 @@
 export function auditLeadsEnabled(env: Record<string, string | undefined>, hosted: boolean): boolean {
   return hosted && env.PUBLIC_AUDIT_LEADS_ENABLED === "true";
 }
+
+/**
+ * Whether the "sample posts" block is on. Separate from the leads switch: it spends model calls, not web searches, and
+ * the owner may want one without the other. Off unless PUBLIC_AUDIT_POSTS_ENABLED=true; hosted only.
+ */
+export function auditPostsEnabled(env: Record<string, string | undefined>, hosted: boolean): boolean {
+  return hosted && env.PUBLIC_AUDIT_POSTS_ENABLED === "true";
+}

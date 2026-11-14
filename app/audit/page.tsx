@@ -6,6 +6,7 @@ import Link from "next/link";
 import { MarloMark } from "@/components/shared/MarloMark";
 import AuditResultView, { SignupCard } from "@/components/audit/AuditResultView";
 import AuditLeadsBlock from "@/components/audit/AuditLeadsBlock";
+import AuditPostsBlock from "@/components/audit/AuditPostsBlock";
 import ShareBar, { rememberOwnerToken } from "@/components/audit/ShareBar";
 import { trackAuditEvent } from "@/components/audit/trackAuditEvent";
 import { normalizeAuditUrl } from "@/lib/domain/audit/normalizeAuditUrl";
@@ -18,6 +19,7 @@ type AuditResult = {
   technical: { onPageScore: number; status: number; redirectCount: number };
   report: { id: string; path: string; ownerToken: string } | null;
   leadsAvailable?: boolean;
+  postsAvailable?: boolean;
 };
 
 export default function AuditPage() {
@@ -178,6 +180,16 @@ export default function AuditPage() {
                     reportId={result.report.id}
                     initialLeads={null}
                     enabled={Boolean(result.leadsAvailable)}
+                    signupUrl={`/login?mode=signup&url=${encodeURIComponent(result.url)}`}
+                  />
+                )}
+                {result.report && (
+                  <AuditPostsBlock
+                    key={`posts-${result.report.id}`}
+                    reportId={result.report.id}
+                    host={hostOf(result.url)}
+                    initialPosts={null}
+                    enabled={Boolean(result.postsAvailable)}
                     signupUrl={`/login?mode=signup&url=${encodeURIComponent(result.url)}`}
                   />
                 )}

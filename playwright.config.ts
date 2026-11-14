@@ -23,6 +23,7 @@ const devServerEnv = {
   SUPABASE_SECRET_KEY: "e2e-placeholder-secret-key",
   // Shows the audit "businesses that may need you" block; the endpoint itself is mocked in the specs.
   PUBLIC_AUDIT_LEADS_ENABLED: "true",
+  PUBLIC_AUDIT_POSTS_ENABLED: "true",
 } as Record<string, string>;
 
 export default defineConfig({

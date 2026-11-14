@@ -93,6 +93,7 @@ function init(): Database.Database {
       summary          TEXT NOT NULL,
       findings         TEXT NOT NULL,
       leads            TEXT,
+      posts            TEXT,
       owner_token_hash TEXT NOT NULL,
       created_at       TEXT NOT NULL,
       expires_at       TEXT NOT NULL
@@ -607,6 +608,9 @@ function migrate(db: Database.Database) {
   const reportCols = db.prepare("PRAGMA table_info(public_audit_reports)").all() as { name: string }[];
   if (reportCols.length > 0 && !reportCols.some((c) => c.name === "leads")) {
     db.exec(`ALTER TABLE public_audit_reports ADD COLUMN leads TEXT`);
+  }
+  if (reportCols.length > 0 && !reportCols.some((c) => c.name === "posts")) {
+    db.exec(`ALTER TABLE public_audit_reports ADD COLUMN posts TEXT`);
   }
 
   const articlesCols = db.prepare("PRAGMA table_info(articles)").all() as { name: string }[];
