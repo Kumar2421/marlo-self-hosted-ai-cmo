@@ -32,9 +32,17 @@ if (!key) {
 }
 
 const args = process.argv.slice(2);
+// --custom "industries a, b|locations x" runs one profile that is not in the list above.
+const customAt = args.indexOf("--custom");
+if (customAt >= 0) {
+  const [inds = "", locs = ""] = String(args[customAt + 1] ?? "").split("|");
+  const split = (v: string) => v.split(",").map((t) => t.trim()).filter(Boolean);
+  CASES.length = 0;
+  CASES.push({ id: "custom", industries: split(inds), locations: split(locs) });
+}
 const jsonAt = args.indexOf("--json");
 const jsonPath = jsonAt >= 0 ? args[jsonAt + 1] : null;
-const only = args.find((a, i) => !a.startsWith("--") && (jsonAt < 0 || i !== jsonAt + 1));
+const only = args.find((a, i) => !a.startsWith("--") && (jsonAt < 0 || i !== jsonAt + 1) && (customAt < 0 || i !== customAt + 1));
 
 const report: unknown[] = [];
 for (const c of CASES.filter((x) => !only || x.id === only)) {
