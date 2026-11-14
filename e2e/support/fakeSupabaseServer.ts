@@ -75,6 +75,11 @@ http
       }
       const filters = filtersOf(url);
       const matches = [...reports.values()].filter((r) => Object.entries(filters).every(([k, v]) => String(r[k]) === v));
+      if (req.method === "PATCH") {
+        const patch = JSON.parse((await readBody(req)) || "{}") as Record<string, unknown>;
+        for (const r of matches) reports.set(String(r.id), { ...r, ...patch });
+        return res.end(JSON.stringify(matches.map((r) => ({ id: r.id }))));
+      }
       if (req.method === "DELETE") {
         for (const r of matches) reports.delete(String(r.id));
         return res.end(JSON.stringify(matches.map((r) => ({ id: r.id }))));

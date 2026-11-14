@@ -6,6 +6,7 @@ import { explainFinding } from "@/lib/domain/seo/findingExplanations";
 import { guardPublicAudit, readLimitedText, withRelease, AUDIT_MAX_BODY_BYTES } from "@/lib/domain/net/publicGuard";
 import { publicConcurrencyGate, publicRateLimiter } from "@/lib/domain/net/publicRuntime";
 import { FEATURES } from "@/lib/features";
+import { auditLeadsEnabled } from "@/lib/domain/audit/auditLeadsConfig";
 import { buildStoredReport, reportPath, toPublicReport } from "@/lib/domain/seo/publicReport";
 import { publicReportStore } from "@/lib/domain/seo/publicReportRuntime";
 
@@ -80,7 +81,7 @@ async function runPublicAudit(body: Record<string, unknown> | null) {
       console.error("[public-audit] report not saved", error instanceof Error ? error.message : "unknown");
     }
 
-    return NextResponse.json({ url: result.url, findings, summary, technical, report });
+    return NextResponse.json({ url: result.url, findings, summary, technical, report, leadsAvailable: Boolean(report) && auditLeadsEnabled(process.env, FEATURES.PLATFORM_MODE) });
   } catch {
     // Generic on purpose: the audit failure detail is logged server-side by SEOAgent, never returned.
     return NextResponse.json({ error: "Audit failed. Check the URL and try again." }, { status: 502 });
