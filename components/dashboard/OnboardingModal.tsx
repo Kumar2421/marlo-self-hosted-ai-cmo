@@ -7,6 +7,7 @@ import GhostLoader from "@/components/shared/GhostLoader";
 import { useProject } from "@/lib/project-store";
 import { useToast } from "@/components/dashboard/Toast";
 import { deriveNameFromUrl } from "@/lib/domain/project/projectName";
+import { onboardingFields } from "@/lib/domain/onboarding/onboardingFields";
 
 const SOURCE_OPTIONS = [
   "Google Search",
@@ -50,9 +51,11 @@ export default function OnboardingModal({ onDone }: { onDone: () => void }) {
 
   const [source, setSource] = useState(SOURCE_OPTIONS[0]);
   const [role, setRole] = useState(ROLE_OPTIONS[0]);
-  const [url, setUrl] = useState(() =>
-    typeof window !== "undefined" ? localStorage.getItem("marlo:pending-audit-url") ?? "" : "",
+  // Read once: someone who came from the free audit is not asked two unrelated questions first.
+  const [fields] = useState(() =>
+    onboardingFields(typeof window !== "undefined" ? localStorage.getItem("marlo:pending-audit-url") : null),
   );
+  const [url, setUrl] = useState(fields.prefillUrl);
   const [saving, setSaving] = useState(false);
 
   // The modal cannot be closed, so give the user a way out (for example, signed in with the wrong account).
@@ -71,8 +74,8 @@ export default function OnboardingModal({ onDone }: { onDone: () => void }) {
     setSaving(true);
     try {
       await Promise.all([
-        saveSetting("onboarding_source", source),
-        saveSetting("personalization_role", role),
+        saveSetting("onboarding_source", fields.askSource ? source : fields.impliedSource ?? source),
+        ...(fields.askRole ? [saveSetting("personalization_role", role)] : []),
       ]);
       await createProject({ name: deriveNameFromUrl(url.trim()), url: url.trim() });
       // Only after the project exists: a failed first attempt must not count as onboarded.
@@ -94,9 +97,12 @@ export default function OnboardingModal({ onDone }: { onDone: () => void }) {
           <span className="text-sm font-bold tracking-tight text-gray-900">Marlo</span>
         </div>
         <h2 className="text-lg font-semibold tracking-[-0.02em] text-gray-900">Let&apos;s grow your business.</h2>
-        <p className="mt-0.5 text-[12px] text-gray-500">Get started with your AI CMO.</p>
+        <p className="mt-0.5 text-[12px] text-gray-500">
+          {fields.askSource ? "Get started with your AI CMO." : "Confirm your website and Marlo will set it up."}
+        </p>
 
         <div className="mt-4 flex flex-col gap-3">
+          {fields.askSource && (
           <div className="flex flex-col gap-1">
             <label className="text-[12px] font-medium text-gray-700">How did you hear about us?</label>
             <select
@@ -109,7 +115,9 @@ export default function OnboardingModal({ onDone }: { onDone: () => void }) {
               ))}
             </select>
           </div>
+          )}
 
+          {fields.askRole && (
           <div className="flex flex-col gap-1">
             <label className="text-[12px] font-medium text-gray-700">What best describes you?</label>
             <select
@@ -122,6 +130,7 @@ export default function OnboardingModal({ onDone }: { onDone: () => void }) {
               ))}
             </select>
           </div>
+          )}
 
           <div className="flex flex-col gap-1">
             <label className="text-[12px] font-medium text-gray-700">Your website</label>
