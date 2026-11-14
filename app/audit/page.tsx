@@ -108,7 +108,6 @@ export default function AuditPage() {
       return;
     }
     autoRanRef.current = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void runAuditFor(prefilled);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

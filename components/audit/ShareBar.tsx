@@ -36,7 +36,6 @@ export default function ShareBar({ id, path, host, score }: { id: string; path: 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setToken(readOwnerToken(id));
     setCanShare(typeof navigator !== "undefined" && typeof navigator.share === "function");
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOrigin(window.location.origin);
   }, [id]);
 
