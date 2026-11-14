@@ -6,6 +6,8 @@ import { explainFinding } from "@/lib/domain/seo/findingExplanations";
 import { guardPublicAudit, readLimitedText, withRelease, AUDIT_MAX_BODY_BYTES } from "@/lib/domain/net/publicGuard";
 import { publicConcurrencyGate, publicRateLimiter } from "@/lib/domain/net/publicRuntime";
 import { FEATURES } from "@/lib/features";
+import { buildStoredReport, reportPath, toPublicReport } from "@/lib/domain/seo/publicReport";
+import { publicReportStore } from "@/lib/domain/seo/publicReportRuntime";
 
 export const maxDuration = 60;
 
@@ -56,20 +58,29 @@ async function runPublicAudit(body: Record<string, unknown> | null) {
       ...explainFinding(finding),
     }));
 
-    return NextResponse.json({
-      url: result.url,
-      findings,
-      summary: {
-        totalFindings: result.findings.length,
-        critical: result.findings.filter((f) => f.severity === "Error").length,
-        warnings: result.findings.filter((f) => f.severity === "Warning").length,
-      },
-      technical: {
-        onPageScore: result.technical.onPageScore,
-        status: result.technical.status,
-        redirectCount: result.technical.redirectCount,
-      },
-    });
+    const summary = {
+      totalFindings: result.findings.length,
+      critical: result.findings.filter((f) => f.severity === "Error").length,
+      warnings: result.findings.filter((f) => f.severity === "Warning").length,
+    };
+    const technical = {
+      onPageScore: result.technical.onPageScore,
+      status: result.technical.status,
+      redirectCount: result.technical.redirectCount,
+    };
+
+    // A saved copy gives the result a link people can share. If saving fails the audit still returns: the
+    // visitor sees their result and just has no link.
+    let report: { id: string; path: string; ownerToken: string } | null = null;
+    try {
+      const { report: stored, ownerToken } = buildStoredReport({ url: result.url, score: technical.onPageScore, findings, summary });
+      await publicReportStore().save(stored);
+      report = { id: toPublicReport(stored).id, path: reportPath(stored.id), ownerToken };
+    } catch (error) {
+      console.error("[public-audit] report not saved", error instanceof Error ? error.message : "unknown");
+    }
+
+    return NextResponse.json({ url: result.url, findings, summary, technical, report });
   } catch {
     // Generic on purpose: the audit failure detail is logged server-side by SEOAgent, never returned.
     return NextResponse.json({ error: "Audit failed. Check the URL and try again." }, { status: 502 });

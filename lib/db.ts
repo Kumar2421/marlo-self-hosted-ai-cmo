@@ -85,6 +85,18 @@ function init(): Database.Database {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS public_audit_reports (
+      id               TEXT PRIMARY KEY,
+      url              TEXT NOT NULL,
+      host             TEXT NOT NULL,
+      score            INTEGER NOT NULL,
+      summary          TEXT NOT NULL,
+      findings         TEXT NOT NULL,
+      owner_token_hash TEXT NOT NULL,
+      created_at       TEXT NOT NULL,
+      expires_at       TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS hn_drafts (
       id          TEXT PRIMARY KEY,
       title       TEXT NOT NULL,
