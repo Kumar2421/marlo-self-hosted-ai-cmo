@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { trackAuditEvent } from "./trackAuditEvent";
+import { emailShareLink, whatsappShareLink } from "@/lib/domain/audit/shareLinks";
 
 const TOKEN_KEY = (id: string) => `marlo:audit-owner:${id}`;
 
@@ -22,17 +23,21 @@ export function readOwnerToken(id: string): string | null {
 }
 
 /** Copy link, share, and (only in the browser that ran the audit) remove. */
-export default function ShareBar({ id, path, host }: { id: string; path: string; host: string }) {
+export default function ShareBar({ id, path, host, score }: { id: string; path: string; host: string; score: number }) {
   const [copied, setCopied] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [removed, setRemoved] = useState(false);
   const [error, setError] = useState("");
   const [canShare, setCanShare] = useState(false);
+  // The full link, known only in the browser; the send links are built from it once it is.
+  const [origin, setOrigin] = useState("");
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setToken(readOwnerToken(id));
     setCanShare(typeof navigator !== "undefined" && typeof navigator.share === "function");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOrigin(window.location.origin);
   }, [id]);
 
   const fullUrl = () => `${window.location.origin}${path}`;
@@ -83,6 +88,26 @@ export default function ShareBar({ id, path, host }: { id: string; path: string;
         <button type="button" onClick={share} className="h-9 rounded-lg border border-black/15 bg-white px-4 text-sm font-medium">
           Share
         </button>
+      )}
+      {origin && (
+        <>
+          <a
+            href={whatsappShareLink({ host, score, url: `${origin}${path}` })}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => trackAuditEvent({ event: "report_shared" })}
+            className="inline-flex h-9 items-center rounded-lg border border-black/15 bg-white px-4 text-sm font-medium"
+          >
+            WhatsApp
+          </a>
+          <a
+            href={emailShareLink({ host, score, url: `${origin}${path}` })}
+            onClick={() => trackAuditEvent({ event: "report_shared" })}
+            className="inline-flex h-9 items-center rounded-lg border border-black/15 bg-white px-4 text-sm font-medium"
+          >
+            Email
+          </a>
+        </>
       )}
       {token && (
         <button type="button" onClick={remove} className="h-9 rounded-lg px-3 text-sm text-black/55 hover:text-black">

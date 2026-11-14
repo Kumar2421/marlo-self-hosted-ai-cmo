@@ -133,3 +133,39 @@ test("the browser that ran the audit sees Remove, and removing ends the link", a
   await page.goto(`/audit/r/${id}`);
   await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
 });
+
+test("the report can be sent to a client by WhatsApp or email, with the message already written", async ({ page, baseURL }) => {
+  const events: string[] = [];
+  // Beacons are seen by a request listener even when a route handler does not catch them.
+  page.on("request", (req) => {
+    if (req.url().endsWith("/api/public/audit/events") && req.method() === "POST") {
+      try { events.push(String((req.postDataJSON() as { event: string }).event)); } catch { /* not JSON */ }
+    }
+  });
+  await mockAudit(page, { id: "k7m2q9x4t8wn", path: "/audit/r/k7m2q9x4t8wn", ownerToken: "owner-token-owner-token-1234" });
+  await page.goto("/audit");
+  await expect(page.getByRole("heading", { name: "Audit any website in seconds." })).toBeVisible();
+  await expect(page.getByText("yours or a client")).toBeVisible();
+  await page.getByPlaceholder("yourwebsite.com").fill("acme-plumbing.test");
+  await page.getByRole("button", { name: "Run free audit" }).click();
+
+  const link = `${baseURL}/audit/r/k7m2q9x4t8wn`;
+  const wa = page.getByRole("link", { name: "WhatsApp" });
+  const href = (await wa.getAttribute("href"))!;
+  expect(href.startsWith("https://wa.me/?text=")).toBe(true);
+  const text = decodeURIComponent(href.slice("https://wa.me/?text=".length));
+  expect(text).toContain("acme-plumbing.test");
+  expect(text).toContain("62/100");
+  expect(text.endsWith(link)).toBe(true);
+  await expect(wa).toHaveAttribute("target", "_blank");
+
+  const mail = (await page.getByRole("link", { name: "Email" }).getAttribute("href"))!;
+  const params = new URLSearchParams(mail.slice("mailto:?".length));
+  expect(params.get("subject")).toBe("Website audit for acme-plumbing.test");
+  expect(params.get("body")).toContain(link);
+
+  // Sending is the person's own action in their own app; clicking is counted as a share.
+  await page.route("https://wa.me/**", (r) => r.abort());
+  await wa.click();
+  await expect.poll(() => events.filter((e) => e === "report_shared").length).toBeGreaterThan(0);
+});
