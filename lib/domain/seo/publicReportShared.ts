@@ -18,6 +18,12 @@ export type PublicLead = {
   channels: Array<"email" | "whatsapp" | "form">;
 };
 
+/** Sample posts written for the audited site: shown as examples, never posted by Marlo. Either may be missing. */
+export type SamplePosts = {
+  x: { text: string } | null;
+  linkedin: { hookLine: string; body: string } | null;
+};
+
 export type ScoreBand = "strong" | "good" | "needs-work" | "weak";
 
 /** Plain words for the on-page score. It is a checklist percentage, not a ranking prediction. */

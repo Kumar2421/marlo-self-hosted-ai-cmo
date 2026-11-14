@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
-import { hostOf, scoreBand, type PublicLead, type ReportFinding, type ScoreBand } from "./publicReportShared.ts";
+import { hostOf, scoreBand, type PublicLead, type ReportFinding, type SamplePosts, type ScoreBand } from "./publicReportShared.ts";
 
 export { hostOf, scoreBand };
-export type { PublicLead, ReportFinding, ScoreBand };
+export type { PublicLead, ReportFinding, SamplePosts, ScoreBand };
 
 /**
  * A saved, shareable copy of one public audit result.
@@ -24,6 +24,8 @@ export type PublicReport = {
   findings: ReportFinding[];
   /** Null until someone asks for them; an empty list means they were looked for and none was reachable. */
   leads: PublicLead[] | null;
+  /** Null until someone asks for them. */
+  posts: SamplePosts | null;
   createdAt: string;
   expiresAt: string;
 };
@@ -40,6 +42,8 @@ export type PublicReportStore = {
   isOwner(id: string, ownerToken: string): Promise<boolean>;
   /** Saves the leads when the token matches. Returns whether it did. */
   saveLeads(id: string, ownerToken: string, leads: PublicLead[]): Promise<boolean>;
+  /** Saves the sample posts when the token matches. Returns whether it did. */
+  savePosts(id: string, ownerToken: string, posts: SamplePosts): Promise<boolean>;
 };
 
 // Crockford-style alphabet: no 0/O/1/I/L, so an id read aloud or typed from a screenshot is hard to get wrong.
@@ -141,6 +145,7 @@ export function buildStoredReport(input: ReportInput, now: Date = new Date()): {
       recommendation: clipText(f.recommendation, 600),
     })),
     leads: null,
+    posts: null,
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + REPORT_TTL_DAYS * DAY_MS).toISOString(),
     ownerTokenHash: hashOwnerToken(ownerToken),
@@ -190,6 +195,12 @@ export function memoryReportStore(): PublicReportStore {
       const row = rows.get(id);
       if (!row || row.ownerTokenHash !== hashOwnerToken(ownerToken)) return false;
       rows.set(id, { ...row, leads });
+      return true;
+    },
+    async savePosts(id, ownerToken, posts) {
+      const row = rows.get(id);
+      if (!row || row.ownerTokenHash !== hashOwnerToken(ownerToken)) return false;
+      rows.set(id, { ...row, posts });
       return true;
     },
   };

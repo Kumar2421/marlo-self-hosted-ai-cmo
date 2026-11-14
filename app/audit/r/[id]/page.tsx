@@ -4,10 +4,11 @@ import { notFound } from "next/navigation";
 import { MarloMark } from "@/components/shared/MarloMark";
 import AuditResultView, { CheckYoursCard } from "@/components/audit/AuditResultView";
 import AuditLeadsBlock from "@/components/audit/AuditLeadsBlock";
+import AuditPostsBlock from "@/components/audit/AuditPostsBlock";
 import ShareBar from "@/components/audit/ShareBar";
 import ReportViewed from "@/components/audit/ReportViewed";
 import { isReportId, reportPath, scoreBand, type PublicReport } from "@/lib/domain/seo/publicReport";
-import { auditLeadsEnabled } from "@/lib/domain/audit/auditLeadsConfig";
+import { auditLeadsEnabled, auditPostsEnabled } from "@/lib/domain/audit/auditLeadsConfig";
 import { FEATURES } from "@/lib/features";
 import { publicReportStore } from "@/lib/domain/seo/publicReportRuntime";
 
@@ -67,6 +68,13 @@ export default async function SharedAuditPage({ params }: { params: Promise<{ id
                 reportId={report.id}
                 initialLeads={report.leads}
                 enabled={auditLeadsEnabled(process.env, FEATURES.PLATFORM_MODE)}
+                signupUrl={`/login?mode=signup&url=${encodeURIComponent(report.url)}`}
+              />
+              <AuditPostsBlock
+                reportId={report.id}
+                host={report.host}
+                initialPosts={report.posts}
+                enabled={auditPostsEnabled(process.env, FEATURES.PLATFORM_MODE)}
                 signupUrl={`/login?mode=signup&url=${encodeURIComponent(report.url)}`}
               />
               <CheckYoursCard />

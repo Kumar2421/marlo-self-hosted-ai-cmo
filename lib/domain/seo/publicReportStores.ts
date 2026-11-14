@@ -7,6 +7,7 @@ import {
   type PublicReport,
   type PublicReportStore,
   type ReportFinding,
+  type SamplePosts,
   type StoredReport,
 } from "./publicReport.ts";
 
@@ -37,6 +38,17 @@ function parseSummary(value: unknown): PublicReport["summary"] {
   return { totalFindings: n(v.totalFindings), critical: n(v.critical), warnings: n(v.warnings) };
 }
 
+function parsePosts(value: unknown): SamplePosts | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  const str = (x: unknown): x is string => typeof x === "string";
+  // What comes out of the database goes onto a public page, so each part is checked, not trusted by its key.
+  const x = v.x && typeof v.x === "object" && str((v.x as { text?: unknown }).text) ? { text: (v.x as { text: string }).text } : null;
+  const li = v.linkedin as { hookLine?: unknown; body?: unknown } | null | undefined;
+  const linkedin = li && typeof li === "object" && str(li.hookLine) && str(li.body) ? { hookLine: li.hookLine, body: li.body } : null;
+  return x || linkedin ? { x, linkedin } : null;
+}
+
 function fromRow(row: Record<string, unknown>): PublicReport {
   return {
     id: String(row.id),
@@ -46,6 +58,7 @@ function fromRow(row: Record<string, unknown>): PublicReport {
     summary: parseSummary(row.summary),
     findings: Array.isArray(row.findings) ? (row.findings as ReportFinding[]) : [],
     leads: Array.isArray(row.leads) ? (row.leads as PublicLead[]) : null,
+    posts: parsePosts(row.posts),
     createdAt: new Date(String(row.created_at)).toISOString(),
     expiresAt: new Date(String(row.expires_at)).toISOString(),
   };
@@ -71,7 +84,7 @@ export function supabaseReportStore(client: ReportsClient): PublicReportStore {
     async get(id, now = new Date()) {
       const { data, error } = await client
         .from("public_audit_reports")
-        .select("id,url,host,score,summary,findings,leads,created_at,expires_at")
+        .select("id,url,host,score,summary,findings,leads,posts,created_at,expires_at")
         .eq("id", id)
         .maybeSingle();
       if (error) throw new Error(`report read failed: ${error.message}`);
@@ -108,6 +121,16 @@ export function supabaseReportStore(client: ReportsClient): PublicReportStore {
       if (error) throw new Error(`report update failed: ${error.message}`);
       return Array.isArray(data) && data.length > 0;
     },
+    async savePosts(id, ownerToken, posts) {
+      const { data, error } = await client
+        .from("public_audit_reports")
+        .update({ posts })
+        .eq("id", id)
+        .eq("owner_token_hash", hashOwnerToken(ownerToken))
+        .select("id");
+      if (error) throw new Error(`report update failed: ${error.message}`);
+      return Array.isArray(data) && data.length > 0;
+    },
   };
 }
 
@@ -132,20 +155,22 @@ export function sqliteReportStore(db: Database.Database): PublicReportStore {
     },
     async get(id, now = new Date()) {
       const row = db
-        .prepare(`SELECT id, url, host, score, summary, findings, leads, created_at, expires_at FROM public_audit_reports WHERE id = ?`)
+        .prepare(`SELECT id, url, host, score, summary, findings, leads, posts, created_at, expires_at FROM public_audit_reports WHERE id = ?`)
         .get(id) as Record<string, unknown> | undefined;
       if (!row) return null;
       let summary: unknown = {};
       let findings: unknown = [];
       let leads: unknown = null;
+      let posts: unknown = null;
       try {
         summary = JSON.parse(String(row.summary));
         findings = JSON.parse(String(row.findings));
         leads = row.leads == null ? null : JSON.parse(String(row.leads));
+        posts = row.posts == null ? null : JSON.parse(String(row.posts));
       } catch {
         return null;
       }
-      const report = fromRow({ ...row, summary, findings, leads });
+      const report = fromRow({ ...row, summary, findings, leads, posts });
       return isExpired(report, now) ? null : toPublicReport({ ...report, ownerTokenHash: "" });
     },
     async remove(id, ownerToken) {
@@ -162,6 +187,12 @@ export function sqliteReportStore(db: Database.Database): PublicReportStore {
       const res = db
         .prepare(`UPDATE public_audit_reports SET leads = ? WHERE id = ? AND owner_token_hash = ?`)
         .run(JSON.stringify(leads), id, hashOwnerToken(ownerToken));
+      return res.changes > 0;
+    },
+    async savePosts(id, ownerToken, posts) {
+      const res = db
+        .prepare(`UPDATE public_audit_reports SET posts = ? WHERE id = ? AND owner_token_hash = ?`)
+        .run(JSON.stringify(posts), id, hashOwnerToken(ownerToken));
       return res.changes > 0;
     },
   };
