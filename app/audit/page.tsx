@@ -108,7 +108,6 @@ export default function AuditPage() {
       return;
     }
     autoRanRef.current = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void runAuditFor(prefilled);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -134,10 +133,10 @@ export default function AuditPage() {
         <div className="max-w-3xl">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-black/45">Free website audit</p>
           <h1 className="mt-4 text-4xl font-medium tracking-[-0.05em] sm:text-6xl sm:leading-[1.02]">
-            Find the SEO problems holding your website back.
+            Audit any website in seconds.
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-black/60 sm:text-lg">
-            Enter a public website. Marlo checks the page and shows the most important issues it can verify right now.
+            Paste a site, yours or a client’s. You get a score, the three fixes to make first, and a link you can send.
           </p>
         </div>
 
@@ -170,7 +169,7 @@ export default function AuditPage() {
         {result && (
           <AuditResultView
             data={{ url: result.url, host: hostOf(result.url), score: result.technical.onPageScore, summary: result.summary, findings: result.findings }}
-            share={result.report ? <ShareBar id={result.report.id} path={result.report.path} host={hostOf(result.url)} /> : null}
+            share={result.report ? <ShareBar id={result.report.id} path={result.report.path} host={hostOf(result.url)} score={result.technical.onPageScore} /> : null}
             footer={
               <>
                 {result.report && (

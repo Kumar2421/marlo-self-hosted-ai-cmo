@@ -60,7 +60,7 @@ export default async function SharedAuditPage({ params }: { params: Promise<{ id
       <div className="mx-auto max-w-5xl px-6 pb-20 pt-10">
         <AuditResultView
           data={{ url: report.url, host: report.host, score: report.score, summary: report.summary, findings: report.findings }}
-          share={<ShareBar id={report.id} path={reportPath(report.id)} host={report.host} />}
+          share={<ShareBar id={report.id} path={reportPath(report.id)} host={report.host} score={report.score} />}
           footer={
             <>
               <AuditLeadsBlock
