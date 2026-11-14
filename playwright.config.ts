@@ -21,6 +21,8 @@ const devServerEnv = {
   NEXT_PUBLIC_SUPABASE_ANON_KEY: "e2e-placeholder-anon-key",
   // Lets server code build a service client; it only ever reaches the local fake above.
   SUPABASE_SECRET_KEY: "e2e-placeholder-secret-key",
+  // Shows the audit "businesses that may need you" block; the endpoint itself is mocked in the specs.
+  PUBLIC_AUDIT_LEADS_ENABLED: "true",
 } as Record<string, string>;
 
 export default defineConfig({

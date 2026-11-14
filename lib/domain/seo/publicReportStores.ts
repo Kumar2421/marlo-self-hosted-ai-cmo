@@ -3,6 +3,7 @@ import {
   hashOwnerToken,
   isExpired,
   toPublicReport,
+  type PublicLead,
   type PublicReport,
   type PublicReportStore,
   type ReportFinding,
@@ -16,6 +17,11 @@ export type ReportsClient = {
     insert(row: Record<string, unknown>): Result<unknown>;
     select(columns: string): {
       eq(column: string, value: string): { maybeSingle(): Result<Record<string, unknown> | null> };
+    };
+    update(row: Record<string, unknown>): {
+      eq(column: string, value: string): {
+        eq(column: string, value: string): { select(columns: string): Result<Array<{ id: string }> | null> };
+      };
     };
     delete(): {
       eq(column: string, value: string): {
@@ -39,6 +45,7 @@ function fromRow(row: Record<string, unknown>): PublicReport {
     score: Number(row.score),
     summary: parseSummary(row.summary),
     findings: Array.isArray(row.findings) ? (row.findings as ReportFinding[]) : [],
+    leads: Array.isArray(row.leads) ? (row.leads as PublicLead[]) : null,
     createdAt: new Date(String(row.created_at)).toISOString(),
     expiresAt: new Date(String(row.expires_at)).toISOString(),
   };
@@ -64,7 +71,7 @@ export function supabaseReportStore(client: ReportsClient): PublicReportStore {
     async get(id, now = new Date()) {
       const { data, error } = await client
         .from("public_audit_reports")
-        .select("id,url,host,score,summary,findings,created_at,expires_at")
+        .select("id,url,host,score,summary,findings,leads,created_at,expires_at")
         .eq("id", id)
         .maybeSingle();
       if (error) throw new Error(`report read failed: ${error.message}`);
@@ -80,6 +87,25 @@ export function supabaseReportStore(client: ReportsClient): PublicReportStore {
         .eq("owner_token_hash", hashOwnerToken(ownerToken))
         .select("id");
       if (error) throw new Error(`report remove failed: ${error.message}`);
+      return Array.isArray(data) && data.length > 0;
+    },
+    async isOwner(id, ownerToken) {
+      const { data, error } = await client
+        .from("public_audit_reports")
+        .select("owner_token_hash")
+        .eq("id", id)
+        .maybeSingle();
+      if (error) throw new Error(`report read failed: ${error.message}`);
+      return Boolean(data) && data!.owner_token_hash === hashOwnerToken(ownerToken);
+    },
+    async saveLeads(id, ownerToken, leads) {
+      const { data, error } = await client
+        .from("public_audit_reports")
+        .update({ leads })
+        .eq("id", id)
+        .eq("owner_token_hash", hashOwnerToken(ownerToken))
+        .select("id");
+      if (error) throw new Error(`report update failed: ${error.message}`);
       return Array.isArray(data) && data.length > 0;
     },
   };
@@ -106,24 +132,36 @@ export function sqliteReportStore(db: Database.Database): PublicReportStore {
     },
     async get(id, now = new Date()) {
       const row = db
-        .prepare(`SELECT id, url, host, score, summary, findings, created_at, expires_at FROM public_audit_reports WHERE id = ?`)
+        .prepare(`SELECT id, url, host, score, summary, findings, leads, created_at, expires_at FROM public_audit_reports WHERE id = ?`)
         .get(id) as Record<string, unknown> | undefined;
       if (!row) return null;
       let summary: unknown = {};
       let findings: unknown = [];
+      let leads: unknown = null;
       try {
         summary = JSON.parse(String(row.summary));
         findings = JSON.parse(String(row.findings));
+        leads = row.leads == null ? null : JSON.parse(String(row.leads));
       } catch {
         return null;
       }
-      const report = fromRow({ ...row, summary, findings });
+      const report = fromRow({ ...row, summary, findings, leads });
       return isExpired(report, now) ? null : toPublicReport({ ...report, ownerTokenHash: "" });
     },
     async remove(id, ownerToken) {
       const res = db
         .prepare(`DELETE FROM public_audit_reports WHERE id = ? AND owner_token_hash = ?`)
         .run(id, hashOwnerToken(ownerToken));
+      return res.changes > 0;
+    },
+    async isOwner(id, ownerToken) {
+      const row = db.prepare(`SELECT 1 AS ok FROM public_audit_reports WHERE id = ? AND owner_token_hash = ?`).get(id, hashOwnerToken(ownerToken));
+      return Boolean(row);
+    },
+    async saveLeads(id, ownerToken, leads) {
+      const res = db
+        .prepare(`UPDATE public_audit_reports SET leads = ? WHERE id = ? AND owner_token_hash = ?`)
+        .run(JSON.stringify(leads), id, hashOwnerToken(ownerToken));
       return res.changes > 0;
     },
   };

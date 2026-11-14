@@ -92,6 +92,7 @@ function init(): Database.Database {
       score            INTEGER NOT NULL,
       summary          TEXT NOT NULL,
       findings         TEXT NOT NULL,
+      leads            TEXT,
       owner_token_hash TEXT NOT NULL,
       created_at       TEXT NOT NULL,
       expires_at       TEXT NOT NULL
@@ -600,6 +601,12 @@ function migrate(db: Database.Database) {
     } catch {
       // existing duplicate place rows: leave the index out rather than fail startup
     }
+  }
+
+  // Databases created before audit leads existed: the table is there without the column.
+  const reportCols = db.prepare("PRAGMA table_info(public_audit_reports)").all() as { name: string }[];
+  if (reportCols.length > 0 && !reportCols.some((c) => c.name === "leads")) {
+    db.exec(`ALTER TABLE public_audit_reports ADD COLUMN leads TEXT`);
   }
 
   const articlesCols = db.prepare("PRAGMA table_info(articles)").all() as { name: string }[];

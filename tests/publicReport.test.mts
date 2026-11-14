@@ -128,6 +128,18 @@ async function storeContract(make: () => ReturnType<typeof memoryReportStore>) {
   assert.equal(got.findings.length, 3);
   assert.equal("ownerTokenHash" in got, false, "the token hash never leaves the store");
 
+  assert.equal(got.leads, null, "no leads until someone asks for them");
+  assert.equal(await store.isOwner(report.id, ownerToken), true);
+  assert.equal(await store.isOwner(report.id, "wrong-token-wrong-token-wrong"), false);
+  assert.equal(await store.isOwner("zzzzzzzzzzzz", ownerToken), false);
+  const lead = { name: "Acme Dental", host: "acme-dental.test", fitReason: "Company site mentions dental.", channels: ["email" as const] };
+  assert.equal(await store.saveLeads(report.id, "wrong-token-wrong-token-wrong", [lead]), false);
+  assert.equal((await store.get(report.id))!.leads, null, "a wrong token saves nothing");
+  assert.equal(await store.saveLeads(report.id, ownerToken, [lead]), true);
+  assert.deepEqual((await store.get(report.id))!.leads, [lead]);
+  assert.equal(await store.saveLeads(report.id, ownerToken, []), true);
+  assert.deepEqual((await store.get(report.id))!.leads, [], "an empty list means looked for, none found");
+
   assert.equal(await store.get("zzzzzzzzzzzz"), null);
   assert.equal(await store.remove(report.id, "wrong-token-wrong-token-wrong"), false);
   assert.ok(await store.get(report.id), "a wrong token removes nothing");
@@ -148,7 +160,7 @@ test("sqlite store follows the contract", async () => {
   await storeContract(() => {
     const db = new Database(":memory:");
     db.exec(`CREATE TABLE public_audit_reports (id TEXT PRIMARY KEY, url TEXT NOT NULL, host TEXT NOT NULL, score INTEGER NOT NULL,
-      summary TEXT NOT NULL, findings TEXT NOT NULL, owner_token_hash TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)`);
+      summary TEXT NOT NULL, findings TEXT NOT NULL, leads TEXT, owner_token_hash TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)`);
     return sqliteReportStore(db);
   });
 });
@@ -167,6 +179,20 @@ function fakeSupabase(): { client: ReportsClient; rows: Map<string, Record<strin
         return result(null);
       },
       select: () => ({ eq: (_c, v) => ({ maybeSingle: () => result(rows.get(v) ?? null) }) }),
+      update: (patch) => ({
+        eq: (_c, id) => ({
+          eq: (_c2, hash) => ({
+            select: () => {
+              const row = rows.get(id);
+              if (row && row.owner_token_hash === hash) {
+                rows.set(id, { ...row, ...patch });
+                return result([{ id }]);
+              }
+              return result([]);
+            },
+          }),
+        }),
+      }),
       delete: () => ({
         eq: (_c, id) => ({
           eq: (_c2, hash) => ({

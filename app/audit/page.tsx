@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MarloMark } from "@/components/shared/MarloMark";
 import AuditResultView, { SignupCard } from "@/components/audit/AuditResultView";
+import AuditLeadsBlock from "@/components/audit/AuditLeadsBlock";
 import ShareBar, { rememberOwnerToken } from "@/components/audit/ShareBar";
 import { trackAuditEvent } from "@/components/audit/trackAuditEvent";
 import { hostOf, type ReportFinding } from "@/lib/domain/seo/publicReportShared";
@@ -29,6 +30,7 @@ type AuditResult = {
   summary: { totalFindings: number; critical: number; warnings: number };
   technical: { onPageScore: number; status: number; redirectCount: number };
   report: { id: string; path: string; ownerToken: string } | null;
+  leadsAvailable?: boolean;
 };
 
 export default function AuditPage() {
@@ -165,7 +167,20 @@ export default function AuditPage() {
           <AuditResultView
             data={{ url: result.url, host: hostOf(result.url), score: result.technical.onPageScore, summary: result.summary, findings: result.findings }}
             share={result.report ? <ShareBar id={result.report.id} path={result.report.path} host={hostOf(result.url)} /> : null}
-            footer={<SignupCard url={result.url} critical={result.summary.critical} />}
+            footer={
+              <>
+                {result.report && (
+                  <AuditLeadsBlock
+                    key={result.report.id}
+                    reportId={result.report.id}
+                    initialLeads={null}
+                    enabled={Boolean(result.leadsAvailable)}
+                    signupUrl={`/login?mode=signup&url=${encodeURIComponent(result.url)}`}
+                  />
+                )}
+                <SignupCard url={result.url} critical={result.summary.critical} />
+              </>
+            }
           />
         )}
 

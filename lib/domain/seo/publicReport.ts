@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
-import { hostOf, scoreBand, type ReportFinding, type ScoreBand } from "./publicReportShared.ts";
+import { hostOf, scoreBand, type PublicLead, type ReportFinding, type ScoreBand } from "./publicReportShared.ts";
 
 export { hostOf, scoreBand };
-export type { ReportFinding, ScoreBand };
+export type { PublicLead, ReportFinding, ScoreBand };
 
 /**
  * A saved, shareable copy of one public audit result.
@@ -22,6 +22,8 @@ export type PublicReport = {
   score: number;
   summary: { totalFindings: number; critical: number; warnings: number };
   findings: ReportFinding[];
+  /** Null until someone asks for them; an empty list means they were looked for and none was reachable. */
+  leads: PublicLead[] | null;
   createdAt: string;
   expiresAt: string;
 };
@@ -34,6 +36,10 @@ export type PublicReportStore = {
   get(id: string, now?: Date): Promise<PublicReport | null>;
   /** Removes the report when the token matches. Returns whether something was removed. */
   remove(id: string, ownerToken: string): Promise<boolean>;
+  /** Whether this token belongs to the report. Checked before any paid work starts. */
+  isOwner(id: string, ownerToken: string): Promise<boolean>;
+  /** Saves the leads when the token matches. Returns whether it did. */
+  saveLeads(id: string, ownerToken: string, leads: PublicLead[]): Promise<boolean>;
 };
 
 // Crockford-style alphabet: no 0/O/1/I/L, so an id read aloud or typed from a screenshot is hard to get wrong.
@@ -134,6 +140,7 @@ export function buildStoredReport(input: ReportInput, now: Date = new Date()): {
       whyItMatters: clipText(f.whyItMatters, 600),
       recommendation: clipText(f.recommendation, 600),
     })),
+    leads: null,
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + REPORT_TTL_DAYS * DAY_MS).toISOString(),
     ownerTokenHash: hashOwnerToken(ownerToken),
@@ -173,6 +180,16 @@ export function memoryReportStore(): PublicReportStore {
       const row = rows.get(id);
       if (!row || row.ownerTokenHash !== hashOwnerToken(ownerToken)) return false;
       rows.delete(id);
+      return true;
+    },
+    async isOwner(id, ownerToken) {
+      const row = rows.get(id);
+      return Boolean(row) && row!.ownerTokenHash === hashOwnerToken(ownerToken);
+    },
+    async saveLeads(id, ownerToken, leads) {
+      const row = rows.get(id);
+      if (!row || row.ownerTokenHash !== hashOwnerToken(ownerToken)) return false;
+      rows.set(id, { ...row, leads });
       return true;
     },
   };

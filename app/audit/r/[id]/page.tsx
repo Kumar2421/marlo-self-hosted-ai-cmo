@@ -3,9 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MarloMark } from "@/components/shared/MarloMark";
 import AuditResultView, { CheckYoursCard } from "@/components/audit/AuditResultView";
+import AuditLeadsBlock from "@/components/audit/AuditLeadsBlock";
 import ShareBar from "@/components/audit/ShareBar";
 import ReportViewed from "@/components/audit/ReportViewed";
 import { isReportId, reportPath, scoreBand, type PublicReport } from "@/lib/domain/seo/publicReport";
+import { auditLeadsEnabled } from "@/lib/domain/audit/auditLeadsConfig";
+import { FEATURES } from "@/lib/features";
 import { publicReportStore } from "@/lib/domain/seo/publicReportRuntime";
 
 // Read on every request: a removed report must stop working immediately.
@@ -58,7 +61,17 @@ export default async function SharedAuditPage({ params }: { params: Promise<{ id
         <AuditResultView
           data={{ url: report.url, host: report.host, score: report.score, summary: report.summary, findings: report.findings }}
           share={<ShareBar id={report.id} path={reportPath(report.id)} host={report.host} />}
-          footer={<CheckYoursCard />}
+          footer={
+            <>
+              <AuditLeadsBlock
+                reportId={report.id}
+                initialLeads={report.leads}
+                enabled={auditLeadsEnabled(process.env, FEATURES.PLATFORM_MODE)}
+                signupUrl={`/login?mode=signup&url=${encodeURIComponent(report.url)}`}
+              />
+              <CheckYoursCard />
+            </>
+          }
         />
         <p className="mt-8 text-xs leading-5 text-black/40">
           Audited {new Date(report.createdAt).toLocaleDateString("en", { year: "numeric", month: "short", day: "numeric" })} by Marlo. The score is the share of on-page checks that passed on that day. Anyone with this link can see this page; whoever ran the audit can remove it.

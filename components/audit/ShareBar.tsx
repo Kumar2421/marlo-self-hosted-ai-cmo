@@ -13,7 +13,7 @@ export function rememberOwnerToken(id: string, token: string) {
   }
 }
 
-function readOwnerToken(id: string): string | null {
+export function readOwnerToken(id: string): string | null {
   try {
     return window.localStorage.getItem(TOKEN_KEY(id));
   } catch {

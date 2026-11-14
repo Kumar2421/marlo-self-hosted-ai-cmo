@@ -10,6 +10,14 @@ export type ReportFinding = {
   recommendation: string;
 };
 
+/** A business shown as a teaser under an audit: what exists, never the contact itself. */
+export type PublicLead = {
+  name: string;
+  host: string;
+  fitReason: string;
+  channels: Array<"email" | "whatsapp" | "form">;
+};
+
 export type ScoreBand = "strong" | "good" | "needs-work" | "weak";
 
 /** Plain words for the on-page score. It is a checklist percentage, not a ranking prediction. */
