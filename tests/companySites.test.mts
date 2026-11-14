@@ -56,3 +56,27 @@ test("generic page titles fall back to the site's brand, real names are kept", (
   assert.equal(companyNameFrom("Primrose Real Estate", "primrose.test"), "Primrose Real Estate");
   assert.equal(companyNameFrom("A very long descriptive title that is clearly not a company name at all", "acme-co.test"), "Acme co");
 });
+
+test("the brand segment of a title wins over a descriptive first segment", () => {
+  assert.equal(companyNameFrom("Ecommerce Customer Service | Zendesk", "zendesk.test"), "Zendesk");
+  assert.equal(companyNameFrom("Acme Clinic | Chennai", "acme.test"), "Acme Clinic");
+  assert.equal(companyNameFrom("Smile Studio - Orthodontics", "smilestudio.test"), "Smile Studio");
+  assert.equal(companyNameFrom("Best Dental Clinic in Chennai | Acme", "acme.test"), "Acme");
+});
+
+test("blog posts and guides are not company pages", () => {
+  const hit = (title: string, url: string) => ({ title, url, content: "" });
+  const picked = pickCompanySites([
+    hit("Getting Product Into Stores", "https://creativekindshop.test/"),
+    hit("How to Choose a Dentist | Blog", "https://a.test/"),
+    hit("7 tips for a better website", "https://b.test/"),
+    hit("Acme Dental | Chennai", "https://acme-dental.test/"),
+  ]);
+  assert.deepEqual(picked.map((c) => c.host), ["acme-dental.test"]);
+});
+
+test("directories, freelancer marketplaces and large software vendors are never leads", () => {
+  const hit = (host: string) => ({ title: "Acme Co", url: `https://${host}/contact`, content: "" });
+  const picked = pickCompanySites(["tracxn.com", "consultport.com", "upwork.com", "zendesk.com", "support.zendesk.com", "hubspot.com", "small-agency.test"].map(hit));
+  assert.deepEqual(picked.map((c) => c.host), ["small-agency.test"]);
+});

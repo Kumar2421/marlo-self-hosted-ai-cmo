@@ -14,6 +14,15 @@ const NOT_A_COMPANY_SITE = [
   "clutch.co", "g2.com", "capterra.com", "crunchbase.com", "glassdoor.com", "naukri.com", "indeed.com", "goodfirms.co",
   "leadiq.com", "zoominfo.com", "apollo.io", "rocketreach.co", "lusha.com", "dnb.com", "manta.com", "bbb.org",
   "mapquest.com", "foursquare.com", "yellowpages.ca", "hotfrog.com", "cylex.com", "bark.com", "thumbtack.com",
+  // startup and agency directories, freelancer and consultant marketplaces
+  "tracxn.com", "owler.com", "pitchbook.com", "wellfound.com", "angel.co", "f6s.com", "producthunt.com", "builtin.com",
+  "sortlist.com", "designrush.com", "upcity.com", "themanifest.com", "expertise.com", "agencyspotter.com", "consultport.com",
+  "upwork.com", "fiverr.com", "toptal.com", "freelancer.com", "peopleperhour.com", "guru.com", "similarweb.com",
+  // large software and platform vendors: not small businesses a user can realistically sell to
+  "zendesk.com", "salesforce.com", "hubspot.com", "shopify.com", "microsoft.com", "oracle.com", "sap.com", "ibm.com",
+  "adobe.com", "intuit.com", "atlassian.com", "slack.com", "zoom.us", "stripe.com", "paypal.com", "twilio.com",
+  "mailchimp.com", "godaddy.com", "squarespace.com", "wix.com", "cloudflare.com", "semrush.com", "ahrefs.com",
+  "freshworks.com", "zoho.com", "notion.so", "monday.com", "asana.com", "canva.com",
   // marketplaces, booking and delivery platforms
   "amazon.com", "amazon.in", "flipkart.com", "zomato.com", "swiggy.com", "booking.com", "expedia.com", "agoda.com",
   "makemytrip.com", "airbnb.com", "ubereats.com", "doordash.com", "etsy.com", "ebay.com", "alibaba.com",
@@ -29,6 +38,9 @@ const NOT_A_COMPANY_SITE = [
 const NOT_A_BUSINESS_TLD = /(^|\.)(gov|mil|edu)(\.[a-z]{2})?$|(^|\.)(nic\.in|gov\.[a-z]{2}|ac\.[a-z]{2})$/i;
 
 const LISTICLE = /^\s*(top|best|\d+)\s+\d*\s*|\blist of\b|\bbest\b.*\b(companies|agencies|firms|startups)\b|\bvs\.?\b/i;
+
+/** A blog post or guide, not a company's own page: "How to Get Your Product Into Stores", "7 tips for ...". */
+const ARTICLE = /^\s*(how|why|what|when|getting|guide|tips)\b|\b(how to|ways to|tips (for|to)|step[- ]by[- ]step|ultimate guide|complete guide|checklist|explained)\b/i;
 
 export function hostOf(url: string): string | null {
   try {
@@ -62,8 +74,14 @@ function brandFromHost(host: string): string {
 
 /** "Acme Clinic | Chennai" -> "Acme Clinic". Falls back to the host's first label when the title is generic or long. */
 export function companyNameFrom(title: string, host: string): string {
-  const first = title.split(/\s[|\-–—·]\s|:\s/)[0]?.trim() ?? "";
-  if (first.length >= 2 && first.length <= MAX_NAME && !isGenericTitle(first)) return first;
+  const segments = title.split(/\s[|\-–—·]\s|:\s/).map((t) => t.trim()).filter(Boolean);
+  const ok = (t: string) => t.length >= 2 && t.length <= MAX_NAME && !isGenericTitle(t);
+  // "Ecommerce Customer Service | Zendesk": the brand is the segment that matches the site's own name.
+  const label = (host.split(".")[0] ?? host).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const brand = label.length >= 3 ? segments.find((t) => ok(t) && t.toLowerCase().replace(/[^a-z0-9]/g, "") === label) : undefined;
+  if (brand) return brand;
+  const first = segments[0] ?? "";
+  if (ok(first)) return first;
   return brandFromHost(host);
 }
 
@@ -85,7 +103,7 @@ export function pickCompanySites(hits: readonly SearchHit[], opts: PickOptions =
     const host = hostOf(hit.url);
     if (!host || blocked(host) || seen.has(host) || skip.has(host) || opts.knownHosts?.has(host)) continue;
     if ([...skip].some((s) => s && host.endsWith(`.${s}`))) continue;
-    if (LISTICLE.test(hit.title)) continue;
+    if (LISTICLE.test(hit.title) || ARTICLE.test(hit.title)) continue;
     seen.add(host);
     out.push({ host, website: `https://${host}/`, name: companyNameFrom(hit.title, host), title: hit.title, snippet: hit.content });
     if (out.length >= (opts.max ?? 12)) break;
