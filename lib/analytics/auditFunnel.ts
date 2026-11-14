@@ -4,6 +4,8 @@ export const AUDIT_FUNNEL_EVENTS = [
   "audit_failed",
   "signup_cta_clicked",
   "signup_completed",
+  "report_viewed",
+  "report_shared",
 ] as const;
 
 export type AuditFunnelEvent = (typeof AUDIT_FUNNEL_EVENTS)[number];

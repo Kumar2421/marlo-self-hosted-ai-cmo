@@ -31,9 +31,27 @@ const session = {
   user: FAKE_USER,
 };
 
+// The one stateful table: shared audit reports (public_audit_reports), enough of PostgREST for insert, select-by-id and
+// delete-with-filters. Everything else stays stateless.
+const reports = new Map<string, Record<string, unknown>>();
+
+function filtersOf(url: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of new URL(url, "http://x").searchParams) if (value.startsWith("eq.")) out[key] = value.slice(3);
+  return out;
+}
+
+function readBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve) => {
+    let data = "";
+    req.on("data", (chunk) => (data += chunk));
+    req.on("end", () => resolve(data));
+  });
+}
+
 const port = Number(process.env.FAKE_SUPABASE_PORT || 54329);
 http
-  .createServer((req, res) => {
+  .createServer(async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", req.headers.origin ?? "*");
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Access-Control-Allow-Headers", "*");
@@ -47,6 +65,22 @@ http
     if (url.startsWith("/health")) return res.end('{"ok":true}');
     if (url.startsWith("/auth/v1/user")) return res.end(JSON.stringify(FAKE_USER));
     if (url.startsWith("/auth/v1/")) return res.end(JSON.stringify(session));
+    if (url.startsWith("/rest/v1/rpc/rate_limit_hit")) return res.end(JSON.stringify([{ allowed: true, remaining: 100, retry_after: 0 }]));
+    if (url.startsWith("/rest/v1/public_audit_reports")) {
+      if (req.method === "POST") {
+        const row = JSON.parse((await readBody(req)) || "{}") as Record<string, unknown>;
+        reports.set(String(row.id), row);
+        res.writeHead(201);
+        return res.end("[]");
+      }
+      const filters = filtersOf(url);
+      const matches = [...reports.values()].filter((r) => Object.entries(filters).every(([k, v]) => String(r[k]) === v));
+      if (req.method === "DELETE") {
+        for (const r of matches) reports.delete(String(r.id));
+        return res.end(JSON.stringify(matches.map((r) => ({ id: r.id }))));
+      }
+      return res.end(JSON.stringify(matches));
+    }
     if (url.startsWith("/rest/v1/")) return res.end(req.method === "GET" ? "[]" : "{}");
     res.end("{}");
   })

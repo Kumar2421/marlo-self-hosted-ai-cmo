@@ -19,6 +19,8 @@ const devServerEnv = {
   ...process.env,
   NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: "e2e-placeholder-anon-key",
+  // Lets server code build a service client; it only ever reaches the local fake above.
+  SUPABASE_SECRET_KEY: "e2e-placeholder-secret-key",
 } as Record<string, string>;
 
 export default defineConfig({
