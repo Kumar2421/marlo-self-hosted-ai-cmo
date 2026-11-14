@@ -6,6 +6,8 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/query/fetchJson";
 import { useProject } from "@/lib/project-store";
 import { getPlatformConfig } from "@/lib/domain/social/platforms";
+import { xWeightedLength } from "@/lib/domain/social/xLength";
+import { linkedinFold, redditBodyFold } from "@/lib/domain/social/previewFold";
 import { useSocialDraftActions, type AnyDraft, type SocialPlatform } from "./useSocialDrafts";
 
 const BTN = "inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-[12px] font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -41,8 +43,12 @@ function TweetCard({ text, name }: { text: string; name: string }) {
 
 function LinkedInCard({ hookLine, body, name }: { hookLine: string; body: string; name: string }) {
   const [expanded, setExpanded] = useState(false);
+  // LinkedIn shows about 210 characters, then "...see more". The hook is the first paragraph.
+  const fold = linkedinFold(hookLine, body);
+  const shown = expanded || !fold.truncated ? fold.visible + (fold.hidden ? "\n\n" + fold.hidden : "") : fold.visible;
+  const [first, ...rest] = shown.split("\n\n");
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className="rounded-xl border border-gray-200 bg-white p-4" data-testid="linkedin-preview">
       <div className="flex gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#111111] text-[14px] font-semibold text-white" aria-hidden="true">
           {name.charAt(0).toUpperCase()}
@@ -52,11 +58,13 @@ function LinkedInCard({ hookLine, body, name }: { hookLine: string; body: string
             <span className="truncate text-[14px] font-semibold text-gray-900">{name}</span>
           </div>
           <div className="mt-2">
-            <p className="whitespace-pre-wrap break-words text-[14px] font-semibold leading-relaxed text-gray-900">{hookLine}</p>
-            <p className={`mt-2 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-gray-700 ${!expanded && "line-clamp-3"}`}>{body}</p>
-            {!expanded && body.split("\n").length > 3 && (
-              <button onClick={() => setExpanded(true)} className="mt-2 text-[12px] font-medium text-gray-600 hover:text-gray-900">
-                ... see more
+            <p className="whitespace-pre-wrap break-words text-[14px] font-semibold leading-relaxed text-gray-900">{first}</p>
+            {rest.length > 0 && (
+              <p className="mt-2 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-gray-700">{rest.join("\n\n")}</p>
+            )}
+            {fold.truncated && !expanded && (
+              <button onClick={() => setExpanded(true)} className="mt-1 text-[12px] font-medium text-gray-600 hover:text-gray-900" data-testid="linkedin-see-more">
+                ...see more
               </button>
             )}
           </div>
@@ -68,14 +76,17 @@ function LinkedInCard({ hookLine, body, name }: { hookLine: string; body: string
 
 function RedditCard({ subreddit, title, body }: { subreddit: string; title: string; body: string }) {
   const [expanded, setExpanded] = useState(false);
+  // A Reddit text post shows about 300 characters of the body in the feed.
+  const fold = redditBodyFold(body);
+  const shown = expanded || !fold.truncated ? body : fold.visible;
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className="rounded-xl border border-gray-200 bg-white p-4" data-testid="reddit-preview">
       <div className="mb-3 text-[12px] font-medium text-gray-500">r/{subreddit}</div>
       <h3 className="mb-2 text-[14px] font-semibold text-gray-900">{title}</h3>
-      <p className={`text-[13px] leading-relaxed text-gray-700 ${!expanded && "line-clamp-4"}`}>{body}</p>
-      {!expanded && body.split("\n").length > 4 && (
-        <button onClick={() => setExpanded(true)} className="mt-2 text-[12px] font-medium text-gray-600 hover:text-gray-900">
-          ... see more
+      <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-gray-700">{shown}</p>
+      {fold.truncated && !expanded && (
+        <button onClick={() => setExpanded(true)} className="mt-2 text-[12px] font-medium text-gray-600 hover:text-gray-900" data-testid="reddit-see-more">
+          ...see more
         </button>
       )}
     </div>
@@ -130,7 +141,7 @@ export default function DraftPreviewCard({
   const canSave = (() => {
     if (platform === "x" && "text" in values && "text" in draft) {
       const text = (values.text as string).trim();
-      return text.length > 0 && text.length <= config.maxBodyChars && text !== draft.text;
+      return text.length > 0 && xWeightedLength(text) <= config.maxBodyChars && text !== draft.text;
     }
     if (platform === "linkedin" && "hookLine" in values && "hookLine" in draft) {
       const hookLine = (values.hookLine as string).trim();
@@ -186,7 +197,7 @@ export default function DraftPreviewCard({
               />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <CharCount current={(values.text as string).length} max={config.maxBodyChars} />
+              <CharCount current={xWeightedLength(values.text as string)} max={config.maxBodyChars} />
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -334,12 +345,17 @@ export default function DraftPreviewCard({
       {platform === "linkedin" && "hookLine" in draft && <LinkedInCard hookLine={draft.hookLine} body={draft.body} name={name} />}
       {platform === "reddit" && "subreddit" in draft && <RedditCard subreddit={draft.subreddit} title={draft.title} body={draft.body} />}
 
+      <p className="text-[11px] leading-4 text-gray-400" data-testid="preview-note">
+        {platform === "x"
+          ? "Approximate preview. Links count as 23 characters and emoji as 2."
+          : "Approximate preview. Each network folds long posts a little differently."}
+      </p>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">{draft.angle}</span>
           {draft.edited && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">Edited</span>}
         </div>
-        {platform === "x" && "text" in draft && <CharCount current={draft.text.length} max={config.maxBodyChars} />}
+        {platform === "x" && "text" in draft && <CharCount current={xWeightedLength(draft.text)} max={config.maxBodyChars} />}
         {platform === "linkedin" && "hookLine" in draft && (
           <CharCount current={draft.hookLine.length + draft.body.length} max={config.maxBodyChars} />
         )}
