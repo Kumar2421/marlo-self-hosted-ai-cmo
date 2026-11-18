@@ -1,0 +1,50 @@
+{
+  "manifest_version": "0.3",
+  "name": "marlo-mcp",
+  "display_name": "Marlo: SEO page audit",
+  "version": "__VERSION__",
+  "description": "Audit a web page for SEO and technical issues with Marlo, the open-source AI CMO. Read-only.",
+  "long_description": "Ask your assistant to audit a page and get the top issues with evidence, why each matters and a concrete fix. Read-only: it fetches the page and changes nothing. It checks one page and shows the top three findings. By default it uses the hosted Marlo; point it at your own self-hosted Marlo with the optional settings.",
+  "author": { "name": "Marlo", "url": "https://github.com/Kumar2421/okara-alternative" },
+  "homepage": "https://github.com/Kumar2421/okara-alternative/tree/main/packages/marlo-mcp",
+  "documentation": "https://github.com/Kumar2421/okara-alternative/blob/main/packages/marlo-mcp/README.md",
+  "support": "https://github.com/Kumar2421/okara-alternative/issues",
+  "license": "AGPL-3.0-only",
+  "repository": { "type": "git", "url": "https://github.com/Kumar2421/okara-alternative.git" },
+  "keywords": ["seo", "audit", "ai-seo", "geo", "website", "technical-seo"],
+  "privacy_policies": ["https://app.marlo.mlforge.in/privacy"],
+  "server": {
+    "type": "node",
+    "entry_point": "bin/marlo-mcp.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/bin/marlo-mcp.mjs"],
+      "env": {
+        "MARLO_BASE_URL": "${user_config.base_url}",
+        "MARLO_ACCESS_PASSWORD": "${user_config.access_password}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "audit_site",
+      "description": "Audit one public web page and return its top SEO and technical issues with evidence and a fix. Read-only."
+    }
+  ],
+  "user_config": {
+    "base_url": {
+      "type": "string",
+      "title": "Your Marlo server (optional)",
+      "description": "Leave empty to use the hosted Marlo at https://app.marlo.mlforge.in. Set it to your own self-hosted Marlo, for example http://localhost:3000.",
+      "required": false
+    },
+    "access_password": {
+      "type": "string",
+      "title": "Your server's access password (optional)",
+      "description": "Only if you set MARLO_ACCESS_PASSWORD on your own server. It is sent only to the server address above, never to the hosted Marlo.",
+      "sensitive": true,
+      "required": false
+    }
+  },
+  "compatibility": { "runtimes": { "node": ">=20.0.0" } }
+}
